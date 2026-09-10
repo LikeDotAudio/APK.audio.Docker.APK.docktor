@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APK.audio — DockTor</title>
+<link rel="stylesheet" href="manager.css">
+<!--
+  RELATIVE, NOT ROOT-ABSOLUTE, AND THAT IS THE WHOLE REASON THIS PAGE CAN BE
+  MOUNTED SOMEWHERE ELSE. `href="/manager.css"` binds the client to living at an
+  origin's root. APK:OS relays the manager at `/manager/` so the shell can frame
+  it in a window -- 8765 is published on loopback and unreachable from a bench,
+  and an https shell will not load an http frame at all -- and under that prefix
+  a root-absolute asset asks the OS for a stylesheet it does not have. Two
+  characters, and the page renders at `/` on 8765 and at `/manager/` behind the
+  shell with no fork and no base tag. Same rule for the script at the foot and
+  for every path manager.js asks for; see the API base it derives there.
+-->
+<!--
+  THE MANAGER, AS A PAGE. Served by manager/serve.py, which is the only thing
+  that talks to docker; this file holds no address, no port and no container
+  name, and every value on it arrived from /api.
+
+  IT IS THE WHOLE CLIENT AND THERE IS NO BUILD STEP. Three files, no framework,
+  no bundler, no CDN — the manager is what you open when the bench is broken,
+  and a front end that needs a network fetch to render is a front end that is
+  blank exactly when it is wanted. Same reason serve.py is stdlib only.
+
+  NOTHING HERE PAINTS A STATE COLOUR OF ITS OWN. The five tones come from
+  /api/palette, which is manager/palette.py, which is the table the Tkinter card
+  grid used. manager.js writes them into CSS custom properties at boot; a colour
+  literal for a state in manager.css would be the second copy that table exists
+  to prevent.
+-->
+</head>
+<body>
+
+<header class="topbar">
+  <h1><span class="glyph">🐳</span> APK.audio DockTor</h1>
+
+  <div class="verbs">
+    <div class="menu" data-menu>
+      <button class="btn accent" data-menu-open>⚡ Rebuild &amp; Remount ▾</button>
+      <div class="menu-items" hidden>
+        <button data-action="up"></button>
+        <button data-action="rebuild-all"></button>
+        <button data-action="rebuild-core"></button>
+      </div>
+    </div>
+
+    <div class="menu" data-menu>
+      <button class="btn danger" data-menu-open>🛑 Stop &amp; Clean ▾</button>
+      <div class="menu-items" hidden>
+        <button data-action="down"></button>
+        <button data-action="remove-other"></button>
+        <button data-action="clear-dead"></button>
+        <button data-action="free-ports"></button>
+        <button data-action="prune"></button>
+      </div>
+    </div>
+
+    <button class="btn teal" id="broadcast">📡 Broadcast Status to MQTT</button>
+
+    <div class="menu" data-menu>
+      <button class="btn blue" data-menu-open>🌐 Web Pages ▾</button>
+      <!-- Filled from /api/endpoints, which is endpoints.sh, which is the one
+           copy of the port table. The Tk menu this replaces held three literals
+           — 8080, 4444 and 3001 — and no compose file in this repository
+           publishes the last two, so it opened two dead tabs every time. -->
+      <div class="menu-items" id="web-pages" hidden></div>
+    </div>
+
+    <button class="btn purple" id="live-resources">📈 Live Resources (CPU / RAM)</button>
+    <button class="btn deep" data-action="verify"></button>
+  </div>
+
+  <div class="verbs right">
+    <label class="select">⏱
+      <select id="auto-refresh">
+        <option value="0">Auto Refresh: Off</option>
+      </select>
+    </label>
+    <button class="btn plain" id="refresh">🔄 Refresh Status</button>
+  </div>
+</header>
+
+<main class="split">
+  <section class="pane grid-pane">
+    <div class="pane-head">
+      <h2>📊 Live Containers <small>(click a card for details)</small></h2>
+      <span class="scan-state" id="scan-state"></span>
+      <!-- HOW MUCH OF THE SAME SNAPSHOT TO DRAW. Not a filter and not a fetch:
+           every level renders every container, and the levels below "all" hide
+           rows on cards that are already built -- so the meter cadence keeps
+           writing into a card showing only its name, and coming back up is a
+           repaint rather than a rescan. "names" exists because the full card is
+           right for one container and wrong for forty; a bench of six stacks is
+           four screens at full detail, and "which one is red" is then a
+           question you scroll to lose the answer to. -->
+      <label class="select" title="How much of each card to draw">🔎
+        <select id="density">
+          <option value="low">Detail: Names</option>
+          <option value="med">Detail: Names + Services</option>
+          <option value="high">Detail: Everything</option>
+        </select>
+      </label>
+      <!-- THREE READINGS OF ONE SNAPSHOT, and the cards are never torn down to
+           give the other two: #cards is HIDDEN rather than emptied, so the
+           five-second meter cadence keeps writing into it and coming back is a
+           toggle rather than a rescan -- the same arrangement, and the same
+           reason, as the detail levels beside this. The donuts answer "who is
+           eating the box" (which the per-card meters cannot, because a share is
+           a comparison across cards) and the port table answers "what is on
+           8080" (which the grid can only answer by reading forty cards).
+
+           RADIO BUTTONS AND NOT A `<select>`, WHICH IS WHAT THIS WAS. A
+           dropdown draws ONE of its three answers and hides the other two
+           behind a click, and all three are wanted here: which readings of the
+           bench even EXIST is half of what this control is for, and a person
+           who has never opened it has never been told there is a port table.
+           The detail level beside this stays a dropdown for the opposite
+           reason -- its three values are one axis of the same thing, ordered,
+           and only the current one is worth reading.
+
+           THE COST IS THAT EVERY OPTION IS SPELLED ON SCREEN, so each label
+           dropped the `View:` prefix the options carried: the closed dropdown
+           needed a word saying what it was, and the lead label says it once
+           now. Real `<input type=radio>` elements, one name, so arrow keys walk
+           the group and a screen reader reads "3 of 3" -- the segmenting is
+           CSS over the native control and never a div pretending. -->
+      <div class="segmented" id="view" role="radiogroup"
+           aria-label="Which reading of the same snapshot to draw"
+           title="Which reading of the same snapshot to draw">
+        <span class="segmented-lead">🧭 View</span>
+        <label><input type="radio" name="view" value="cards" checked><span>Cards</span></label>
+        <label><input type="radio" name="view" value="donuts"><span>Donuts — CPU / RAM</span></label>
+        <label><input type="radio" name="view" value="ports"><span>Ports</span></label>
+      </div>
+      <!-- NO `clear-dead` BUTTON HERE ANY MORE. It was the one destructive verb
+           on the page that lived outside `🛑 Stop & Clean`, sat in a pane head
+           that otherwise only holds ways of LOOKING at the bench, and was a
+           second copy of the button already in that menu. Two buttons for one
+           verb is two places to change when it gains a confirm. -->
+    </div>
+    <!-- THE BOX ITSELF, WHICH NO CARD IS ABOUT. Every card below is a
+         container; none of them is the disk under all of them, and on
+         2026-09-09 the root filesystem filled with nothing on this bench
+         saying so — the first signal anybody got was MariaDB crash-looping and
+         three NetBox containers sitting Exited(1) for hours. This band is
+         filled from `host.disk` and `stopped_containers` in /api/containers,
+         stays `hidden` while the disk is under its warning threshold and every
+         container docker promised to hold open is up, and sits ABOVE the dark
+         band because it is frequently the CAUSE of what the dark band draws. -->
+    <!-- ONE SCROLLPORT FOR THE WHOLE PANE, and the three bands are INSIDE it.
+         They used to be siblings of the grid, so every row they drew came out
+         of the cards' height: a dark stack, a bench-health note and three stale
+         rows left the grid a 140px slot underneath, and no amount of scrolling
+         moved the warnings out of the way because they were not in the thing
+         that scrolled. They are still first and still found; they now leave
+         once read. -->
+    <div class="pane-body" id="grid-body">
+
+    <div class="dark-stacks" id="bench-health" hidden></div>
+
+    <!-- THE ONLY THING ON THIS PAGE THAT DRAWS AN ABSENCE. Every card below is
+         a container that exists, so a stack whose containers were all removed
+         renders as nothing at all — which reads exactly like a stack this
+         repository never had. This band is filled from `dark_stacks` in
+         /api/containers and stays `hidden` when there are none, so a whole
+         bench costs no pixels. -->
+    <div class="dark-stacks" id="dark-stacks" hidden></div>
+
+    <!-- THE OTHER HALF OF "THE GRID CANNOT DRAW THIS". The band above is for a
+         container that is MISSING; this one is for a container that is here,
+         green, and running code the tree has moved past — the one fault on this
+         bench with no symptom at all. Filled from `stale_services` in
+         /api/containers, `hidden` when every image is current, and it sits
+         BELOW the dark band on purpose: a stack that is gone outranks a stack
+         that is merely out of date. -->
+    <div class="stale-images" id="stale-images" hidden></div>
+
+    <div class="cards" id="cards">
+      <p class="empty">Reading docker…</p>
+    </div>
+
+    <!-- SHARE, NOT LEVEL. Every number in these two rings is already on a card
+         — the point is the DIVISION of one total between the containers, which
+         is the one question a grid of independent meters cannot be read for.
+         Filled by manager.js from the same /api/resources sample the meters
+         use; no second fetch and no second cadence. -->
+    <div class="donuts" id="donuts" hidden></div>
+
+    <!-- THE PORT TABLE IS A JOIN, and both halves are already on the wire:
+         /api/containers knows every port docker has BOUND, /api/endpoints is
+         endpoints.sh — the one copy of the port table — and knows what answers
+         on it and under which scheme. Neither alone is the answer: a bound port
+         with no endpoint row is a number with no name, and a host-networked
+         node (8100) publishes nothing at all and exists only in the second. -->
+    <div class="ports" id="ports" hidden></div>
+
+    </div><!-- /.pane-body -->
+  </section>
+
+  <section class="pane detail-pane">
+    <div class="pane-head">
+      <h2 id="detail-title">🔍 Container Build &amp; Runtime Details</h2>
+      <button class="btn plain small" id="copy-inspect" disabled>📋 Copy Inspect</button>
+      <button class="btn blue small" id="view-script" disabled>📄 View Configuration Script / Dockerfile</button>
+    </div>
+    <div class="launchers" id="launchers" hidden></div>
+    <div class="detail" id="detail">
+      <p class="empty">Click any container on the left to inspect its build state,
+         runtime detail and the file that built it.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="log-pane">
+  <div class="pane-head">
+    <button class="btn danger small" data-action="panic"></button>
+    <button class="btn teal small" id="chat">💬 Chat</button>
+    <h2>📋 Execution Log</h2>
+    <span class="log-note" id="stream-state">connecting…</span>
+    <button class="btn plain small" id="copy-log">📋 Copy log…</button>
+    <button class="btn plain small" id="clear-log">🧹 Clear Execution Log</button>
+    <button class="btn violet small" data-action="clear-logs"></button>
+  </div>
+  <!-- THE LOG AND ITS LEGEND, SIDE BY SIDE AND IN THAT ORDER. The dial is not
+       decoration beside a terminal: every line in the pre to its left is
+       painted the colour of whichever hand was at the top of this clock when
+       it was written, so the pair only reads as one instrument while both are on
+       screen. Splitting them — a clock in the header, the log at the foot —
+       is what a second browser window already was. -->
+  <div class="log-body">
+    <pre class="log" id="log"></pre>
+
+    <!-- A SWIM PACE CLOCK: 60 at the top, four hands fifteen seconds apart,
+         numbers every five. The shape is the pool-deck instrument at
+         clock.like.audio and it is here for the pool-deck reason — you do not
+         read a time off it, you read WHICH FIFTEEN you are in. Built out by
+         manager.js because 120 ticks and 12 numerals are a loop, not markup. -->
+    <aside class="pace" id="pace">
+      <svg viewBox="0 0 500 500" role="img"
+           aria-label="Swim pace clock — the execution log takes the colour of the hand on top">
+        <defs>
+          <path id="pace-hand" d="M 250,20 L 262,55 L 254,65 L 254,250 L 258,260 L 250,290 L 242,260 L 246,250 L 246,65 L 238,55 Z"/>
+          <path id="pace-minute" d="M 250,60 L 264,85 L 256,95 L 256,250 L 250,270 L 244,250 L 244,95 L 236,85 Z"/>
+        </defs>
+
+        <circle class="bezel" cx="250" cy="250" r="245"/>
+        <circle class="face"  cx="250" cy="250" r="235"/>
+
+        <g id="pace-ticks" transform="translate(250,250)"></g>
+        <g id="pace-numbers"></g>
+        <text class="brand" x="250" y="332">APK.audio</text>
+
+        <!-- Bottom to top by how far behind the red one each hand runs, so the
+             hand about to reach 60 is never the one buried under the others. -->
+        <use href="#pace-minute" id="pace-minute-hand" class="minute"/>
+        <use href="#pace-hand" class="sweep yellow"/>
+        <use href="#pace-hand" class="sweep green"/>
+        <use href="#pace-hand" class="sweep blue"/>
+        <use href="#pace-hand" class="sweep red"/>
+
+        <circle class="pin"     cx="250" cy="250" r="10"/>
+        <circle class="pin-cap" cx="250" cy="250" r="4"/>
+      </svg>
+      <span class="pace-note">every log line is the colour of the hand
+        that was on top when it was written</span>
+    </aside>
+  </div>
+</footer>
+
+<dialog id="ask">
+  <form method="dialog">
+    <h3 id="ask-title"></h3>
+    <p id="ask-body"></p>
+    <menu>
+      <button value="no" class="btn plain">Cancel</button>
+      <button value="yes" class="btn danger" id="ask-yes">Do it</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="sheet">
+  <div class="sheet-head">
+    <h3 id="sheet-title"></h3>
+    <label class="sheet-filter" id="sheet-filter-wrap" hidden>
+      <input type="checkbox" id="sheet-errors-only"> errors only
+    </label>
+    <button class="btn plain small" id="sheet-copy">📋 Copy</button>
+    <button class="btn plain small" id="sheet-close">Close</button>
+  </div>
+  <textarea id="sheet-body" spellcheck="false"></textarea>
+</dialog>
+
+<script src="manager.js"></script>
+</body>
+</html>

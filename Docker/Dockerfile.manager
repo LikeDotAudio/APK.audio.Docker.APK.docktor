@@ -1,0 +1,113 @@
+# ==============================================================================
+# 🐳 DockTor, as a container. The API and its client, nothing else.
+# ==============================================================================
+#     docker compose -f 'APK:DOCKERS/DockTor/Docker/docker-compose.manager.yml' up -d --build
+#     open http://localhost:8765/
+#
+# WHAT THIS IMAGE IS FOR. The manager used to be a Tkinter window, which meant it
+# could only run where there was a display — never on the headless host the
+# containers actually run on. This is the same tool with an HTTP front door, so
+# it can be installed BESIDE the stacks it manages rather than beside a person.
+#
+# ── WHAT IT CAN DO WITH ONLY THE SOCKET, AND WHAT IT CANNOT ───────────────────
+# The docker socket is the whole docker plane: `ps`, `stats`, `inspect`,
+# `restart`, `logs`, `rm`. Every READ this manager offers works with nothing but
+# that mount.
+#
+# BUILDING IS DIFFERENT AND THE DIFFERENCE IS NOT OBVIOUS. `docker compose build`
+# hands the DAEMON a context path, and the daemon is the host's — so a compose
+# file at /app/... inside this container names a directory the daemon cannot see,
+# and the build fails on a path rather than on a Dockerfile. The repository is
+# therefore bound at ITS OWN ABSOLUTE HOST PATH (see docker-compose.manager.yml),
+# so a path this container passes is a path the daemon resolves to the same
+# bytes. Without that mount the manager still runs: every read answers, restart
+# and remove work, and `up` / `rebuild` fail naming the missing compose file.
+#
+# THE REPO PATH HAS NO COLON IN IT AND THAT IS WHY THE MOUNT IS POSSIBLE. Every
+# directory BELOW the checkout root does — and compose's mount parser splits on
+# `:` in both the short and the long form, so none of them can be bound. The
+# checkout root itself (`…/APK.audio`) carries a dot and not a colon, which is
+# the one path in this repository a bind mount can name. Bind the ROOT; never
+# try to bind a directory under it.
+#
+# ── WHY THE PACKAGE IS COPIED IN AS WELL AS BOUND ─────────────────────────────
+# So the image is a whole program. A manager that is only the mount is a manager
+# that starts, finds no code, and exits — which is what an empty or wrong
+# APKAUDIO_REPO produces, and a bind whose source does not exist is created by
+# the daemon as an empty root-owned directory rather than refused. The COPY is
+# what makes that failure "up.sh is missing" instead of "python: can't open
+# file".
+#
+# JSON-ARRAY COPY THROUGHOUT: `docker scripts` has a space in it, and docker's
+# shell form splits sources on whitespace.
+# ==============================================================================
+
+# The docker CLI and the compose plugin, already assembled. Building this on a
+# python base instead means adding Docker's apt repository and a key, which is
+# four more layers to reach the same two binaries.
+FROM docker:27-cli
+
+# python3 for the manager, bash for the scripts (`docker scripts/` uses arrays,
+# `/dev/tcp` and `[[ ]]`, none of which ash has), curl for the app-plane probes
+# in apps.sh, and coreutils for the `timeout` those probes are bounded with.
+#
+# mosquitto-clients IS NOT OPTIONAL DECORATION. apps.sh reads the broker's own
+# `$SYS` counters with mosquitto_sub and says `mosquitto-clients is not installed
+# on this host` when it cannot — which is what the broker card said for as long
+# as this line did not name it, beside three listeners it had probed perfectly
+# well. topics.sh needs the same binary to census the bus at all.
+RUN apk add --no-cache python3 py3-pip bash curl coreutils docker-cli-compose \
+        mosquitto-clients
+
+# paho is the bus, and it is BEST EFFORT on purpose: bus.py already returns a
+# None client when the import fails, so a wheel that will not build costs the
+# broker announcements and not the manager. Failing the image build over the
+# telemetry half of a diagnostic tool is the wrong trade.
+RUN pip3 install --no-cache-dir --break-system-packages paho-mqtt || \
+    echo "paho-mqtt unavailable — bus events will print and not publish"
+
+WORKDIR /app
+
+# The two halves of the tool, and they are two COPYs because they are two
+# things: the package is what is imported, the scripts are what is RUN. Every
+# docker verb is in the second one and none is in the first.
+COPY ["APK:DOCKERS/DockTor/SRC/manager", "/app/APK:DOCKERS/DockTor/SRC/manager"]
+COPY ["APK:DOCKERS/DockTor/SRC/docker scripts", "/app/APK:DOCKERS/DockTor/SRC/docker scripts"]
+COPY ["APK:DOCKERS/Manager:docktor.py", "/app/APK:DOCKERS/Manager:docktor.py"]
+
+# paths.py reads the brand accent out of contracts/tokens/brand.json AND
+# DELIBERATELY HAS NO FALLBACK — a default would be a second spelling of the
+# value, which is what `check.sh brand` exists to stop. So the token is not
+# optional decoration here: without it `import manager.paths` raises at the
+# first line and the image does not start.
+COPY ["APK:DOCKERS/APK:BareMetal/SRC/contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/SRC/contracts/tokens/brand.json"]
+
+# The broker order comes from this one module and there is no fallback list —
+# report.py's header says why: a guess at the order is the defect it removes.
+COPY ["APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
+
+RUN chmod +x "/app/APK:DOCKERS/DockTor/SRC/docker scripts/"*.sh
+
+EXPOSE 8765
+
+# ── SECURITY ──────────────────────────────────────────────────────────────────
+# 127.0.0.1, AND THE IMAGE NO LONGER DEFAULTS OTHERWISE. This API has no
+# authentication and can stop, rebuild and force-kill the whole ecosystem.
+#
+# It used to be `0.0.0.0`, and that was safe for exactly one reason: the
+# container had a network of its own and compose published the port on the
+# host's loopback, so the boundary was the control and the bind address was
+# free. docker-compose.manager.yml now runs this service on `network_mode:
+# host` — every address `endpoints.sh` names is a host loopback and a bridged
+# manager could reach none of them — and on the host's stack there is no
+# boundary and no mapping. A `0.0.0.0` default there is the bench on the LAN,
+# one forgotten environment line away, so the default is the safe one and the
+# compose file states it again rather than relying on this.
+#
+# The same reasoning as `serve.py`'s own default, and now the same value.
+ENV APK_MANAGER_BIND=127.0.0.1
+ENV APK_MANAGER_PORT=8765
+
+# `--open` is deliberately absent and there is no flag to suppress it: a
+# container has no browser to open and must not ask for one.
+CMD ["sh", "-c", "python3 -u '/app/APK:DOCKERS/Manager:docktor.py' serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]
