@@ -47,6 +47,13 @@ const state = {
   followTimer: null,
   busy: 0,          // a DEPTH of runs in flight, not a flag -- see follow()
   scanning: false,
+  // SCROLL THE READING BACK TO ITS FIRST ROW ON THE NEXT PAINT. Set by a verb,
+  // consumed once by renderGrid(). The scrollport is #grid-body and every view
+  // draws INSIDE it (overflow: visible), so a repaint does not rewind it the
+  // way replacing the contents of a scroller would: pressing 💥 Free Every
+  // Published Port while scrolled to 3211 left the refreshed table sitting at
+  // 3211, and the rows the verb actually changed were above the fold.
+  rewind: false,
 };
 
 /* --------------------------------------------------------------- transport */
@@ -217,14 +224,70 @@ function syncPaceClock() {
 }
 
 /* ------------------------------------------------------------------ dialogs */
-function ask(title, body) {
+/* ONE DIALOG ELEMENT, REUSED, WHICH IS WHY EVERY FIELD IS RESET ON THE WAY IN.
+ * `verify` is a word that must be TYPED before the go button arms — the third
+ * ask of ☢️ NUKE EVERYTHING, where the risk is not a misread sentence but a
+ * hand already in the rhythm of clicking "Do it".
+ * returnValue IS SET TO "no" BEFORE EVERY OPEN. Escape closes a <dialog>
+ * without touching returnValue, so the string left behind by the last press is
+ * still there — a person who pressed "Do it" once and then dismissed a later
+ * dialog with Escape would have been answering yes. */
+function ask(title, body, { verify = null } = {}) {
   return new Promise((resolve) => {
     const dialog = $("#ask");
+    const input = $("#ask-verify");
+    const yes = $("#ask-yes");
     $("#ask-title").textContent = title;
     $("#ask-body").textContent = body;
-    dialog.onclose = () => resolve(dialog.returnValue === "yes");
+    $("#ask-verify-word").textContent = verify || "";
+    $("#ask-verify-wrap").hidden = !verify;
+    input.value = "";
+    // The button SAYS the word it is waiting for, so the dimmed state reads as
+    // "not yet" rather than as a broken dialog.
+    yes.textContent = verify ? `☢️ ${verify}` : "Do it";
+    yes.disabled = Boolean(verify);
+    input.oninput = verify
+      ? () => { yes.disabled = input.value.trim().toUpperCase() !== verify; }
+      : null;
+    // ENTER DOES NOTHING HERE, AND THAT IS THE POINT. The form is
+    // method="dialog", so a bare Enter submits its FIRST button — Cancel —
+    // and somebody who typed the word and pressed Enter would be told nothing
+    // and see the dialog vanish. Neither answer is right for a keystroke that
+    // was aimed at a text field: the armed button is the only way through.
+    input.onkeydown = (event) => { if (event.key === "Enter") event.preventDefault(); };
+    dialog.returnValue = "no";
+    dialog.onclose = () => {
+      input.oninput = null;
+      input.onkeydown = null;
+      resolve(dialog.returnValue === "yes");
+    };
     dialog.showModal();
+    if (verify) input.focus();
   });
+}
+
+/* ASK EVERY QUESTION THE SERVER ATTACHED TO THIS VERB, IN ORDER. A `no` or an
+ * Escape at any of them is the end of it — nothing is sent.
+ * WHY MORE THAN ONE ASK IS NOT JUST A LOUDER ONE: the three nuke dialogs are
+ * three different facts (the containers, then the DATA, then the minutes it
+ * costs to come back), and a person who would stop at the second is not
+ * protected by a longer first. The count is drawn in the title so the dialogs
+ * are not mistaken for one that failed to close. */
+async function askAll(row) {
+  const confirms = row.confirms?.length ? row.confirms
+                 : (row.confirm ? [row.confirm] : []);
+  for (let step = 0; step < confirms.length; step += 1) {
+    const last = step === confirms.length - 1;
+    const title = confirms.length > 1
+      ? `${row.label} — ask ${step + 1} of ${confirms.length}`
+      : row.label;
+    // The typed word guards the LAST ask only: asking for it three times
+    // teaches the hand to type it, which is the opposite of the point.
+    if (!(await ask(title, confirms[step], { verify: last ? row.verify : null }))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function sheet(title, text, { filter = false } = {}) {
@@ -595,6 +658,19 @@ function renderGrid(snapshot) {
     };
   });
   renderViews();
+  // AFTER THE PAINT, ONCE. The first scan to land after a verb is the answer to
+  // that verb, and it is read from the top: a list still parked where the
+  // reader left it looks like the list that was there before.
+  if (state.rewind) rewindPane();
+}
+
+/* THE ONE PLACE THE READING IS SCROLLED BY THE PAGE rather than by the person.
+ * Clears the flag whether or not the scrollport is there, so a paint before
+ * boot cannot leave a rewind armed for whatever happens to repaint next. */
+function rewindPane() {
+  state.rewind = false;
+  const body = $("#grid-body");
+  if (body) body.scrollTop = 0;
 }
 
 /* METERS ONLY, into cards that already exist. Building a card from a stats
@@ -642,6 +718,10 @@ function applyView(name) {
   $("#density").closest("label").hidden = state.view !== "cards";
   try { localStorage.setItem("apk.manager.view", state.view); } catch { /* no store */ }
   renderViews();
+  // THE SCROLL OFFSET BELONGS TO THE READING YOU LEFT. One scrollport holds all
+  // three, so card forty and port row forty are the same number of pixels down
+  // and nothing else would put the new reading at its own first row.
+  rewindPane();
   // The docker half of the port table rides the scan cadence; the endpoint
   // half is endpoints.sh — docker port plus an inspect per container — and is
   // far too expensive to put on a cadence. Re-read on arrival instead.
@@ -1434,7 +1514,7 @@ function markRunning(button, on) {
 async function runAction(key, button) {
   const row = state.actions.actions[key];
   if (!row) return;
-  if (row.confirm && !(await ask(row.label, row.confirm))) return;
+  if (!(await askAll(row))) return;
   markRunning(button, true);
   follow(true);
   try {
@@ -1443,6 +1523,17 @@ async function runAction(key, button) {
     // A STOP AND THE RUN IT CANCELLED FINISH IN EITHER ORDER, and both land
     // here. follow() counts, so the bar comes back when the LAST of them ends.
     markRunning(button, false);
+    // ARMED BEFORE follow(false), which is what triggers the scan that paints
+    // the answer. A bench-wide verb changes rows anywhere in the list, so the
+    // refreshed list is read from its first row.
+    state.rewind = true;
+    // THE HALF THE SCAN DOES NOT CARRY. The port table is a join: docker's
+    // bound ports ride the scan, but what ANSWERS on each one is endpoints.sh,
+    // off the cadence because it is a docker port plus an inspect per
+    // container. A verb that just took every published port away leaves that
+    // half saying `open ↗` until something asks again — so with the table on
+    // screen, something does.
+    if (state.view === "ports") loadWebPages();
     follow(false);
   }
 }

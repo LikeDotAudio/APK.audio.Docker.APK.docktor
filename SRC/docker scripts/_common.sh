@@ -15,6 +15,8 @@
 #    MANAGER    manager
 #    CLEANUP    free-ports clear-logs prune remove-other-containers
 #               remove-dead-containers
+#    ☢️ NUKE     nuke -- the ONLY file here that deletes named volumes. Every
+#               other cleanup verb is built around never touching them.
 #    RAW        compose
 
 set -o pipefail

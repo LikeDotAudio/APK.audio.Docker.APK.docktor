@@ -42,6 +42,14 @@
         <button data-action="clear-dead"></button>
         <button data-action="free-ports"></button>
         <button data-action="prune"></button>
+        <!-- BELOW THE LINE, AND IT IS THE ONLY THING DOWN THERE. Everything
+             above this rule is reversible by a remount; ☢️ NUKE EVERYTHING
+             deletes the named volumes, which is the DATA, and nothing in this
+             repository brings that back. The separator and the red are the
+             only things between a hand reaching for ♻️ and the end of the
+             bench — the three dialogs behind it are the rest. -->
+        <div class="sep"></div>
+        <button class="nuke" data-action="nuke"></button>
       </div>
     </div>
 
@@ -234,6 +242,15 @@
   <form method="dialog">
     <h3 id="ask-title"></h3>
     <p id="ask-body"></p>
+    <!-- TYPE THE WORD TO ARM THE BUTTON. Hidden for every ordinary ask; shown
+         for the last dialog of a verb whose row carries `verify`. A click is
+         one gesture and the hand is already making it by the third dialog;
+         spelling a word is a different one. -->
+    <label class="ask-verify" id="ask-verify-wrap" hidden>
+      <span>Type <b id="ask-verify-word"></b> to arm the button:</span>
+      <input id="ask-verify" type="text" autocomplete="off" spellcheck="false"
+             autocapitalize="characters">
+    </label>
     <menu>
       <button value="no" class="btn plain">Cancel</button>
       <button value="yes" class="btn danger" id="ask-yes">Do it</button>

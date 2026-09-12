@@ -175,6 +175,58 @@ ACTIONS = {
         "done": "✅ Storage reclaimed.",
         "failed": "❌ Prune exited {code}.",
     },
+    # ☢️ THE ONLY VERB IN THIS FILE THAT DELETES THE DATA. Every other cleanup
+    # row is built around never touching a named volume — prune.sh says so in
+    # its own header — and this one removes them by name, on purpose, along
+    # with every container, image, network and byte of build cache on the host.
+    # THREE DIALOGS, WHICH IS WHY `confirms` IS A LIST. One dialog is a speed
+    # bump on a verb people press by accident; the third ask here is a DIFFERENT
+    # QUESTION from the first (the data, not the containers), and the last one
+    # will not arm its button until the word is typed — see `verify`.
+    # THE DIALOGS ARE STILL ONLY A CLIENT HINT, and this is the row where that
+    # would have mattered: what actually bounds it is that nuke.sh REFUSES
+    # without --yes-nuke-everything and prints its rehearsal instead, so the
+    # token in `args` is the consent and a caller that skipped the dialogs
+    # cannot reach the destructive half by accident.
+    # PREEMPTS, for down.sh's reason: a rebuild in flight is not a reason to
+    # make somebody wait to empty the bench.
+    "nuke": {
+        "label": "☢️ NUKE EVERYTHING",
+        "script": "nuke.sh", "args": ["--yes-nuke-everything", "NUKE_WEB"],
+        "preempts": True,
+        "verify": "NUKE",
+        "confirms": [
+            "☢️ NUKE EVERYTHING — 1 of 3\n\n"
+            "Stop and REMOVE every container on this host, then delete every "
+            "image, every network and all build cache.\n\n"
+            "This is not a cleanup. Nothing is spared except the manager "
+            "itself, which is the page you are reading this on.\n\n"
+            "Anything running is CANCELLED first.",
+
+            "☢️ NUKE EVERYTHING — 2 of 3\n\n"
+            "THE NAMED VOLUMES GO TOO. That is the DATA:\n"
+            "  · mariadb-data — the database\n"
+            "  · broker-data · mqtt-exchange — retained bus state\n"
+            "  · baremetal-state · gui-frames — the node's memory\n\n"
+            "Every other button here refuses to touch these. This one deletes "
+            "them by name. Nothing takes a backup, and NOTHING IN THIS "
+            "REPOSITORY WILL BRING THE DATA BACK — a rebuild afterwards mounts "
+            "EMPTY databases.",
+
+            "☢️ NUKE EVERYTHING — 3 of 3\n\n"
+            "Last ask. After this the bench is bare: every image rebuilds from "
+            "the code, from nothing, and that takes many minutes on a good "
+            "link.\n\n"
+            "Containers, images and volumes belonging to OTHER work on this "
+            "machine go as well — this is host-wide, not scoped to "
+            "APK.audio.\n\n"
+            "Type NUKE below if you mean it.",
+        ],
+        "done": "☢️ NUKE COMPLETE — docker is empty. The volumes are gone with "
+                "everything else; what comes back is a bare bench.",
+        "failed": "❌ Nuke exited {code} — read the output above for how far it "
+                  "got. Exit 2 means it REFUSED and removed nothing.",
+    },
     "disk": {
         "label": "💾 What Docker Is Holding",
         "script": "disk.sh", "args": [], "confirm": None,
@@ -248,24 +300,48 @@ ACTION_LOCK = threading.Lock()
 PREEMPT_WAIT_SECONDS = 25.0
 
 
+def confirmations(row):
+    """Every dialog a client must raise for this verb, in order. Possibly none.
+
+    ONE SHAPE FOR BOTH, so no client needs a branch: an ordinary verb writes
+    `confirm` (a string, or None for the verbs that just run) and the rare one
+    that earns more than one ask writes `confirms` (a list). Both arrive as a
+    list, and `confirm` is still sent as its first entry so a client that only
+    knows the old field asks once rather than not at all.
+    """
+    if row.get("confirms"):
+        return list(row["confirms"])
+    return [row["confirm"]] if row.get("confirm") else []
+
+
 def action_table():
     """What the client may offer, and what it must ask before offering it.
 
     `preempts` travels to the client because the browser greys every button for
     the length of a run, and a stop that is greyed out during a rebuild does
     not exist. It is a hint about drawing; run_action() enforces it.
+    `verify` is the word the LAST dialog demands be typed before its button
+    arms — one verb has one, and a client that ignores it still asks three
+    times. Like `confirm`, it bounds nothing: nuke.sh's own token does.
     """
     return {
-        "actions": {key: {"label": row["label"], "confirm": row["confirm"],
+        "actions": {key: {"label": row["label"],
+                          "confirm": (confirmations(row) or [None])[0],
+                          "confirms": confirmations(row),
+                          "verify": row.get("verify"),
                           "preempts": bool(row.get("preempts"))}
                     for key, row in ACTIONS.items()},
         # No container verb preempts: they are scoped to one card, and a stop
         # aimed at one container is not an escape hatch from a rebuild.
-        "container_actions": {key: {"label": row["label"], "confirm": row["confirm"],
+        "container_actions": {key: {"label": row["label"],
+                                    "confirm": (confirmations(row) or [None])[0],
+                                    "confirms": confirmations(row),
                                     "preempts": False}
                               for key, row in CONTAINER_ACTIONS.items()},
         # Nor does a stack verb, for the same reason one rung up.
-        "stack_actions": {key: {"label": row["label"], "confirm": row["confirm"],
+        "stack_actions": {key: {"label": row["label"],
+                                "confirm": (confirmations(row) or [None])[0],
+                                "confirms": confirmations(row),
                                 "preempts": False}
                           for key, row in STACK_ACTIONS.items()},
     }

@@ -194,6 +194,13 @@ body {
 .menu-items a:hover { background: #2b2b34; }
 .menu-items .sep { height: 1px; background: var(--edge); margin: 4px 2px; }
 .menu-items .note { color: var(--dimmer); font-size: 11px; padding: 6px 10px; }
+/* THE ONE ROW THAT IS NOT REVERSIBLE. Read as a warning at rest rather than
+ * only on hover: the rows above it are all recoverable by a remount, and a
+ * menu where every line looks the same is one where the last line gets the
+ * same click as the others. The hover fills it the colour of the danger
+ * buttons, so the thing under the pointer is unmistakable before the press. */
+.menu-items button.nuke { color: #ff8a80; font-weight: 700; letter-spacing: .3px; }
+.menu-items button.nuke:hover { background: #c62828; color: #fff; }
 
 /* ------------------------------------------------------------------ panes */
 .split {
@@ -752,6 +759,22 @@ dialog form { padding: 16px 18px; }
 dialog h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
 dialog p { margin: 0 0 14px; white-space: pre-wrap; color: var(--ink); }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
+/* The typed confirmation. Monospace on the input because the word is being
+ * COPIED rather than composed, and a disabled go button beside it is the whole
+ * state of this control. */
+.ask-verify {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 14px; color: var(--dim); font-size: 12px;
+}
+.ask-verify b { color: #ff8a80; font: 700 13px var(--mono); letter-spacing: 1px; }
+.ask-verify input {
+  flex: 1; min-width: 140px;
+  background: #0d0d0d; color: var(--ink); border: 1px solid var(--edge);
+  border-radius: 5px; padding: 8px 10px;
+  font: 600 13px var(--mono); letter-spacing: 1px; text-transform: uppercase;
+}
+.ask-verify input:focus-visible { outline: 2px solid #c62828; outline-offset: 1px; }
+#ask-yes:disabled { opacity: .35; cursor: not-allowed; }
 
 #sheet { width: min(900px, 92vw); }
 .sheet-head {

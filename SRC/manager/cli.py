@@ -62,6 +62,13 @@ CLI_ACTIONS_WITH_ARGS = {
     # running one. The behaviour is the script to decide.
     ('clear-dead', 'dead', 'reap'): ("⚰️  Removing stopped containers...",
                                     'remove-dead-containers.sh'),
+    # WITH ARGS AND NO FIXED ONES, which is the whole safety of it here: the
+    # consent token is nuke.sh's own, and a bare `nuke` therefore reaches the
+    # script WITHOUT it and prints the rehearsal. Nothing in this file may
+    # supply --yes-nuke-everything — the web client does, after three dialogs,
+    # and a terminal has the operator to type it.
+    ('nuke',): ("☢️  NUKE — every container, image, VOLUME and cache on this host...",
+                'nuke.sh'),
 }
 
 USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
@@ -104,6 +111,13 @@ USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
   sos | panic          emergency stop -- kills everything but the manager,
                        and on an already-empty bench reboots the manager
                        instead, rebuilding every image from the code
+  nuke                 REHEARSAL by default: what a nuke would remove, and
+                       nothing removed. ☢️ THE PRESS IS
+                       `nuke --yes-nuke-everything`, which deletes every
+                       container, image, network, cache AND NAMED VOLUME on
+                       this host. The volumes are the data; nothing here
+                       backs them up and nothing here restores them.
+                       --include-manager takes the manager too (host only)
 
 Every action runs one file from 'APK:DOCKERS/DockTor/SRC/docker scripts/';
 run them directly too."""
