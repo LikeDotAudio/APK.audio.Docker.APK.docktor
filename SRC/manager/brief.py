@@ -1,23 +1,19 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
-# MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
-"""📊 A build's output, rendered as emoji and a moving bar.
+# MIT Licence. Full text in LICENSE at the root.
+"""📊 A build output, rendered as emoji and a moving bar.
 
-WHAT THIS MODULE OWNS. One raw line in, zero or more DISPLAY EVENTS out —
-`("line", text)` to append, `("bar", text)` to redraw over the live bar,
-`("bardone", text)` to redraw it once more and freeze it. Pure: no widget, no
-thread, no clock, so a captured build log can be replayed through it by a test.
-
-WHAT IT MUST NOT SWALLOW IS A FAILURE. Anything `runner.is_error_line` claims
-goes through verbatim, and so does any line no rule here recognises — a
-condenser that eats the one line worth finding is worse than the noise it
-removed. Exactly three things are dropped: `runner.BENIGN_NOISE`, the BODY of a
-rustc *warning* (its count is reported in its place), and the per-item progress
-the bar now carries.
-
-WHAT IS BEING REMOVED IS NUMBERS. `#18 51.09`, a crate version, a byte count and
-an ETA are four numbers saying what one bar says. Three things survive a line:
-WHICH STEP, WHAT IT IS DOING NOW, and — only where the output states a total —
-HOW FAR.
+OWNS one raw line in, zero or more DISPLAY EVENTS out — ("line", text) to
+append, ("bar", text) to redraw over the live bar, ("bardone", text) to redraw
+once more and freeze. Pure: no widget, no thread, no clock, so a captured build
+log can be replayed through it by a test.
+WHAT IT MUST NOT SWALLOW IS A FAILURE: anything runner.is_error_line claims
+goes through verbatim, and so does any line no rule here recognises. Exactly
+three things are dropped — runner.BENIGN_NOISE, the BODY of a rustc *warning*
+(its count is reported in its place), and the per-item progress the bar carries.
+WHAT IS BEING REMOVED IS NUMBERS: `#18 51.09`, a crate version, a byte count
+and an ETA are four numbers saying what one bar says. Three things survive a
+line: WHICH STEP, WHAT IT IS DOING NOW, and — only where the output states a
+total — HOW FAR.
 """
 
 import re
@@ -30,13 +26,13 @@ FULL, EMPTY = "█", "░"          # █ ░ — both are in DejaVu Sans Mono
 
 
 # `#18 51.09   Downloaded errno v0.3.14` -> step 18, body `  Downloaded errno…`.
-# The elapsed seconds are optional because buildkit's own control lines
-# (`#18 DONE 51.1s`, `#8 CACHED`) do not carry one.
+# Elapsed seconds are optional: buildkit control lines (`#18 DONE 51.1s`,
+# `#8 CACHED`) do not carry one.
 BUILDKIT_LINE = re.compile(r'^#(\d+)[ \t]+(?:\d+\.\d+(?:[ \t]|$))?(.*)$')
 
 # `[ 4/12] RUN apt-get …` and `[stage-0 4/12] COPY …`. The fraction is the only
 # honest progress a docker build states about ITSELF, so it is the one number
-# that becomes a bar rather than being deleted.
+# that becomes a bar.
 BUILDKIT_STEP = re.compile(r'^\[\s*(?:[\w.+-]+\s+)?(\d+)\s*/\s*(\d+)\]\s*(.*)$')
 BUILDKIT_INTERNAL = re.compile(r'^\[internal\]\s*(.*)$')
 
@@ -48,9 +44,8 @@ VERB_EMOJI = {
     'LABEL': '\U0001F3F7', 'HEALTHCHECK': '\U0001FA7A', 'SHELL': '\U0001F41A',
 }
 
-# A phase is a RUN of same-kind lines collapsed onto one bar. The key groups
-# them; the emoji is what the bar wears. Order matters — first match wins, so
-# `Downloaded` (cargo) is tested before the looser `Downloading` (pip/docker).
+# A phase is a RUN of same-kind lines collapsed onto one bar. Order matters —
+# first match wins, so `Downloaded` (cargo) is tested before `Downloading`.
 PHASE_RULES = (
     (re.compile(r'^\s*Downloaded\s+(\S+)'),                       'fetch',   '\U0001F4E5'),
     (re.compile(r'^\s*(?:Compiling|Building)\s+(\S+)'),           'compile', '\U0001F980'),
@@ -71,17 +66,17 @@ PHASE_NOUN = {'fetch': 'crates', 'compile': 'crates', 'pip': 'wheels',
               'apt': 'packages', 'npm': 'modules', 'move': 'layers',
               'warn': 'warnings'}
 
-# A byte pair the source actually stated a TOTAL for. Only these become a
-# proportional bar; everything else gets the sweeping one, because a bar that
-# looks like a percentage without being one is a lie you read a hundred times.
+# A byte pair the source stated a TOTAL for. Only these become a proportional
+# bar: a bar that looks like a percentage without being one is a lie you read a
+# hundred times.
 BYTE_PAIR = re.compile(
     r'(\d+(?:\.\d+)?)\s*([kKMGT]i?B)?\s*/\s*(\d+(?:\.\d+)?)\s*([kKMGT]i?B)')
 BYTE_SCALE = {'B': 1, 'KB': 1e3, 'KIB': 1024, 'MB': 1e6, 'MIB': 1024**2,
               'GB': 1e9, 'GIB': 1024**3, 'TB': 1e12, 'TIB': 1024**4}
 
 # The rustc diagnostic BODY: the `-->` locator, the gutter, the `= note:` tail
-# and the quoted source line. Every one of these is indented or begins with a
-# keyword, which is what lets a warning be folded to a count without a parser.
+# and the quoted source line. Each is indented or begins with a keyword, which
+# is what lets a warning be folded to a count without a parser.
 DIAG_HEAD = re.compile(r'^(warning|error)(\[[A-Z]?\d+\])?:\s*(.*)$')
 DIAG_BODY = re.compile(r'^(?:\s*$|\s+|-->|\d+\s*\||note:|help:|\.\.\.)')
 # `warning: `apkaudio-midi` (lib) generated 16 warnings (run `cargo fix` …)`
@@ -124,8 +119,8 @@ class LogBrief:
 
     def _bar(self, fraction=None):
         if fraction is None:
-            # Ping-pong, not a percentage. It says WORKING; a filling bar with
-            # no total behind it would say ALMOST DONE and be wrong every time.
+            # Ping-pong, not a percentage: it says WORKING. A filling bar with
+            # no total behind it would say ALMOST DONE and be wrong.
             span = max(1, BAR_WIDTH * 2 - 2)
             spot = self.pulse % span
             if spot >= BAR_WIDTH:
@@ -180,14 +175,13 @@ class LogBrief:
             return []
 
         # A step that never announced itself is still named by its first line,
-        # so its `DONE` has something to say besides a tick.
+        # so its DONE has something to say besides a tick.
         if self.step and self.step not in self.step_names and body.strip():
             self.step_names[self.step] = _short(body, 60)
 
-        # A rustc warning is a fifteen-line block that says one thing. Its head
-        # is counted, its body is dropped, and its per-crate tally line is the
-        # summary. An ERROR block is never folded: it is the whole reason you
-        # opened the log.
+        # A rustc warning is a fifteen-line block that says one thing: head
+        # counted, body dropped, per-crate tally line as the summary. An ERROR
+        # block is never folded — it is the whole reason you opened the log.
         if self.diag and not self._interrupts_diagnostic(body):
             if DIAG_BODY.match(body) and not DIAG_HEAD.match(body):
                 return [] if self.diag == 'warning' else [("line", body)]

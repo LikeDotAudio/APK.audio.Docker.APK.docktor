@@ -1,18 +1,13 @@
 /* Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub */
-/* MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root. */
-/* 🎨 The manager's surface. Layout, weight and rhythm — never a state colour.
- *
- * THE FIVE TONES ARE NOT IN THIS FILE. `--tone-ok`, `--tone-live`, `--tone-warm`,
- * `--tone-hot`, `--tone-idle` and `--accent` are written onto :root by
- * manager.js at boot, out of /api/palette, which is manager/palette.py. That
- * table is the one the Tkinter card grid used and its own header explains why
- * there may only be one: a colour learnt on a card that disagrees with the same
- * state in the detail pane is a colour you stop trusting either surface about.
- *
- * So: a rule here may READ a tone variable. It may not define one, and it may
- * not spell a hex value that means a state. Greys, grounds and edges are this
- * file's own, because they mean "furniture" and not "condition".
- */
+/* MIT Licence. Full text in LICENSE at the root. */
+/* 🎨 The manager surface. Layout, weight and rhythm — never a state colour.
+ * THE TONES ARE NOT IN THIS FILE: --tone-ok/live/warm/hot/idle/stale and
+ * --accent are written onto :root by manager.js at boot out of /api/palette,
+ * which is manager/palette.py. A colour learnt on a card that disagrees with
+ * the same state in the detail pane is a colour you stop trusting.
+ * So a rule here may READ a tone variable. It may not define one, and it may
+ * not spell a hex that means a state. Greys, grounds and edges are this file
+ * own, because they mean furniture and not condition. */
 
 :root {
   --ground: #101014;
@@ -25,11 +20,8 @@
   --mono: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
 
-  /* Fallbacks only, and deliberately grey: if /api/palette has not answered
-   * yet, an unstyled page is honest and a page painted in guessed greens is
-   * not. manager.js overwrites all seven the moment the table arrives -- the
-   * six tones by name, and `accent`, which is the one entry in /api/palette
-   * that is not a tone and so lands as `--accent`, not `--tone-accent`. */
+  /* Fallbacks only, deliberately grey: if /api/palette has not answered yet,
+   * an unstyled page is honest and one painted in guessed greens is not. */
   --tone-ok: var(--dim); --tone-live: var(--dim); --tone-warm: var(--dim);
   --tone-hot: var(--dim); --tone-idle: var(--dim); --tone-stale: var(--dim);
   --accent: var(--dim);
@@ -38,10 +30,8 @@
 * { box-sizing: border-box; }
 
 /* THE MENUS ARE HIDDEN BY AN ATTRIBUTE AND SHOWN BY A CLASS RULE, and a class
- * rule in an author stylesheet beats `[hidden] { display: none }` in the
- * browser's own. So every dropdown on this page hung open the whole time, over
- * the card grid, until this line existed. Anything toggled with `.hidden` here
- * depends on it. */
+ * rule in an author stylesheet beats the browser own [hidden]. So every
+ * dropdown hung open over the card grid until this line existed. */
 [hidden] { display: none !important; }
 
 html, body {
@@ -54,9 +44,8 @@ html, body {
 
 body {
   display: grid;
-  /* The log is a real pane and not a strip: a rebuild's output is the thing
-   * being read for ten minutes at a time. It resizes with the window rather
-   * than being a fixed number of lines. */
+  /* The log is a real pane, not a strip: a rebuild output is the thing being
+   * read for ten minutes at a time. It resizes with the window. */
   grid-template-rows: auto minmax(0, 1fr) minmax(140px, 32vh);
   gap: 6px;
   padding: 6px;
@@ -96,15 +85,12 @@ body {
 .btn.small { padding: 5px 8px; font-size: 11px; }
 
 /* THE ONE BUTTON THAT WAS PRESSED, WHILE EVERY OTHER ONE IS DIMMED. The server
- * runs one action at a time and refuses the second, so the whole bar is
- * disabled for the length of a verb -- and a page of identically dimmed
- * buttons cannot say which one the click went to. This rule is the answer, and
- * it has to beat `:disabled` above (the running button is disabled too, so
- * that a second press cannot land on it): full opacity, an accent ring, and an
- * hourglass appended so the state survives a screenshot and a colourblind
- * reader. `.running` is set on the ELEMENT, by markRunning() in manager.js --
- * two rows offering the same verb for two different stacks are two different
- * presses and only the pressed one lights. */
+ * runs one action at a time, so the whole bar is disabled for the length of a
+ * verb and a page of identically dimmed buttons cannot say where the click
+ * went. It has to beat :disabled above (the running button is disabled too, so
+ * a second press cannot land): full opacity, an accent ring, and an hourglass
+ * so the state survives a screenshot and a colourblind reader. `.running` is
+ * set on the ELEMENT by markRunning(). */
 .btn.running:disabled, .btn.running {
   opacity: 1; cursor: progress;
   outline: 2px solid var(--accent); outline-offset: 1px;
@@ -116,9 +102,8 @@ body {
   50%      { filter: brightness(1.35); }
 }
 
-/* Chrome, not condition. These are the identities of the verbs themselves —
- * "the rebuild button", "the stop button" — and they carry no state reading,
- * which is why they may be literals here while a status colour may not. */
+/* Chrome, not condition. These are the identities of the verbs themselves and
+ * carry no state reading, which is why they may be literals here. */
 .btn.accent { background: var(--accent); color: #101014; }
 .btn.danger { background: #c62828; }
 .btn.blue   { background: #1565c0; }
@@ -137,38 +122,22 @@ body {
 }
 
 /* ------------------------------------------------- the segmented radio group
- *
- * A ROW OF RADIO BUTTONS THAT LOOKS LIKE ONE CONTROL. The view switcher is
- * three real `<input type=radio>` elements sharing a name, so the arrow keys,
- * the roving tabstop and the "3 of 3" a screen reader announces are the
- * browser's and not ours; everything below is paint over that.
- *
- * THE INPUT IS MOVED OFF SCREEN, NOT `display:none` AND NOT `visibility`.
- * Either of those takes the element out of the tab order and out of the
- * accessibility tree, which is the whole reason for using radios rather than
- * three buttons -- it would leave a control that is only clickable. It keeps
- * its box, at 1px, parked outside the clip.
- *
- * THE SEGMENT IS THE `<span>`, NOT THE `<label>`, and that is not arrangement
- * for its own sake: it is what lets the selected state be `input:checked +
- * span`, an adjacent sibling, rather than a `:has()` on the label. A selector
- * the browser does not know is a selector that drops -- and the rule it would
- * drop here is the ONLY thing that says which of the three is on, so the
- * control would still work and no longer show its own answer.
- *
- * SO THE FOCUS RING IS DRAWN ON THE SPAN TOO. The input's own outline is off
- * screen with it, and a keyboard user walking this group with the arrow keys
- * would otherwise have no cursor at all. `:focus-visible` and not `:focus`, so
- * a mouse click does not leave a ring behind on the segment it selected.
- *
- * DARK INK ON THE ACCENT FILL, `#101014` -- the same pair as `.btn.accent`
- * above, and for the reason contracts/tokens/brand.json states beside the
- * accent itself: white on #f4902c is about 2.2:1 and unreadable at 12px. */
-/* NO `gap` ON THE GROUP, which is what the controls beside it use: a gap here
- * is applied BETWEEN THE SEGMENTS as well as after the lead, and 5px of ground
- * between them is three pills rather than one control -- the -1px that
- * collapses their shared edges cannot outrun it. The lead carries the spacing
- * itself instead. */
+ * A ROW OF RADIO BUTTONS THAT LOOKS LIKE ONE CONTROL: three real
+ * <input type=radio> sharing a name, so the arrow keys, the roving tabstop and
+ * the "3 of 3" a screen reader announces are the browser and not ours.
+ * THE INPUT IS MOVED OFF SCREEN, NOT display:none AND NOT visibility: either
+ * takes it out of the tab order and the accessibility tree, leaving a control
+ * that is only clickable. It keeps its box, at 1px, outside the clip.
+ * THE SEGMENT IS THE <span>, NOT THE <label>, which is what lets the selected
+ * state be `input:checked + span` rather than a :has() on the label — and that
+ * rule is the ONLY thing that says which of the three is on, so a selector the
+ * browser drops would leave a working control that shows no answer.
+ * SO THE FOCUS RING IS DRAWN ON THE SPAN TOO (the input outline is off screen
+ * with it). :focus-visible, not :focus, so a mouse click leaves no ring.
+ * DARK INK ON THE ACCENT FILL, #101014: white on #f4902c is about 2.2:1.
+ * NO `gap` ON THE GROUP: a gap applies BETWEEN THE SEGMENTS as well, and 5px of
+ * ground between them is three pills rather than one control. The lead carries
+ * the spacing instead. */
 .segmented {
   display: inline-flex; align-items: center;
   color: var(--dim); font-size: 12px;
@@ -210,12 +179,11 @@ body {
   box-shadow: 0 10px 28px rgba(0,0,0,.6);
   padding: 4px;
 }
-/* A ROW IN THIS MENU IS EITHER A BUTTON OR A LINK, AND IT LOOKS THE SAME.
- * The web-pages menu draws each live page as a real `<a target="_blank">`,
- * because a link the person clicked is never pop-up blocked and a
- * `window.open` from the same click is — see loadWebPages. So the anchor is
- * styled with the buttons rather than beside them; a rule written for one of
- * them and not the other is how the menu ends up half underlined and blue. */
+/* A ROW IN THIS MENU IS EITHER A BUTTON OR A LINK, AND IT LOOKS THE SAME. The
+ * web-pages menu draws each live page as a real <a target="_blank">, because a
+ * link the person clicked is never pop-up blocked and a window.open from the
+ * same click is. A rule written for one and not the other is how the menu ends
+ * up half underlined and blue. */
 .menu-items button,
 .menu-items a {
   text-align: left; background: transparent; border: 0; color: var(--ink);
@@ -256,18 +224,12 @@ body {
 .scan-state { color: var(--dimmer); font-size: 11px; }
 
 /* ------------------------------------------------------- what is NOT here
- *
  * ABOVE the grid and not in it, because it is not a card: a card is a container
- * and every row here is the absence of several. It sits between the pane head
- * and the cards so it is read before the green ones underneath it — the failure
- * this exists for was a dashboard that looked healthy while three stacks were
- * gone, and a band under the fold would have looked healthy too.
- *
- * NO COLOUR LITERAL FOR A STATE. `--tone-hot` and `--tone-warm` are palette.py's
- * and arrive at boot; the two tones mean here what they mean on a card —
- * hot for the stacks nothing on this page can restart, warm for the ones a
- * remount should have brought back and did not.
- */
+ * and every row here is the absence of several. Between the pane head and the
+ * cards, so it is read before the green ones — the failure this exists for was
+ * a dashboard that looked healthy while three stacks were gone.
+ * NO COLOUR LITERAL FOR A STATE: --tone-hot and --tone-warm arrive at boot and
+ * mean here what they mean on a card. */
 .dark-stacks { padding: 8px 8px 0; background: var(--ground); }
 /* The reason, once, above the rows it applies to. */
 .dark-lead {
@@ -276,9 +238,9 @@ body {
 .dark-lead.stranded b, .dark-lead b { color: var(--tone-warm); }
 .dark-lead.stranded b { color: var(--tone-hot); }
 .dark-lead + .dark-lead, .dark-stack + .dark-lead { margin-top: 9px; }
-/* THE ONE LINE ON THIS BAND THAT IS ABOUT THE READER. It only appears when the
- * process serving this page is the reason a stack below it is dark, so it is
- * indented under the paragraph it qualifies rather than competing with it. */
+/* THE ONE LINE ON THIS BAND THAT IS ABOUT THE READER: it appears only when the
+ * process serving this page is why a stack below it is dark, so it is indented
+ * under the paragraph it qualifies. */
 .dark-lead.self-held {
   margin-top: 6px; margin-left: 14px; padding-left: 9px;
   border-left: 2px solid var(--tone-warm);
@@ -289,17 +251,16 @@ body {
 }
 .dark-stack.driven { border-color: var(--tone-warm); }
 /* STALE IS ITS OWN COLOUR because it is its own KIND of wrong. Hot is "this is
- * gone"; warm is "this should have come back". Neither fits a container that is
- * running perfectly and running the wrong code, and borrowing one of them would
- * put two unrelated faults in one visual bucket — which is how the reader ends
- * up triaging the cheap one first. The band reuses the dark-stack box so the
- * two read as one family; only the accent separates them. */
+ * gone", warm is "this should have come back", and neither fits a container
+ * running perfectly on the wrong code — borrowing one puts two unrelated
+ * faults in one bucket. The band reuses the dark-stack box so the two read as
+ * one family; only the accent separates them. */
 .stale-images { padding: 8px 8px 0; background: var(--ground); }
 .dark-lead.stale b { color: var(--tone-stale); }
 .dark-stack.stale { border-color: var(--tone-stale); }
 .dark-stack.stale h3 { color: var(--tone-stale); }
-/* The file that decided the verdict. Selectable for the same reason the compose
- * command above is: this is a path somebody is about to paste into an editor. */
+/* The file that decided the verdict. Selectable for the reason the compose
+ * command is: a path somebody is about to paste into an editor. */
 .dark-stack .newest { margin-top: 3px; color: var(--dimmer); font-size: 10px; }
 .dark-stack .newest code {
   display: inline; padding: 0; background: none; user-select: all;
@@ -313,17 +274,17 @@ body {
 .dark-stack h3 small { font: 400 10px var(--sans); color: var(--dimmer); }
 .dark-stack p { margin: 0; font-size: 11px; color: var(--dim); }
 .dark-stack .absent { color: var(--dimmer); font-family: var(--mono); font-size: 10px; }
-/* `.dark-stack code` below is a BLOCK, because down there it is a command on a
- * line of its own. An image name quoted mid-sentence is not, and inheriting
- * that rule broke the sentence it sits in across three lines. */
+/* `.dark-stack code` below is a BLOCK, because there it is a command on its own
+ * line. An image name quoted mid-sentence is not, and inheriting that rule
+ * broke the sentence across three lines. */
 .dark-stack .absent code {
   display: inline; padding: 0; background: none;
   font: inherit; color: var(--dim); user-select: all;
 }
 /* THE COMMAND IS SELECTABLE TEXT AND NOT ONLY A BUTTON. The clipboard API needs
- * a secure context, and this page is served over http on a loopback port — so
- * on the bench where it matters most, `navigator.clipboard` is undefined and a
- * copy button is the only affordance that silently does nothing. */
+ * a secure context and this page is served over http on a loopback port, so on
+ * the bench where it matters navigator.clipboard is undefined and a copy button
+ * silently does nothing. */
 .dark-stack code, code.self-held-cmd {
   display: block; overflow-x: auto; white-space: pre; user-select: all;
   font: 11px/1.5 var(--mono); color: var(--ink); background: var(--ground);
@@ -332,19 +293,18 @@ body {
 /* It belongs to the paragraph above it, so it is indented onto the same rule. */
 code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 
-/* THE FIX SITS ON THE ROW THAT NAMES THE FAULT — one line, the button first,
- * because a person who came here to press something should not have to read a
- * sentence to find out where. The trailing clause is what the press does, and
- * it is small and dim on purpose: it is a caption, not the control. */
+/* THE FIX SITS ON THE ROW THAT NAMES THE FAULT — one line, button first,
+ * because a person who came to press something should not read a sentence to
+ * find out where. The trailing clause is a caption, not the control. */
 .dark-stack .dark-fix {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px;
 }
 .dark-stack .dark-fix span { font-size: 11px; color: var(--dimmer); }
 
 /* ------------------------------------------------------------------ cards */
-/* THE PANE SCROLLS, NOT THE GRID INSIDE IT. See the comment on #grid-body in
- * index.html: the bands are in here now, so `.cards` is no longer a scrollport
- * of its own and no longer a flex item competing with them for height. */
+/* THE PANE SCROLLS, NOT THE GRID INSIDE IT: the bands are in here now, so
+ * `.cards` is no longer a scrollport of its own or a flex item competing with
+ * them for height. */
 .pane-body {
   flex: 1; min-height: 0; overflow-y: auto;
   background: var(--ground);
@@ -359,13 +319,11 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   color: var(--dimmer); font: 700 12px var(--sans); letter-spacing: .6px;
   text-transform: uppercase; margin: 10px 2px 5px;
 }
-/* THE STACK'S COLOUR, AND IT TAKES NOTHING TO SAY IT. `--group` is set on this
- * heading and on the block of cards below it by renderGrid(); it is spent here
- * on a swatch and on each card's left edge, which is why the heading's TEXT
- * still means ours-versus-theirs and the card's dot, status, meters and app
- * rows still mean health. A hue that overwrote either would have replaced one
- * fact with another rather than adding one. `--dimmer` is the fallback for the
- * one moment it matters -- the first paint, before /api/containers answers. */
+/* THE STACK COLOUR, AND IT TAKES NOTHING TO SAY IT. `--group` is set on this
+ * heading and on the block of cards below it by renderGrid(); it is spent on a
+ * swatch and each card left edge, which is why the heading TEXT still means
+ * ours-versus-theirs and the card dot, status, meters and app rows still mean
+ * health. `--dimmer` is the fallback for the first paint. */
 .group-head::before {
   content: ""; display: inline-block; width: 9px; height: 9px;
   border-radius: 2px; margin-right: 6px;
@@ -377,9 +335,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   display: grid; gap: 6px;
   /* Four across is the layout of record: the roster is read as a wall of rigs,
    * and a reflowing count made every window width a different picture. The
-   * cards shrink to the column instead — minmax(0,1fr) is what lets them, and
-   * why the type below is sized down to fit rather than ellipsised away. Two
-   * step-downs keep it legible when the split is dragged narrow. */
+   * cards shrink to the column instead — minmax(0,1fr) is what lets them. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 @media (max-width: 1100px) { .group { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -392,23 +348,20 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   padding: 7px 8px; cursor: pointer; position: relative;
   min-width: 0;
 }
-/* THE SIXTH TONE, ON THE TILE. The edge is the only whole-card border a
- * non-interaction fact takes, and it sits ABOVE the stack hue but BELOW hover
- * and selection on purpose -- those two answer "which card am I on", which
- * must always win. It is not `border-left`, because that channel already
- * carries the group's hue and one channel cannot carry two answers. */
+/* THE SIXTH TONE, ON THE TILE. The only whole-card border a non-interaction
+ * fact takes, ABOVE the stack hue but BELOW hover and selection, which answer
+ * "which card am I on" and must always win. Not border-left: that channel
+ * already carries the group hue and one channel cannot carry two answers. */
 .card.stale { border-color: var(--tone-stale); }
-/* Hover and selection stay whole-border, so they still outrank the stack's
- * edge: which card the pointer is on and which one the detail pane is showing
- * are answers about THIS card, and the hue is an answer about forty. */
+/* Hover and selection stay whole-border so they outrank the stack edge: which
+ * card the pointer is on is an answer about THIS card, the hue about forty. */
 .card:hover { border-color: #3b3b47; }
 .card.selected { border-color: #ffd54f; }
 .card .head { display: flex; align-items: baseline; gap: 5px; }
-/* 9px UNTIL 2026-09-10, WHICH IS SMALLER THAN THE SMALLEST TYPE ON THE CARD.
- * The dot is one of the two things on a tile that answer "how is this doing",
- * and at that size it read as punctuation before the name rather than as a
- * state -- a green dot nobody can see is a green dot nobody checks. It is now
- * the name's own size; `line-height: 1` keeps the head one line tall. */
+/* 9px until 2026-09-10, smaller than the smallest type on the card: the dot is
+ * one of the two things that answer "how is this doing", and at that size it
+ * read as punctuation before the name. It is now the name own size;
+ * line-height: 1 keeps the head one line tall. */
 .card .dot { font-size: 13px; line-height: 1; }
 .card .name {
   font: 700 13px var(--sans); color: var(--dimmer);
@@ -416,11 +369,10 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 .card.ours .name { color: var(--accent); }
 .card .status { font-size: 11.5px; margin: 3px 0 5px; }
-/* THE ONE GLYPH ON THE TILE THAT IS READ FROM ACROSS THE ROOM. `💚` and `⛔`
- * are the state itself and the words after them are the detail; at the row's
- * own size the two competed and the sentence won, because it is longer. Half
- * again as big is what makes the emoji the thing the eye lands on first, and
- * `em` rather than a pixel count so it tracks the row through every density. */
+/* THE ONE GLYPH ON THE TILE READ FROM ACROSS THE ROOM. 💚 and ⛔ are the state
+ * itself and the words after them the detail; at the row own size the sentence
+ * won, because it is longer. `em` rather than pixels so it tracks the row
+ * through every density. */
 .card .status .status-emoji { font-size: 1.5em; line-height: 1; vertical-align: -0.12em; }
 .card .kill {
   position: absolute; top: 5px; right: 5px;
@@ -442,10 +394,10 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* The path that decided it, dimmed: it answers the SECOND question a reader
- * asks, and at full weight it competes with the verdict itself. */
+ * asks, and at full weight it competes with the verdict. */
 .card .stale-row .stale-newest { color: var(--dimmer); font-weight: 400; }
-/* The verb sits under the verdict it answers, and is sized down to the tile:
-   a full-height button on a 196px card is the widest thing on it. */
+/* The verb sits under the verdict it answers, sized down to the tile: a
+   full-height button on a 196px card is the widest thing on it. */
 .card .stale-fix { margin: 0 0 5px; }
 .card .stale-fix .btn { padding: 3px 7px; font-size: 10px; }
 .card .apps { margin-top: 6px; border-top: 1px solid var(--edge); padding-top: 4px; }
@@ -458,45 +410,36 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .card .app .app-state { font-weight: 700; }
 
 /* --------------------------------------------------- density, three levels */
-/* ONE SNAPSHOT, THREE READINGS, and every one of them draws every container.
- * The levels HIDE rows on cards that are fully built -- nothing here fetches
- * less -- so applyMeters() keeps writing CPU into a card showing only its name
- * and stepping back up is a repaint, not a rescan.
- *
- *   · low   NAMES. The whole bench in the pane with no scroll, which is the
- *           entire point: at full detail six stacks is four screens, so the
- *           red one is off-screen while you are looking for it.
- *   · med   NAMES AND SERVICES. What each container answers on -- ports, image,
- *           app plane -- and nothing that changes every five seconds.
- *   · high  EVERYTHING IN VIEW. The card as .card above defines it.
- *
- * THE FOUR-COLUMN GRID IS THE LAYOUT OF RECORD (see .group) AND THESE OVERRIDE
- * IT DELIBERATELY. Four fixed columns at name width leaves three quarters of
- * every row empty, which is the opposite of fitting the bench on one screen;
- * auto-fill is what turns the saved height into saved scrolling. High is
- * untouched and stays four across. These carry .cards so they outrank the
- * width media queries below .group whatever order the file ends up in.
- */
+/* ONE SNAPSHOT, THREE READINGS, and every one draws every container. The levels
+ * HIDE rows on cards that are fully built — nothing here fetches less — so
+ * applyMeters() keeps writing CPU into a folded card and stepping back up is a
+ * repaint, not a rescan.
+ *   · low   NAMES. The whole bench in the pane with no scroll: at full detail
+ *           six stacks is four screens, so the red one is off-screen while you
+ *           are looking for it.
+ *   · med   NAMES AND SERVICES — ports, image, app plane; nothing that changes
+ *           every five seconds.
+ *   · high  EVERYTHING IN VIEW. The card as .card defines it.
+ * THE FOUR-COLUMN GRID IS THE LAYOUT OF RECORD AND THESE OVERRIDE IT: four
+ * fixed columns at name width leaves three quarters of every row empty, and
+ * auto-fill is what turns saved height into saved scrolling. High stays four
+ * across. These carry .cards so they outrank the width media queries. */
 .cards.density-low .group {
   /* 136px was the track for 10.5px type and a `Netbox-` on every name. The
    * name is bigger and shorter now, and the column is sized to the longest one
-   * the bench actually has -- `🐳 Valkey-Cache` plus its dot and its ✕. */
+   * the bench actually has. */
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 4px;
 }
 .cards.density-low .group-head { margin: 7px 2px 3px; }
 /* One line tall and still the biggest type on the card: the name is the ONLY
- * thing this level draws, so the pixels the hidden rows gave back belong to
- * it. Dropping the prefix the group heading already carries is what paid for
- * the size -- `Netbox-Valkey-Ca…` at 10.5px became `Valkey-Cache` at 12.5px in
- * a narrower column. The left edge keeps its 3px; it is the stack's colour and
- * a hairline of it is not a colour. */
-/* AND THE EMOJI IS THE WHOLE STATUS ROW HERE, BESIDE THE NAME RATHER THAN
- * UNDER IT. This level draws names and nothing else, so the only health signal
- * on a folded tile used to be the dot -- which is why the dot above got its
- * size back, and why the status row is KEPT at this density with its sentence
- * dropped and its emoji doubled. Two columns, emoji then name; every other
- * density stacks the rows as .card defines them. */
+ * thing this level draws, so the pixels the hidden rows gave back belong to it.
+ * Dropping the prefix the group heading already carries is what paid for the
+ * size. The left edge keeps its 3px: a hairline of a hue is not a colour. */
+/* AND THE EMOJI IS THE WHOLE STATUS ROW HERE, BESIDE THE NAME. This level draws
+ * names and nothing else, so the only health signal on a folded tile used to be
+ * the dot — which is why the status row is KEPT here with its sentence dropped
+ * and its emoji doubled. Two columns, emoji then name. */
 .cards.density-low .card {
   padding: 4px 6px; border-width: 1px; border-left-width: 3px;
   display: grid; grid-template-columns: auto minmax(0, 1fr);
@@ -510,7 +453,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .cards.density-low .card .status .status-emoji { font-size: 2em; }
 .cards.density-low .card .head { grid-column: 2; grid-row: 1; }
 /* The emoji says it, in colour, at twice the type size. A dot beside it is the
- * same fact drawn a second time and a narrower column to draw it in. */
+ * same fact drawn twice and a narrower column to draw it in. */
 .cards.density-low .card .dot { display: none; }
 /* The ✕ sits over the name once the card is one line tall. */
 .cards.density-low .card .head { padding-right: 15px; }
@@ -529,24 +472,17 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .cards.density-med .card .detail-lines { margin-top: 0; }
 
 /* ------------------------------------------------- donuts and the port table
- *
- * TWO MORE READINGS OF THE GRID PANE, and they occupy exactly the space the
- * cards do -- same scroll box, same ground. Only one of the three is ever
- * un-hidden; see the `[hidden]` rule at the top of this file, which is what
- * makes that toggle work against a `display: flex` of our own.
- *
- * A SLICE'S COLOUR IS THE STACK'S AND ARRIVES INLINE. Nothing here spells a
- * hue: `--group` on the cards and `background:` on a swatch are both written
- * by manager.js out of /api/palette, so a ring reads against the grid beside
- * it. This file supplies the greys, the geometry and the weight only.
- */
+ * TWO MORE READINGS OF THE GRID PANE, in exactly the space the cards occupy —
+ * same scroll box, same ground. Only one of the three is ever un-hidden; see
+ * the [hidden] rule at the top of this file.
+ * A SLICE COLOUR IS THE STACK AND ARRIVES INLINE: nothing here spells a hue.
+ * This file supplies the greys, the geometry and the weight only. */
 .donuts, .ports {
   overflow: auto; padding: 10px; background: var(--ground); flex: 1;
 }
 /* THE PANE IS HALF A WINDOW AND THE TABLE HAS FIVE COLUMNS. Below this width
- * every cell wraps to three lines and the port numbers stop being a column
- * you can run an eye down, which is the only reason to draw the table. It
- * scrolls sideways instead. */
+ * every cell wraps to three lines and the port numbers stop being a column you
+ * can run an eye down, which is the only reason to draw the table. */
 .port-table { min-width: 640px; }
 .donuts { display: grid; gap: 12px; align-content: start;
           grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
@@ -561,8 +497,8 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 
 /* THE NUMBER GOES IN THE HOLE. A donut whose centre is empty is a pie chart
- * with a bite out of it -- the hole is the only place the TOTAL can sit and
- * still be read as the thing the slices divide. */
+ * with a bite out of it — the hole is the only place the TOTAL can sit and
+ * still read as the thing the slices divide. */
 .ring { position: relative; width: 168px; margin: 2px auto 10px; }
 .ring svg { display: block; width: 100%; height: auto; }
 .ring .track { stroke: var(--edge); }
@@ -588,10 +524,9 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .legend b { font: 700 11.5px var(--mono); }
 .legend .share { font: 600 10.5px var(--mono); color: var(--dimmer); text-align: right; }
 
-/* A CAPTION THAT SAYS WHAT THE RING IS NOT. Both of these totals are read as
- * "of the box" by anybody who has met a task manager, and neither one is: CPU
- * is per-core and RAM is containers-only. The note is small and it is not
- * optional. */
+/* A CAPTION THAT SAYS WHAT THE RING IS NOT. Both totals are read as "of the
+ * box" by anybody who has met a task manager, and neither is: CPU is per-core
+ * and RAM is containers-only. Small, and not optional. */
 .note { margin: 8px 0 0; color: var(--dimmer); font-size: 10.5px; line-height: 1.45; }
 .note b { color: var(--dim); }
 .note.wide { grid-column: 1 / -1; }
@@ -606,9 +541,9 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 .port-table td { padding: 5px 8px; border-bottom: 1px solid #1f1f27; vertical-align: top; }
 .port-table tr:hover td { background: #1c1c23; }
-/* THE PORT IS THE KEY OF THIS TABLE and it is a number being compared with
- * other numbers, so it is monospaced and it is the heaviest thing in the row.
- * `8080` and `8100` differ in one glyph. */
+/* THE PORT IS THE KEY OF THIS TABLE and a number compared with other numbers,
+ * so it is monospaced and the heaviest thing in the row: 8080 and 8100 differ
+ * in one glyph. */
 .port-table .port { font: 700 14px var(--mono); color: var(--accent); white-space: nowrap; }
 .port-table .port small { font: 400 10px var(--mono); color: var(--dimmer); }
 .port-table .target { font: 600 11px var(--mono); color: var(--dim); white-space: nowrap; }
@@ -623,17 +558,16 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .port-table .what { display: block; }
 .port-table .what.unnamed { color: var(--dimmer); font-style: italic; }
 .port-table .down { color: var(--dimmer); }
-/* ONE LINE PER ENDPOINT, IN BOTH COLUMNS, so that the third link in this cell
- * is the third name in the cell beside it. NetBox answers on 8081 three times
- * — the app, the REST API and GraphQL — and three identical `open ↗` links in
- * a row said nothing about which was which. */
+/* ONE LINE PER ENDPOINT, IN BOTH COLUMNS, so the third link in this cell is the
+ * third name in the cell beside it. NetBox answers on 8081 three times, and
+ * three identical `open ↗` links said nothing about which was which. */
 .port-table .open { white-space: nowrap; }
 .port-table .open a, .port-table .open .linky, .port-table .open .down { display: block; }
 .port-table .open a { color: var(--tone-live); text-decoration: none; font-weight: 600; }
 .port-table .open a:hover { text-decoration: underline; }
-/* A GUESSED SCHEME IS OFFERED AND MARKED. It is dimmer than a declared
- * endpoint on purpose: the port is docker's and real, the `http://` in front
- * of it is this page's assumption, and the two must not look alike. */
+/* A GUESSED SCHEME IS OFFERED AND MARKED, dimmer than a declared endpoint: the
+ * port is docker and real, the http:// in front of it is this page assumption,
+ * and the two must not look alike. */
 .port-table .open a.guess { color: var(--dimmer); font-weight: 500; }
 .port-table .open a.guess:hover { color: var(--dim); }
 .port-table .linky {
@@ -642,9 +576,9 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 .port-table .linky:hover { color: var(--ink); text-decoration: underline; }
 
-/* PULSE IS "ALIVE", and it is the one thing on a card that no still frame can
- * fake: a frozen tab and a stopped container look identical until something
- * moves. Only the states palette.py marks as running carry it. */
+/* PULSE IS "ALIVE", the one thing on a card no still frame can fake: a frozen
+ * tab and a stopped container look identical until something moves. Only the
+ * states palette.py marks as running carry it. */
 @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: .38; } }
 .pulse { animation: breathe 2.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
@@ -673,13 +607,11 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .detail .row .v.url { color: #ffea00; }
 .detail .diagnosis { font-weight: 700; }
 
-/* WHAT THE CONTAINER IS. The one block on this pane that is PROSE, and it is
-   styled as prose rather than as another row: `word-break: break-all` above is
-   right for a URI and wrong for a sentence, and a measured line is read by
-   scanning down a column while a paragraph is read across. The measure is
-   capped so a maximised window does not hand the reader a 200-character line,
-   and the role sits above it in the heading's own colour so the two-word answer
-   is available without reading the paragraph at all. */
+/* WHAT THE CONTAINER IS. The one block on this pane that is PROSE, and styled
+   as prose rather than another row: word-break: break-all above is right for a
+   URI and wrong for a sentence. The measure is capped so a maximised window
+   does not hand the reader a 200-character line, and the role sits above it in
+   the heading colour so the two-word answer needs no paragraph. */
 .detail .role { font-weight: 700; color: var(--accent); margin-bottom: 4px; }
 .detail p.purpose {
   margin: 0 0 6px; max-width: 96ch; color: var(--ink);
@@ -691,16 +623,16 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .detail li { word-break: break-all; }
 .detail a { color: #ffea00; }
 
-/* THE HANDLES. `.routes` and `.topics` are the two lists in the API section;
-   they are long and every entry is one string that must not be wrapped into
-   ambiguity, which is why the rows keep the `word-break: break-all` above and
-   gain only a hanging indent so a wrapped topic is still visibly one topic. */
+/* THE HANDLES. `.routes` and `.topics` are the two lists in the API section:
+   long, and every entry one string that must not be wrapped into ambiguity, so
+   the rows keep word-break: break-all and gain a hanging indent — a wrapped
+   topic is still visibly one topic. */
 .detail .routes li,
 .detail .topics li { margin-bottom: 3px; padding-left: 1.2em; text-indent: -1.2em; }
-/* THE METHOD IS COLOURED BY WHAT IT DOES, NOT BY WHICH VERB IT IS. Everything
+/* THE METHOD IS COLOURED BY WHAT IT DOES, not by which verb it is: everything
    that only looks is one colour and everything that CHANGES the bench is the
-   warning colour — the same GET-reads / POST-acts split the server enforces,
-   said once more where a person is choosing what to click. */
+   warning colour — the GET-reads / POST-acts split the server enforces, said
+   where a person is choosing what to click. */
 .detail .verb { display: inline-block; min-width: 4.5ch; }
 .detail .verb-get,
 .detail .verb-head { color: var(--tone-ok); }
@@ -719,27 +651,20 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .log .l { display: block; }
 
 /* ------------------------------------------------------- the pace clock
- *
- * A SWIM PACE CLOCK, AND IT IS THE LOG'S LEGEND RATHER THAN AN ORNAMENT.
- * Four hands fifteen seconds apart; whichever one was at the top when the
- * server wrote a line is the colour that line is drawn in. That turns the log's own colour
- * into a reading of WHEN — a block of red and a block of green are a
- * different quarter of the minute, two blocks of red thirty lines apart
- * are a whole minute apart, and a wall of one colour is a burst that
- * landed inside fifteen seconds. A timestamp per line says the same thing
- * and says it in eight characters that push the output off the right edge.
- *
- * THE LINE KEEPS THE COLOUR IT LANDED IN. Repainting the pane on the
- * quarter would make every line agree with the dial and mean nothing; the
- * whole content is in the disagreement between an old line and the hand
- * that is up now.
- *
- * THE FOUR HEXES ARE THIS FILE'S OWN, and that is not the exception the
- * header forbids. They are not states — /api/palette says what RUNNING
- * looks like, and palette.py has no opinion about the third quarter of a
- * minute. They are spelled once, here, and the hands on the dial and the
- * lines in the log both read them, so the legend cannot drift from the
- * thing it is a legend for. */
+ * A SWIM PACE CLOCK, AND IT IS THE LOG LEGEND RATHER THAN AN ORNAMENT. Four
+ * hands fifteen seconds apart; whichever was at the top when the server wrote
+ * a line is the colour that line is drawn in. So a block of red and a block of
+ * green are different quarters of the minute, two blocks of red thirty lines
+ * apart are a minute apart, and a wall of one colour is a burst inside fifteen
+ * seconds. A timestamp per line says the same thing in eight characters that
+ * push the output off the right edge.
+ * THE LINE KEEPS THE COLOUR IT LANDED IN: repainting on the quarter would make
+ * every line agree with the dial and mean nothing — the content is in the
+ * disagreement between an old line and the hand that is up now.
+ * THE FOUR HEXES ARE THIS FILE OWN, and that is not the exception the header
+ * forbids: they are not states, and palette.py has no opinion about the third
+ * quarter of a minute. Spelled once here, read by both the dial and the log, so
+ * the legend cannot drift from the thing it is a legend for. */
 :root {
   --lane-red:    #e53935;
   --lane-yellow: #fdd835;
@@ -755,10 +680,9 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .log .l.q2 { color: var(--lane-green); }
 .log .l.q3 { color: var(--lane-blue); }
 
-/* AFTER the quarters, and the order is the whole rule: the two selectors
- * weigh the same, so this line is the only thing keeping a failure the
- * colour of a failure. A quarter is when a line arrived; `err` is what it
- * says, and what it says wins. */
+/* AFTER the quarters, and the order is the whole rule: the two selectors weigh
+ * the same, so this line is the only thing keeping a failure the colour of a
+ * failure. A quarter is when a line arrived; `err` is what it says. */
 .log .l.err { color: var(--tone-hot); }
 
 .pace {
@@ -787,17 +711,14 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .pace .pin     { fill: var(--ink); }
 .pace .pin-cap { fill: #0d0d0d; }
 
-/* FIVE HANDS, ONE KEYFRAME, AND NO TIMER AT ALL. The hands are a CSS
- * rotation whose phase manager.js sets ONCE, from the wall clock, by
- * handing each one a negative animation-delay. Nothing in this page ticks
- * the clock afterwards — which matters, because this is the page you open
- * when the bench is on fire, and a dial that costs a repaint a second is a
- * dial competing with the log for the same frame. It also means the log's
- * colour needs no shared state to agree with the dial: both are a function
- * of the second of the minute and nothing else.
- *
- * The minute hand is the same rotation over an hour, so it crawls rather
- * than steps. A pace clock has no second-by-second tick to be true to. */
+/* FIVE HANDS, ONE KEYFRAME, AND NO TIMER AT ALL. The hands are a CSS rotation
+ * whose phase manager.js sets ONCE from the wall clock, by handing each one a
+ * negative animation-delay. Nothing ticks afterwards — this is the page you
+ * open when the bench is on fire, and a dial costing a repaint a second is a
+ * dial competing with the log for the same frame. It also means the log colour
+ * needs no shared state to agree with the dial.
+ * The minute hand is the same rotation over an hour, so it crawls rather than
+ * steps: a pace clock has no second-by-second tick to be true to. */
 .pace .sweep, .pace .minute { transform-origin: 250px 250px; }
 .pace .sweep  { animation: pace-sweep 60s linear infinite; stroke: #0d0d0d; stroke-width: 1; }
 .pace .minute { animation: pace-sweep 3600s linear infinite; fill: var(--ink); stroke: var(--ground); stroke-width: 1.5; }
@@ -810,9 +731,8 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 @keyframes pace-sweep { to { transform: rotate(360deg); } }
 
 /* ------------------------------------------------------------- tone classes
- * The ONE place a tone name becomes a colour, and it reads the variable that
- * /api/palette wrote. Everything on every surface — the dot, the status words,
- * the meters, an app row, a red log line — comes through here. */
+ * The ONE place a tone name becomes a colour, reading the variable
+ * /api/palette wrote. Every surface comes through here. */
 .t-ok   { color: var(--tone-ok); }
 .t-live { color: var(--tone-live); }
 .t-warm { color: var(--tone-warm); }

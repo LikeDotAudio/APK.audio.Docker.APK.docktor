@@ -6,10 +6,10 @@
 # up.sh is the bench verb (eight compose files, core before node, minutes of
 # build). This is the same act scoped to one stack, because the dashboard offers
 # a fix PER STACK and had only the bench-wide verb behind it — the fix for
-# Docker:Management rebuilt the other eight and did not touch the manager
+# DockTor rebuilt the other eight and did not touch the manager
 # compose file at all, since for_each_stack does not drive it.
 # THE ARGUMENT IS THE DIRECTORY UNDER APK:DOCKERS/ (Server:Ember,
-# Docker:Management), which is what stacks.sh prints. compose_for_stack turns it
+# DockTor), which is what stacks.sh prints. compose_for_stack turns it
 # into the same ARRAY the bench-wide verbs expand, so the node arrives with its
 # hardware overlay and the manager with its own file.
 # THE GATES STILL REFUSE: one stack is not a reason to build ungated. Set

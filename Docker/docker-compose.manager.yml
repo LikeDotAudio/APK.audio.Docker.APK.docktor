@@ -1,57 +1,32 @@
 # DockTor, installed beside the stacks it manages.
-#
 #     docker compose -f 'APK:DOCKERS/DockTor/Docker/docker-compose.manager.yml' up -d --build
 #     open http://localhost:8765/
-#
-# ONE SERVICE, AND IT IS THE ONLY ONE IN THIS REPOSITORY THAT HOLDS THE DOCKER
-# SOCKET. That is what it is for: every other stack runs a workload, this one
-# runs the tool that looks at them. Dockerfile.manager beside this file carries
-# the whole reasoning; the three mounts below are the part that has to be read
-# before changing anything. The third one is the host's network stack, and it
-# is a mount in every sense that matters here: it is a piece of the host handed
-# to the container whole, and it is what makes `localhost` mean one thing.
-#
-# ── MOUNT 1: THE SOCKET ───────────────────────────────────────────────────────
-# `/var/run/docker.sock` has no colon in it, which is the only reason the short
-# form can name it. It is also root on the host and the container therefore runs
-# as root — a container with this socket can start any container it likes as any
-# user it likes, so the mount IS the privilege and `user:` would not reduce it.
-# Bind this service to the loopback and keep it there. It used to be a
-# published `127.0.0.1:8765:8765`; on the host network it is APK_MANAGER_BIND
-# and nothing else, so that line is now load-bearing rather than a default.
-#
-# ── MOUNT 2: THE REPOSITORY, AT ITS OWN HOST PATH ─────────────────────────────
-# `docker compose build` hands the DAEMON a context path, and the daemon is the
-# host's. A compose file this container names at /app/... is a directory the
-# daemon cannot see, so `up` and `rebuild` fail on a path. Binding the checkout
-# at the SAME absolute path on both sides makes every path this container passes
-# resolve to the same bytes for the daemon.
-#
-# SOURCE AND TARGET ARE ONE VARIABLE FOR THAT REASON — they are not allowed to
-# differ, and writing them twice is how they come to.
-#
-# IT HAS NO DEFAULT, AND `:?` IS WHY. A default of `../..` would mount the
-# checkout at some path the daemon does not share, and every `up` from this
-# manager would then fail on a context directory instead of on the one thing
-# that is actually wrong. `docker scripts/manager.sh` sets it from the same
-# `REPO_ROOT` every other script walks to; a bare compose invocation is told to.
-#
-# THE CHECKOUT ROOT IS THE ONLY PATH HERE A BIND MOUNT CAN NAME. Every directory
-# under it carries a `:` and compose's mount parser splits on it in both the
-# short and the long form; the root itself carries a dot. Bind the root, and
-# never try to bind something inside it.
-#
-# WITHOUT THIS MOUNT THE MANAGER STILL RUNS. Reads, restart, logs and remove all
-# work off the socket alone; `up` and `rebuild` fail naming the compose file they
-# could not find. That is a legitimate way to run it on a machine that only
-# watches.
-#
-# ── THE PROJECT ───────────────────────────────────────────────────────────────
-# `apk-audio`, so the manager clumps with the ecosystem in `docker ps` rather
-# than sitting alone. It declares NO volume, so the pinned-name rule the other
-# three stacks carry has nothing to bite on here. It is still an ORPHAN of every
-# other file in the project: do not add `--remove-orphans` to an `up` of one of
-# them, which is the note rebuild-all.sh and panic.sh already carry.
+# ONE SERVICE, AND THE ONLY ONE IN THIS REPOSITORY THAT HOLDS THE DOCKER SOCKET:
+# every other stack runs a workload, this one runs the tool that looks at them.
+# Three mounts, and the third is the host network stack.
+# ── MOUNT 1: THE SOCKET. /var/run/docker.sock has no colon, which is the only
+# reason the short form can name it. It is root on the host and the container
+# therefore runs as root — a container with this socket can start any container
+# as any user, so the mount IS the privilege and `user:` would not reduce it.
+# ── MOUNT 2: THE REPOSITORY, AT ITS OWN HOST PATH. `docker compose build` hands
+# the DAEMON a context path, and the daemon is the host — so a compose file this
+# container names at /app/… is a directory the daemon cannot see. Binding the
+# checkout at the SAME absolute path on both sides makes every path this
+# container passes resolve to the same bytes.
+# SOURCE AND TARGET ARE ONE VARIABLE for that reason, and it has NO DEFAULT: a
+# default of `../..` would mount the checkout where the daemon does not share it,
+# and every `up` would fail on a context directory instead of the one thing that
+# is wrong.
+# ⚠️ THE CHECKOUT ROOT IS THE ONLY PATH HERE A BIND CAN NAME — every directory
+#    under it carries a `:` and compose mount parser splits on it in both forms.
+#    Bind the root, never something inside it.
+# WITHOUT THIS MOUNT THE MANAGER STILL RUNS: reads, restart, logs and remove all
+# work off the socket alone, and `up`/`rebuild` fail naming the compose file they
+# could not find. That is a legitimate way to run it on a machine that watches.
+# ── THE PROJECT: `apk-audio`, so the manager clumps with the ecosystem. It
+# declares no volume, so the pinned-name rule has nothing to bite on. It is
+# still an ORPHAN of every other file in the project: do not add
+# --remove-orphans to an `up` of one of them.
 name: apk-audio
 
 services:
@@ -62,108 +37,86 @@ services:
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped
-    # ── MOUNT 3, AND IT IS A MOUNT: THE HOST'S OWN NETWORK STACK ──────────────
-    # `endpoints.sh` is the one copy of the port table and every address in it
-    # is written `localhost`, because the person reading the dashboard is on the
-    # host. Bridged, this container's `localhost` is this container: every probe
-    # in apps.sh went to a loopback with nothing on it, so the grid painted
-    # `down` across a bench that was entirely healthy — five served trees, three
-    # broker listeners, and the ten agents inside the node, none of them drawn.
-    #
-    # A host-gateway alias does NOT fix that, which is why the one that used to
-    # sit below is gone. It reaches ports published on 0.0.0.0 and nothing else,
-    # and the addresses that matter most here are bound to the host's LOOPBACK
-    # on purpose: the node's supervisor (APK_STATUS_BIND, whose header says
-    # why), every NMOS port, and this manager itself. Nothing makes a loopback
-    # bind reachable from outside the host, and no alias was going to.
-    #
-    # So the manager joins the host's network stack, and `localhost` means on
-    # both sides of the page what it says. Nothing is published, because there
-    # is no boundary left to publish across.
+    # ── MOUNT 3, AND IT IS A MOUNT: THE HOST OWN NETWORK STACK. endpoints.sh
+    # is the one copy of the port table and every address in it is written
+    # `localhost`, because the person reading the dashboard is on the host.
+    # Bridged, this container localhost is this container: every probe in
+    # apps.sh went to a loopback with nothing on it, so the grid painted `down`
+    # across a bench that was entirely healthy.
+    # A host-gateway alias does NOT fix that: it reaches ports published on
+    # 0.0.0.0 and nothing else, and the addresses that matter most here are
+    # bound to the host LOOPBACK on purpose — the node supervisor, every NMOS
+    # port, and this manager itself.
+    # So the manager joins the host network stack and `localhost` means what it
+    # says on both sides. Nothing is published, because there is no boundary
+    # left to publish across.
     network_mode: host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind
         source: "${APKAUDIO_REPO:?set APKAUDIO_REPO to the checkout root, or start this with 'docker scripts/manager.sh up'}"
         target: "${APKAUDIO_REPO}"
-        # `bind:` IS LOAD-BEARING. The long form alone is not the escape it
-        # looks like: compose 2.40 re-serialises a long-form bind back into a
-        # `source:target:mode` string on its way to the daemon UNLESS the mount
-        # carries this sub-key, and a checkout whose path holds a colon is then
-        # refused with `invalid volume specification`. `rprivate` is the default
-        # propagation and changes nothing except which daemon API carries the
-        # mount. `check.sh compose-binds` holds this at zero. CLAUDE.md §1.
+        # ⚠️ `bind:` IS LOAD-BEARING: compose 2.40 re-serialises a long-form
+        #    bind back into source:target:mode UNLESS the mount carries this
+        #    sub-key, and a checkout path holding a colon is then refused.
+        #    `rprivate` is the default propagation and only selects which daemon
+        #    API carries the mount. check.sh compose-binds holds this at zero.
         bind:
           propagation: rprivate
     environment:
-      # LOOPBACK, AND IT IS NOW THE ONLY THING HOLDING THE LINE. This API stops
-      # containers, rebuilds images and force-kills the bench, and it has no
-      # authentication. Bridged, the `ports:` mapping bound it to 127.0.0.1 and
-      # the image's own `0.0.0.0` default was safe behind the container
-      # boundary. On the host network there is no boundary and no mapping: this
-      # line IS what the socket gets, so widening it hands the bench to every
-      # host on the LAN. Dockerfile.manager's SECURITY block points back here.
+      # ⚠️ LOOPBACK, AND NOW THE ONLY THING HOLDING THE LINE. This API stops
+      #    containers, rebuilds images and force-kills the bench with no
+      #    authentication. Bridged, the ports: mapping bound it to 127.0.0.1 and
+      #    the image 0.0.0.0 default was safe behind the container boundary. On
+      #    the host network there is no boundary and no mapping: this line IS
+      #    what the socket gets, so widening it hands the bench to the LAN.
       APK_MANAGER_BIND: 127.0.0.1
       APK_MANAGER_PORT: 8765
       # Read by bus.py and handed to mqtt_broker_discovery.candidates() as the
-      # `configured` broker, which is the slot that already exists for "this
-      # shop named its own".
-      # 127.0.0.1 BECAUSE THE MANAGER IS ON THE HOST'S STACK NOW. It was
-      # `host.docker.internal` for as long as this container had a network of
-      # its own — without the alias every broadcast failed with ECONNREFUSED
-      # against a broker that was up, and failed quietly, because a bus that
-      # cannot connect degrades rather than raises.
+      # `configured` broker — the slot that exists for "this shop named its own".
+      # 127.0.0.1 BECAUSE THE MANAGER IS ON THE HOST STACK NOW. It was
+      # host.docker.internal while this container had a network of its own;
+      # without the alias every broadcast failed with ECONNREFUSED against a
+      # broker that was up, and failed quietly.
       MQTT_HOST: "${MQTT_HOST:-127.0.0.1}"
       MQTT_PORT: "${MQTT_PORT:-1883}"
       # THE OPERATOR HALF OF THE DOUBLE OPT-IN, TYPED HERE ON PURPOSE.
-      #
-      # `mqtt_broker_discovery.candidates()` reaches a public broker only when
-      # the CALLER passes allow_public AND this variable is set. report.py is
-      # the caller and it also asks for `public_first`, so with this line the
-      # manager's status report goes to test.mosquitto.org FIRST and the bench's
-      # own broker second. Both of those are stated at report.py's call site.
-      #
-      # WHY IT IS SET FOR THIS CONTAINER AND NOWHERE ELSE. The report's audience
-      # is the DataBus display's PUBLIC pane, served from apk.audio, which
-      # cannot reach this bench at all; and a local broker that is DOWN is the
-      # state that page most needs told, which is precisely when a local-first
-      # order published nothing. That reasoning is this service's and does not
-      # generalise -- the telemetry probes pass no allow_public, so this
-      # variable cannot put a puck on a desk or a hardware inventory on a public
-      # bus however it is exported. Do not promote it to a shell profile.
-      #
+      # candidates() reaches a public broker only when the CALLER passes
+      # allow_public AND this variable is set. report.py is the caller and also
+      # asks for public_first, so with this line the manager status report goes
+      # to test.mosquitto.org FIRST and the bench own broker second.
+      # WHY FOR THIS CONTAINER AND NOWHERE ELSE: the audience is the DataBus
+      # display PUBLIC pane, served from apk.audio, which cannot reach this
+      # bench at all — and a local broker that is DOWN is the state that page
+      # most needs told, which is precisely when a local-first order published
+      # nothing. The telemetry probes pass no allow_public, so this variable
+      # cannot put a puck on a desk or a hardware inventory on a public bus
+      # however it is exported. Do not promote it to a shell profile.
       # WHAT LEAVES: container names, statuses and published host ports. Unset
-      # this line and the manager is local-only again; the broker's own bridge
-      # (Server:Broker:MQTT/mosquitto_local.conf) still relays the same topic,
-      # and stopping THAT is a separate act in that file.
+      # this and the manager is local-only again; the broker own bridge still
+      # relays the same topic, and stopping THAT is a separate act.
       APK_ALLOW_PUBLIC_BROKERS: "${APK_ALLOW_PUBLIC_BROKERS:-1}"
       # THE COMPOSE FILES RUN BY THIS CONTAINER ARE THE ONES UNDER THE BOUND
-      # CHECKOUT, not the ones COPYed into the image -- and the working
-      # directory does not decide that, because `_common.sh` walks up from its
-      # OWN location and the copy the manager runs lives at /app. So the repo
-      # path is handed in as well as mounted: `_common.sh` prefers it over the
-      # walk, and every path it then gives the daemon is a host path the daemon
-      # can resolve. Without this every `up` and `rebuild` failed naming a
-      # compose file under /app that was never copied there.
+      # CHECKOUT, not the ones COPYed into the image — and the working directory
+      # does not decide that, because _common.sh walks up from its OWN location
+      # and the copy the manager runs lives at /app. So the repo path is handed
+      # in as well as mounted: _common.sh prefers it over the walk, and every
+      # path it gives the daemon is a host path the daemon can resolve.
       APKAUDIO_REPO: "${APKAUDIO_REPO}"
       APKAUDIO_UID: "${APKAUDIO_UID:-1000}"
       APKAUDIO_GID: "${APKAUDIO_GID:-1000}"
     working_dir: "${APKAUDIO_REPO}"
     healthcheck:
-      # The API's own account of itself, which answers before docker is asked --
-      # so this separates "the server is up" from "docker is reachable", and a
-      # daemon that has gone away shows as an unhealthy BENCH rather than an
-      # unhealthy manager.
-      #
-      # AND IT HAS TO BE *THIS* MANAGER ANSWERING. On the host network stack
-      # 127.0.0.1:8765 is the bench's loopback, not this container's, so a
-      # manager somebody started at a terminal answers this probe exactly as
-      # well as the server in here would -- and used to, while this container
-      # sat waiting for a port it could not have. `instance` (api.py, which
-      # says why `repository_root` cannot do this) carries who answered, and
-      # its pid is resolvable in OUR /proc only when the answer came from
-      # inside this pid namespace. Both halves, because either alone is a
-      # coincidence away from passing.
+      # The API own account of itself, which answers before docker is asked — so
+      # this separates "the server is up" from "docker is reachable", and a
+      # daemon that has gone away shows as an unhealthy BENCH.
+      # AND IT HAS TO BE *THIS* MANAGER ANSWERING: on the host network stack
+      # 127.0.0.1:8765 is the bench loopback, so a manager started at a terminal
+      # answers this probe exactly as well as the server in here would — and used
+      # to, while this container sat waiting for a port it could not have.
+      # `instance` carries who answered, and its pid is resolvable in OUR /proc
+      # only when the answer came from inside this pid namespace. Both halves,
+      # because either alone is a coincidence away from passing.
       test: ["CMD", "python3", "-c",
              "import json,os,urllib.request;i=json.load(urllib.request.urlopen('http://127.0.0.1:8765/api/health',timeout=4)).get('instance') or {};raise SystemExit(0 if i.get('containerised') and os.path.exists('/proc/%d' % i['pid']) else 1)"]
       interval: 30s

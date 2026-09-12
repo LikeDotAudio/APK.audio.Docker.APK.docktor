@@ -1,31 +1,18 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
-# MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+# MIT Licence. Full text in LICENSE at the root.
 """⌨️ The terminal half. One action, one script — the table IS the mapping.
 
-WHAT THIS MODULE OWNS. Turning an argument into a script name. A new verb is a
-row in one of the two tables below and a file in the collection, never a branch
-that runs docker.
-
-IT IS NO LONGER "THE HEADLESS HALF", BECAUSE THERE IS NO OTHER KIND. The other
-surface was a Tkinter window that needed a DISPLAY; it is now `serve.py`, an
-HTTP API that runs anywhere this does. `serve` is a verb in this table for that
-reason — the server is one more thing you can ask this file for, not a separate
-program with its own front door.
-
-TWO TABLES, AND THE DIFFERENCE IS ARITY. `CLI_ACTIONS` verbs take no argument
-and are given a fixed one; `CLI_ACTIONS_WITH_ARGS` verbs forward whatever is
-left on the command line, because `logs Storage-Portal 500` cannot be
-expressed by a table that only holds a script name.
-
-`test` and `up` do not both gate. up.sh runs the gates itself; `test` is the way
-to run them WITHOUT mounting, which is what APK.audio:mount.sh beside us shells
-out to this package for.
-
-`logs` READS and `clear-logs` TRUNCATES. It was the other way round until
-2026-09-03 — `logs` was mapped to clear-logs.sh, and there was no way to read a
-container's log at all — which put the destructive act behind the innocuous
-word. Anything that called `logs` expecting a truncate now gets a read; that is
-a break, and it is the safe direction to break in.
+OWNS turning an argument into a script name. A new verb is a row in one of the
+two tables below plus a file in the collection, never a branch that runs docker.
+TWO TABLES, AND THE DIFFERENCE IS ARITY: CLI_ACTIONS verbs take no argument and
+are given a fixed one; CLI_ACTIONS_WITH_ARGS verbs forward whatever is left,
+because `logs Storage-Portal 500` cannot be expressed by a script name alone.
+`serve` is a verb here because the server is one more thing you can ask this
+file for, not a separate program.
+`test` and `up` do not both gate: up.sh runs the gates itself, and `test` is
+the way to run them WITHOUT mounting.
+`logs` READS and `clear-logs` TRUNCATES. It was the other way round, which put
+the destructive act behind the innocuous word.
 """
 
 import os
@@ -58,24 +45,21 @@ CLI_ACTIONS = {
 CLI_ACTIONS_WITH_ARGS = {
     ('logs', 'log'): ("📜 Reading container log...", 'logs.sh'),
     ('restart', 'bounce'): ("🔄 Restarting container...", 'restart.sh'),
-    # NOT the bare `rebuild` above, which is the whole-bench one. The verbs
-    # differ by a suffix because the two acts differ by everything: this one
-    # builds the one service the named container is, in the project that
-    # container records, and leaves the rest of the bench alone.
+    # NOT the bare `rebuild` above, which is the whole-bench one: this builds
+    # the one service the named container is, in the project that container
+    # records, and leaves the rest of the bench alone.
     ('rebuild-one', 'rebuild-container'): ("🧱 Rebuilding container...", 'rebuild.sh'),
     ('exec', 'shell', 'sh'): ("🐚 Running inside container...", 'exec.sh'),
     ('inspect',): ("🔍 Inspecting container...", 'inspect.sh'),
     ('config-path', 'dockerfile'): ("📄 Resolving what built this container...", 'config-path.sh'),
-    # WITH ARGS although it takes none by default, because the useful call is
-    # the one-container one: a bare `purpose` prints all 28 paragraphs, which is
-    # a page, and `purpose Storage-PHP` is the question somebody actually has.
+    # WITH ARGS although it takes none by default: a bare `purpose` prints all
+    # 28 paragraphs, and `purpose Storage-PHP` is the question somebody has.
     ('purpose', 'what', 'why'): ("📘 What this container is, and why the bench needs it...",
                                  'purpose.sh'),
     ('prune',): ("♻️  Reclaiming unused docker storage...", 'prune.sh'),
     # WITH ARGS because the sweep and the single kill are one verb: no name
-    # takes every stopped container, a name takes that one, and `--force` is
-    # how a running container is meant. Three tables' worth of behaviour is
-    # the script's to decide, which is why it is one row here.
+    # takes every stopped container, a name takes that one, --force means a
+    # running one. The behaviour is the script to decide.
     ('clear-dead', 'dead', 'reap'): ("⚰️  Removing stopped containers...",
                                     'remove-dead-containers.sh'),
 }
@@ -147,10 +131,9 @@ def run_cli_mode(argv=None):
     for names, (banner, script) in CLI_ACTIONS_WITH_ARGS.items():
         if action in names:
             print(banner)
-            # `exec` is the one that must NOT be streamed through a pipe: it
-            # asks for a terminal when stdin is one, and reading its output
-            # line by line takes that terminal away. os.execvp hands the
-            # process over instead, so an interactive shell stays interactive.
+            # `exec` must NOT be streamed through a pipe: it asks for a
+            # terminal when stdin is one, and reading its output line by line
+            # takes that terminal away. os.execvp hands the process over.
             if action in ('exec', 'shell', 'sh'):
                 script_path = os.path.join(
                     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -162,22 +145,18 @@ def run_cli_mode(argv=None):
             sys.exit(exit_code)
 
     if action in ('test', '--test', 'check'):
-        # The gates AND the suite. `test` is what mount.sh calls to decide
-        # whether to build, and what a person runs to ask if the bench is well;
-        # both gates failing and the suite failing must fail it.
+        # The gates AND the suite: `test` is what mount.sh calls to decide
+        # whether to build, so either failing must fail it.
         gates_ok = run_prebuild_test_gates(on_line_callback=_stream)
         tests_ok = run_container_tests(on_line_callback=_stream)
         sys.exit(0 if (gates_ok and tests_ok) else 1)
 
     if action == 'serve':
-        # THE DEFAULT VERB. A bare `docktor.py` inserts it, so this is
-        # the branch a person who typed nothing reaches.
-        #
-        # LOOPBACK UNLESS TOLD OTHERWISE, and serve.py's header says why at
-        # length: this API stops containers and rebuilds images and has no
-        # authentication, so the bind is the only control there is. `--bind` is
-        # for the container case, where compose publishes the port on 127.0.0.1
-        # and the container boundary is what makes it safe.
+        # THE DEFAULT VERB — a bare `docktor.py` inserts it.
+        # LOOPBACK UNLESS TOLD OTHERWISE, and serve.py header says why: this
+        # API stops containers and rebuilds images with no authentication, so
+        # the bind is the only control there is. --bind is for the container
+        # case, where compose publishes the port on 127.0.0.1.
         from .serve import serve
         bind, port, open_browser = '127.0.0.1', 8765, False
         remaining = list(rest)
@@ -231,10 +210,9 @@ def run_cli_mode(argv=None):
 
 
 # Every word above that reaches the dispatcher, so the entry script can tell a
-# CLI invocation from a bare `python3 …docktor.py` that wants a window.
-# Built from the tables rather than typed a second time: the list WAS typed a
-# second time in main(), and a verb added to the table but not to that list
-# opened a Tkinter window instead of running.
+# CLI invocation from a bare `python3 …docktor.py`. Built from the tables rather
+# than typed again: it WAS typed again in main(), and a verb added to the table
+# but not to that list opened a Tkinter window instead of running.
 KNOWN_ACTIONS = (
     {name for names in CLI_ACTIONS for name in names}
     | {name for names in CLI_ACTIONS_WITH_ARGS for name in names}

@@ -1,38 +1,24 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
-// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+// MIT Licence. Full text in LICENSE at the root.
 /* 🧠 The thin half. Ask /api, draw what came back, send a verb when clicked.
- *
- * WHAT THIS FILE OWNS. Rendering, the three cadences, and the dialogues. It
- * spells no port, no container name, no docker verb and no state colour: the
- * verbs arrive from /api/actions with their own labels and their own confirm
- * text, the addresses from /api/endpoints, the colours from /api/palette. A
- * literal of any of those here would be a second copy of a table that already
- * exists in Python, which is the drift the whole package is arranged against.
- */
+ * OWNS rendering, the three cadences and the dialogues. It spells no port, no
+ * container name, no docker verb and no state colour: verbs arrive from
+ * /api/actions with their own labels and confirm text, addresses from
+ * /api/endpoints, colours from /api/palette. */
 
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-/* THERE ARE THREE CADENCES AND THEY DO DIFFERENT WORK. Stated below the first
- * line of code on purpose — `check.sh prologue` measures the comment run a file
- * OPENS with, and a reader does not need the reasoning above the first line to
- * find it. Same placement, and the same reason, as `docker scripts/apps.sh`.
- *
- *   · METERS      /api/resources on 5s while "Live Resources" is armed. Numbers
- *                 into cards that already exist; it never creates one.
- *   · SCAN        /api/containers on the ⏱ interval. The whole grid, so a
- *                 container that appeared between ticks gets a card.
- *   · FOLLOW      /api/containers?apps=0 on 2s, only while an action runs, and
- *                 it overrides both. A grid titled LIVE may not be suspended by
- *                 the one event that invalidates every card on it — the Tk
- *                 window held its pre-action snapshot until the exit code came
- *                 back, and painted green dots over containers the log beside
- *                 it was printing the teardown of.
- *
- * NONE OF THEM ACTS. Every cadence is a GET, and the server refuses a script
- * that changes the bench over GET. An operator who leaves a tab open must be
- * able to leave it open.
- */
+/* THREE CADENCES, DIFFERENT WORK (below the first line of code on purpose —
+ * check.sh prologue measures the comment run a file OPENS with):
+ *   · METERS  /api/resources on 5s while "Live Resources" is armed. Numbers
+ *             into cards that already exist; it never creates one.
+ *   · SCAN    /api/containers on the ⏱ interval. The whole grid.
+ *   · FOLLOW  /api/containers?apps=0 on 2s, only while an action runs, and it
+ *             overrides both — a grid titled LIVE may not be suspended by the
+ *             one event that invalidates every card on it.
+ * NONE OF THEM ACTS: every cadence is a GET, and the server refuses a script
+ * that changes the bench over GET. */
 
 const state = {
   palette: null,
@@ -42,18 +28,15 @@ const state = {
   meters: false,
   density: "high",
   view: "cards",
-  // THE LAST SNAPSHOT AND THE LAST STATS SAMPLE, HELD RATHER THAN RE-ASKED
-  // FOR. The donut and the port table are second readings of what the cadences
-  // already fetched -- a view that re-fetched on every switch would put a
-  // third cadence on the box to draw numbers that are on screen already.
+  // THE LAST SNAPSHOT AND STATS SAMPLE, HELD RATHER THAN RE-ASKED FOR. The
+  // donut and the port table are second readings of what the cadences already
+  // fetched; re-fetching per switch would be a third cadence on the box.
   snapshot: null,
   resources: {},
-  // WHAT THE BOX IS -- how many cores, how much RAM -- held rather than
-  // re-read, because it arrives on whichever of the two cadences happened to
-  // answer last and the rings need it on both. 0 means the server has not said
-  // yet; see renderDonuts(), which draws a different CPU ring in that case
-  // rather than guessing a denominator, and falls back to the widest limit in
-  // the stats sample for RAM.
+  // WHAT THE BOX IS — cores and RAM — held rather than re-read, because it
+  // arrives on whichever cadence answered last and the rings need it on both.
+  // 0 means the server has not said; renderDonuts() then draws a different CPU
+  // ring rather than guessing a denominator.
   hostCpus: 0,
   hostMemory: 0,
   endpoints: [],
@@ -67,22 +50,13 @@ const state = {
 };
 
 /* --------------------------------------------------------------- transport */
-
-/* WHERE /api IS, WORKED OUT RATHER THAN SPELLED.
- *
- * Every route below is written the way the manager's own server answers it --
- * `/api/containers`, `/api/stream` -- and every one of them is resolved against
- * the directory this page was served from before it is fetched. Served at an
- * origin's root, which is what `serve.py` does on 8765, that resolution changes
- * nothing. Served under a prefix, which is what APK:OS does when it relays the
- * manager at `/manager/` so the shell can frame it, it is the difference
- * between the client working and the client asking the OS for a route the OS
- * has never heard of.
- *
- * THE PREFIX IS NOT CONFIGURED AND MUST NOT BECOME CONFIGURABLE. It is read off
- * `document.baseURI`, so the page is correct wherever it is mounted without
- * anybody remembering to tell it -- and a mount point that has to be declared
- * in two places is a mount point that will one day disagree with itself. */
+/* WHERE /api IS, WORKED OUT RATHER THAN SPELLED. Every route is written the way
+ * the manager server answers it and resolved against the directory this page
+ * was served from. At an origin root that changes nothing; under a prefix
+ * (APK:OS relays the manager at /manager/) it is the difference between
+ * working and asking the OS for a route it has never heard of.
+ * THE PREFIX IS NOT CONFIGURED AND MUST NOT BECOME CONFIGURABLE: it is read off
+ * document.baseURI, so the page is correct wherever it is mounted. */
 const ROOT = new URL(".", document.baseURI);
 const at = (path) => new URL(String(path).replace(/^\//, ""), ROOT).href;
 
@@ -116,18 +90,15 @@ const appTone = (word) =>
 const appPulses = (word) =>
   !!(state.palette && state.palette.app_states_pulsing.includes(word));
 
-/* Same rule, second vocabulary: `live`, `retained`, `departed` are topics.sh's
- * words and palette.py owns what each one looks like. */
+/* Same rule, second vocabulary: live / retained / departed are topics.sh words
+ * and palette.py owns what each looks like. */
 const busTone = (word) =>
   (state.palette && state.palette.bus_state_tones[word]) || "unknown";
 
 /* ------------------------------------------------------------------ the log
- *
- * A BAR IS ONE LINE REDRAWN, NOT A NEW ONE. `brief.LogBrief` on the server
- * turns a docker build's four thousand lines into a moving bar, and it says so
- * by sending `bar` where it means overwrite and `bardone` where it means
- * overwrite once more and freeze. Holding the element is the whole trick.
- */
+ * A BAR IS ONE LINE REDRAWN, NOT A NEW ONE. brief.LogBrief on the server sends
+ * `bar` where it means overwrite and `bardone` where it means overwrite once
+ * more and freeze. Holding the element is the whole trick. */
 const logBox = $("#log");
 let liveBar = null;
 
@@ -139,9 +110,9 @@ function logRecord(record) {
   if (record.kind === "bar" || record.kind === "bardone") {
     if (!liveBar) {
       liveBar = document.createElement("span");
-      // Stamped when the bar STARTS and never restamped, because it is one
-      // line being overwritten: a bar that changed colour under a build would
-      // be reporting the clock rather than the build.
+      // Stamped when the bar STARTS and never restamped: it is one line being
+      // overwritten, so a bar that changed colour under a build would be
+      // reporting the clock rather than the build.
       liveBar.className = `l q${paceQuarter(record.at)}`;
       logBox.append(liveBar);
     }
@@ -154,8 +125,8 @@ function logRecord(record) {
     line.textContent = record.text;
     logBox.append(line);
   }
-  // Only when the reader was already at the bottom. Scrolling a log somebody
-  // has scrolled UP is taking the thing they were reading away from them.
+  // Only when the reader was already at the bottom: scrolling a log somebody
+  // scrolled UP takes away what they were reading.
   if (pinned) logBox.scrollTop = logBox.scrollHeight;
 }
 
@@ -170,48 +141,36 @@ function openStream() {
 }
 
 /* --------------------------------------------------------------- pace clock
- *
- * A SWIM PACE CLOCK, AND THE LOG ABOVE READS OFF IT. Four hands fifteen
- * seconds apart on a 60-at-the-top dial; the one at the top is the colour
- * every log line takes as it arrives, so the terminal's own ink says which
- * quarter of the minute each block of output landed in. That is the pool-deck
- * reading of this instrument — nobody on a pool deck reads a time off it, they
- * read which fifteen they are in and whether they are still in it.
- *
- * IT IS SYNCHRONISED TO THE WALL CLOCK, WHICH THE PAGE IT CAME FROM IS NOT.
- * A CSS animation starts when the page loads, so an unsynchronised dial has
- * red at the top at some arbitrary moment and the colour of a log line would
- * then mean nothing outside this one tab. Handing each hand a negative
- * animation-delay of its offset PLUS the seconds already elapsed this minute
- * puts red on the top at :00 in every tab on every screen — and makes the log
- * colour a pure function of the second of the minute, so nothing has to be
- * shared between the dial and the log for the two to agree.
- *
- * NO TIMER. Phase is set once here and once more when the tab comes back to
- * the front (a backgrounded tab may have had its animations throttled). There
- * is no fourth cadence and there must not be one; see the three at the head.
- */
+ * A SWIM PACE CLOCK, AND THE LOG READS OFF IT. Four hands fifteen seconds apart
+ * on a 60-at-the-top dial; the one at the top is the colour every log line
+ * takes as it arrives, so the ink says which quarter of the minute each block
+ * of output landed in.
+ * SYNCHRONISED TO THE WALL CLOCK, which a CSS animation is not: an
+ * unsynchronised dial has red at the top at an arbitrary moment and the log
+ * colour would mean nothing outside one tab. A negative animation-delay of each
+ * offset PLUS the seconds already elapsed puts red on top at :00 in every tab,
+ * and makes the log colour a pure function of the second of the minute.
+ * NO TIMER: phase is set once here and once when the tab returns to the front
+ * (a backgrounded tab may have had its animations throttled). */
 const LANES = [
   // `top` is the second of the minute at which this hand is at 60, which makes
-  // it both the hand's phase and the quarter it owns. One table, both jobs.
+  // it both the hand phase and the quarter it owns. One table, both jobs.
   { colour: "red",    top:  0 },
   { colour: "yellow", top: 15 },
   { colour: "green",  top: 30 },
   { colour: "blue",   top: 45 },
 ];
 
-/* THE QUARTER A LINE BELONGS TO IS THE SERVER'S `at`, NOT THE MOMENT THIS TAB
- * DREW IT. Every record on the stream carries the epoch second it was written
- * (LogRing, serve.py), and the ring replays its backlog to every tab that
- * connects — so a colour taken from the browser's clock would paint four
- * hundred lines of history in whatever one colour the tab opened in, and two
- * tabs opened a minute apart would disagree about the same line. Epoch is on a
- * minute boundary, so seconds-into-the-minute is just the remainder. */
+/* THE QUARTER A LINE BELONGS TO IS THE SERVER `at`, NOT THE MOMENT THIS TAB
+ * DREW IT. Every record carries the epoch second it was written and the ring
+ * replays its backlog to every tab, so a browser-clock colour would paint four
+ * hundred lines of history in one colour and two tabs would disagree about the
+ * same line. Epoch is on a minute boundary, so the remainder is the seconds. */
 const paceQuarter = (at = Date.now() / 1000) => Math.floor((at % 60) / 15);
 
-/* 120 ticks and 12 numerals, drawn rather than typed. Every second gets a
- * mark and every half-second a shorter one, which is the density that makes a
- * hand between two marks readable at a glance instead of countable. */
+/* 120 ticks and 12 numerals, drawn rather than typed: a mark per second and a
+ * shorter one per half-second is the density that makes a hand between two
+ * marks readable at a glance instead of countable. */
 function buildPaceDial() {
   const svgNS = "http://www.w3.org/2000/svg";
   const ticks = $("#pace-ticks");
@@ -231,7 +190,7 @@ function buildPaceDial() {
   }
 
   for (let n = 5; n <= 60; n += 5) {
-    // -90° so that 60 lands at the top rather than at three o'clock.
+    // -90° so that 60 lands at the top rather than at three o clock.
     const angle = (n * 6 - 90) * (Math.PI / 180);
     const label = document.createElementNS(svgNS, "text");
     label.setAttribute("class", "num");
@@ -250,7 +209,7 @@ function syncPaceClock() {
   for (const lane of LANES) {
     const hand = $(`.pace .sweep.${lane.colour}`);
     // (60 - top) % 60 is how far round the dial this hand already is when the
-    // minute turns over — the offset the hand needs to reach 60 at `top`.
+    // minute turns over — the offset it needs to reach 60 at `top`.
     if (hand) hand.style.animationDelay = `-${((60 - lane.top) % 60) + intoMinute}s`;
   }
   const minute = $("#pace-minute-hand");
@@ -283,13 +242,8 @@ function meter(value, tone, label) {
 }
 
 /* HOW FAR BEHIND, IN WORDS, AND ONE COPY OF IT. The payload carries seconds
- * because that is what a subscriber can compare; a person reading a card or a
- * band wants "3.2h", and 11422 is a number they would have to do arithmetic on
- * to feel. Two surfaces render this now -- the card below and the band further
- * down -- and the thresholds are the same ones staleness.sh's `human()` uses,
- * so a second copy on this side of the wire would be a third reading of the
- * same seconds.
- */
+ * because that is what a subscriber can compare; a person wants "3.2h". Two
+ * surfaces render this, on the same thresholds staleness.sh human() uses. */
 function behind(s) {
   return s < 90 ? `${s}s`
     : s < 5400 ? `${Math.round(s / 60)}m`
@@ -301,23 +255,18 @@ function cardHTML(container) {
   const r = container.resources || {};
   const dot = `<span class="dot t-${container.tone}${container.pulse ? " pulse" : ""}">●</span>`;
 
-  // ON THE CARD, because the card is where a person is already looking when
-  // they decide whether to trust what they are seeing. Every other field this
-  // card draws about a stale container is green and correct -- it is up, it is
-  // healthy, its meters move -- so the one fact that contradicts them has to
-  // ride on the same tile rather than only in the band above the grid.
-  //
-  // ONLY "yes" DRAWS. api.snapshot() folds the verdict on for the unhurried
-  // cadence only, so a missing `staleness` means NOT ASKED, not current; and
-  // `unbuilt` is the dark band's news one step earlier, `unknown` is the reader
-  // declining to answer. Painting either of those violet would put a colour on
-  // the grid that means "we do not know", which is what grey already means.
+  // ON THE CARD, because that is where a person is looking when they decide
+  // whether to trust what they see: every other field about a stale container
+  // is green and correct, so the one fact that contradicts them rides here.
+  // ONLY "yes" DRAWS: a missing `staleness` means NOT ASKED (the fast cadence
+  // skips the reader), `unbuilt` is the dark band news one step earlier, and
+  // `unknown` is the reader declining — violet for either would put a colour
+  // meaning "we do not know" on the grid, which is what grey already means.
   const verdict = container.staleness;
   const isStale = !!verdict && verdict.stale === "yes";
-  // NOT A TONE SWAP. `container.tone` still answers "how is this container
-  // doing" and a stale container is usually doing fine; violet is a second,
-  // separate line, and the border says which card to look at from across the
-  // room without repainting the dot that answers the other question.
+  // NOT A TONE SWAP: container.tone still answers "how is this container
+  // doing" and a stale one is usually fine. Violet is a second, separate line,
+  // and the border says which card to look at from across the room.
   const staleRow = isStale ? `
       <div class="stale-row t-stale" title="${escapeAttr(verdict.newest || "")}">⚡ stale ·
         ${behind(verdict.behind || 0)} behind${verdict.newest
@@ -338,17 +287,13 @@ function cardHTML(container) {
   }
   if (container.image) lines.push(`📦 ${container.image}`);
 
-  // NOT an idle container. A host-networked container has no veth, so docker
-  // stats has nothing to count and prints 0B / 0B forever. Said on the meter
-  // itself, because the alternative is reading that zero as a node that has
-  // stopped talking.
-  // THE STATE EMOJI AND ITS SENTENCE ARE TWO SPANS, AND THAT IS WHAT LETS THE
-  // FOLDED CARD KEEP THE FIRST AND DROP THE SECOND. At `low` density every row
-  // under the name is hidden, which used to leave a 9px dot as the only thing
-  // on the tile that said how the container was doing -- one glyph, at a size
-  // that is legible only if you already know which card you are looking for.
-  // The stylesheet keeps the emoji there instead, at twice the type size, and
-  // hides the words beside it; nothing here changes per density.
+  // NOT an idle container: a host-networked container has no veth, so docker
+  // stats has nothing to count and prints 0B / 0B forever. Said on the meter,
+  // or that zero reads as a node that stopped talking.
+  // THE STATE EMOJI AND ITS SENTENCE ARE TWO SPANS, which is what lets the
+  // folded card keep the first and drop the second: at `low` density the
+  // stylesheet keeps the emoji at twice the type size and hides the words, so
+  // nothing here changes per density.
   const netCaption = container.network_mode === "host"
     ? "🏠 host networking, no veth to count"
     : "🔀 RX / TX";
@@ -387,31 +332,23 @@ function cardHTML(container) {
     </article>`;
 }
 
-/* WHAT NO CARD IS ABOUT. The two bands below are both about containers -- one
- * that is missing, one that is lying. This one is about the BOX they are on,
- * and about the container that is still here and stopped, because those are the
- * two facts this page had nowhere to put.
- *
- * ON 2026-09-09 THE ROOT FILESYSTEM FILLED AND NOTHING HERE SAID SO. Every
- * writer on the machine failed in the same minute; MariaDB crash-looped, and
- * Netbox-Postgres, Netbox-Valkey and Netbox-Worker exited 1 and were still down
- * hours later. The stack was not dark -- its containers all existed -- so the
- * band below drew nothing, and the cards drew three grey tiles among five. The
- * disk was never on this page at all.
- *
- * IT IS HIDDEN ON A HEALTHY BENCH, AND THAT IS THE POINT. A meter that is
- * always drawn is a meter nobody reads; a band that appears is an event. The
- * threshold is the SERVER's (readers.DISK_WARNING_PERCENT) and arrives as
- * `level`, so this file compares nothing -- a second copy of the number here is
- * the copy that never gets raised when the first one is.
- */
+/* WHAT NO CARD IS ABOUT. The two bands below are about containers — one
+ * missing, one lying. This one is about the BOX, and about the container that
+ * is still here and stopped, because those had nowhere to go.
+ * On 2026-09-09 the root filesystem filled and nothing here said so: every
+ * writer failed in the same minute, MariaDB crash-looped, three NetBox
+ * containers exited 1 and were down for hours. The stack was not dark, so the
+ * band below drew nothing and the disk was never on this page at all.
+ * IT IS HIDDEN ON A HEALTHY BENCH, AND THAT IS THE POINT: a meter always drawn
+ * is a meter nobody reads; a band that appears is an event. The threshold is
+ * the SERVER (readers.DISK_WARNING_PERCENT) and arrives as `level`. */
 function renderBenchHealth(snapshot) {
   const host = $("#bench-health");
   const disk = (snapshot.host && snapshot.host.disk) || {};
-  // MID-ACTION SUPPRESSION FOR THE STOPPED HALF ONLY, and the split is
-  // deliberate. A rebuild stops containers on its way through, so naming them
-  // during one is naming the happy path; a disk that is 96% full is exactly as
-  // true mid-rebuild, and a rebuild is when it is most likely to end the build.
+  // MID-ACTION SUPPRESSION FOR THE STOPPED HALF ONLY: a rebuild stops
+  // containers on its way through, so naming them during one is naming the
+  // happy path — while a disk 96% full is exactly as true mid-rebuild, and a
+  // rebuild is when it is most likely to end the build.
   const stopped = snapshot.action_running ? [] : (snapshot.stopped_containers || []);
   const diskBad = disk.level === "warning" || disk.level === "critical";
   host.hidden = !diskBad && !stopped.length;
@@ -449,67 +386,49 @@ function renderBenchHealth(snapshot) {
   if (state.actions) labelVerbs();
 }
 
-/* WHAT THE GRID CANNOT DRAW. Every card is a container that exists; a stack
- * whose containers were all removed has no card, and on a page made of cards an
- * absence and a thing-that-was-never-here are the same picture. This band is
- * the difference. Server:Discovery:NMOS/ was empty for hours behind a green
- * dashboard because there was nowhere for that fact to appear.
- *
- * THE TWO KINDS ARE NOT THE SAME NEWS, which is the whole reason `restorable`
- * is on the wire. A dark stack this tool DRIVES is a remount that did not take
- * — press the row's own remount. A dark stack it does not drive is down until a
- * person runs the command, because a panic removes containers host-wide and
- * the remount behind it only knows three of the six compose files. So the
- * second kind carries its command and the first carries the button.
- *
- * AND THE BUTTON IS SCOPED TO THE ROW IT SITS IN. It used to be `up` — the
- * whole bench, eight compose files, minutes of build — under a heading naming
- * ONE stack; on the row this band draws most often, DockTor, that
- * verb rebuilt every stack EXCEPT the one the row was about, because
- * `for_each_stack` does not drive the manager's compose file. `up-stack` takes
- * the stack name this row already carries and runs that file and no other.
- */
+/* WHAT THE GRID CANNOT DRAW. Every card is a container that exists, so a stack
+ * whose containers were all removed has no card — and on a page made of cards
+ * an absence and a thing that was never here are the same picture.
+ * THE TWO KINDS ARE NOT THE SAME NEWS, which is why `restorable` is on the
+ * wire: a dark stack this tool DRIVES is a remount that did not take, so the
+ * row carries the button; one it does not drive is down until a person runs the
+ * command, so the row carries the command.
+ * AND THE BUTTON IS SCOPED TO ITS ROW. It used to be `up` — the whole bench —
+ * under a heading naming ONE stack, and on the row this band draws most often
+ * it rebuilt every stack EXCEPT that one, because for_each_stack does not drive
+ * the manager compose file. */
 function renderDarkStacks(snapshot) {
   const host = $("#dark-stacks");
   const dark = snapshot.dark_stacks || [];
   host.hidden = !dark.length;
   if (!dark.length) { host.innerHTML = ""; return; }
 
-  // THE REASON IS SAID ONCE, ABOVE THE ROWS, and the rows carry only what
-  // differs. Three stacks each repeating the same paragraph filled half the
-  // grid pane with one sentence written three times, and pushed the containers
-  // that ARE running below the fold — which is its own way of hiding the bench.
+  // THE REASON IS SAID ONCE, ABOVE THE ROWS; the rows carry only what differs.
+  // Three stacks each repeating one paragraph filled half the pane and pushed
+  // the containers that ARE running below the fold.
   const stranded = dark.filter((row) => !row.restorable);
   // A DRIVEN STACK IS SUPPOSED TO BE DARK MID-REBUILD. `action_running` is the
-  // server's ACTION_LOCK, so this holds for a rebuild started in another tab
-  // too, and follow(false) rescans the moment the verb finishes -- a stack that
-  // is STILL dark then is the real finding and appears then. The stranded rows
-  // stay visible throughout: no verb here was going to restore those anyway,
-  // and a panic is exactly when they need saying.
+  // server ACTION_LOCK, so this holds for a rebuild started in another tab too,
+  // and follow(false) rescans when the verb finishes — a stack still dark then
+  // is the real finding. The stranded rows stay visible throughout.
   const driven = snapshot.action_running ? [] : dark.filter((row) => row.restorable);
-  // THE PAGE HAS TO BE ABLE TO ACCUSE ITSELF, and this is the one case where
-  // the answer is sitting in front of the person reading it. The manager runs
-  // `network_mode: host`, so a manager started at a terminal and the
-  // containerised one contend for the SAME 127.0.0.1:8765 — and the terminal
-  // one wins simply by being first, which after a panic it always is. The
-  // container then cannot bind, DockTor shows as dark-and-driven, and
-  // "read the execution log" sends the reader to a log that says the remount
-  // succeeded. It did. `manager` on the snapshot is who is serving THIS page;
-  // when that is not the container, it is the reason, and the fix is to stop it.
+  // THE PAGE HAS TO BE ABLE TO ACCUSE ITSELF, and this is the case where the
+  // answer sits in front of the reader: the manager runs network_mode: host, so
+  // a terminal manager and the containerised one contend for the SAME
+  // 127.0.0.1:8765 and the terminal one wins by being first, which after a
+  // panic it always is. The container cannot bind, DockTor shows dark-and-
+  // driven, and the log truthfully says the remount succeeded. `manager` on the
+  // snapshot is who is serving THIS page.
   const servedBy = snapshot.manager || {};
   const selfHeld = servedBy.containerised === false &&
         driven.some((row) => row.stack === "DockTor");
   // A ROW THAT NAMES A FAULT THIS PAGE CAN FIX CARRIES THE FIX. The driven rows
-  // used to end at "read the execution log", which is a diagnosis handed to
-  // somebody who is already looking at the one screen that could have acted on
-  // it — three clicks away through a menu, to press a verb the paragraph had
-  // just described without naming. `data-action` is the same wiring every verb
-  // in the toolbar uses, so the label is the SERVER's (labelVerbs) and follow()
-  // greys this one with the rest while a build is running.
-  //
-  // The stranded rows still get a command instead of a button, and that is not
-  // an inconsistency: no verb on this page drives those compose files, so a
-  // button there would be one that cannot work.
+  // used to end at "read the execution log" — a diagnosis handed to somebody
+  // already looking at the one screen that could act on it. `data-action` is
+  // the same wiring the toolbar uses, so the label is the SERVER and follow()
+  // greys this one with the rest.
+  // The stranded rows get a command instead: no verb here drives those compose
+  // files, so a button would be one that cannot work.
   const rowHTML = (row) => `
     <div class="dark-stack${row.restorable ? " driven" : ""}">
       <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
@@ -549,46 +468,34 @@ function renderDarkStacks(snapshot) {
       ${driven.map(rowHTML).join("")}` : "",
   ].join("");
 
-  // The verbs are named by the server and this markup was written after boot
-  // did the naming, so the buttons just planted are labelled and wired here.
-  // Guarded because the first grid can land before /api/actions answers.
+  // The verbs are named by the server, so the buttons just planted are
+  // labelled and wired here. Guarded: the first grid can land before
+  // /api/actions answers.
   if (state.actions) labelVerbs();
 }
 
-/* WHAT THE GRID DRAWS WRONG. renderDarkStacks() above covers the container that
- * is not there; this covers the container that IS there and is lying. A stale
- * image runs, answers its health check, moves its meters and draws a green card
- * — every signal this page has says fine, and the code inside it was replaced
- * hours ago. The card itself now carries the verdict -- cardHTML() draws the
- * violet row and takes the violet edge -- and this band stays anyway, because a
- * fact on one tile among forty is a fact that has to be FOUND. The band is the
- * count and the newest file at the top of the page; the card is where the
- * finding lands when you go looking for it.
- *
- * IT IS SUPPRESSED MID-ACTION for the reason the driven dark rows are: a
- * rebuild in flight makes this answer change under the reader, and a warning
- * that fires on the happy path is a warning that gets learnt as noise.
- * follow(false) rescans the moment the verb finishes, so an image that is STILL
- * stale then is the real finding and appears then.
- */
+/* WHAT THE GRID DRAWS WRONG. The band above covers the container that is not
+ * there; this covers the one that IS there and is lying. A stale image runs,
+ * answers its health check, moves its meters and draws a green card while the
+ * code inside it was replaced hours ago. The card carries the verdict too, and
+ * this band stays anyway: a fact on one tile among forty has to be FOUND. The
+ * band is the count and the newest file; the card is where the finding lands.
+ * SUPPRESSED MID-ACTION for the reason the driven dark rows are: a rebuild in
+ * flight makes this change under the reader, and a warning that fires on the
+ * happy path is learnt as noise. */
 function renderStaleImages(snapshot) {
   const host = $("#stale-images");
   const stale = snapshot.action_running ? [] : (snapshot.stale_services || []);
   host.hidden = !stale.length;
   if (!stale.length) { host.innerHTML = ""; return; }
 
-  // THE CAPTION UNDER THE BUTTON IS SAID ONCE, IN THE LEAD, and the rows carry
-  // only what differs. Seven rows each repeating the same sentence about what a
-  // rebuild does is the shape the dark-stack band above was rewritten to stop
-  // drawing: it fills the pane with one sentence written seven times and pushes
-  // the containers that ARE fine below the fold.
-  //
+  // THE CAPTION IS SAID ONCE, IN THE LEAD, and the rows carry only what
+  // differs — seven rows repeating one sentence fills the pane and pushes the
+  // containers that ARE fine below the fold.
   // WHAT THE ROW IS ABOUT IS THE CONTAINER, and it is the heading now. It used
-  // to be the stack, with the container's name printed underneath as a bare
-  // word and the image and the age crammed into the heading's `small` — so a
-  // row read as four unlabelled strings about a stack that has nothing wrong
-  // with it. Every field below says what it is: the container, the image it is
-  // running, how far that image lags, and the file that decided so.
+  // to be the stack, so a row read as four unlabelled strings about a stack
+  // with nothing wrong with it. Every field says what it is: the container, the
+  // image, how far it lags, and the file that decided so.
   host.innerHTML = `
     <p class="dark-lead stale">⚡ <b>${stale.length} container${stale.length > 1 ? "s are" : " is"}
        running an image that was built before the code inside it.</b>
@@ -610,9 +517,8 @@ function renderStaleImages(snapshot) {
                data-container="${escapeAttr(row.container)}"></button></p>` : ""}
       </div>`).join("")}`;
 
-  // The verb's words are the server's, like every other button on this page,
-  // and the container it is aimed at is the row's. Guarded because the first
-  // grid can land before /api/actions answers.
+  // The verb words are the server, like every button here, and the container
+  // it is aimed at is the row. Guarded for the pre-/api/actions first grid.
   if (state.actions) {
     $$("[data-cverb]", host).forEach((button) => {
       const row = state.actions.container_actions[button.dataset.cverb];
@@ -625,10 +531,9 @@ function renderStaleImages(snapshot) {
 
 function renderGrid(snapshot) {
   state.snapshot = snapshot;
-  // EVERY CARD'S METERS, INTO THE ONE MAP THE OTHER VIEWS READ. The scan
-  // carries a stats sample of its own (api.snapshot joins ps.sh and stats.sh
-  // in one moment on purpose), so the donut is live on the ⏱ cadence with the
-  // five-second one disarmed -- just slower.
+  // EVERY CARD METERS, INTO THE ONE MAP THE OTHER VIEWS READ. The scan carries
+  // a stats sample of its own, so the donut is live on the ⏱ cadence with the
+  // five-second one disarmed — just slower.
   for (const group of snapshot.groups || []) {
     for (const container of group.containers) {
       if (container.resources) state.resources[container.name] = container.resources;
@@ -636,9 +541,9 @@ function renderGrid(snapshot) {
     }
   }
   // NEVER BACK TO ZERO. A scan that could not reach docker still returns a
-  // document, with host.cpus 0 in it; letting that overwrite a count we already
-  // have would take the idle wedge off the ring for one tick and put the
-  // caption back, which reads as the page changing its mind about the box.
+  // document with host.cpus 0; letting that overwrite a count we have would
+  // take the idle wedge off the ring for one tick and put the caption back,
+  // which reads as the page changing its mind about the box.
   if (snapshot.host && snapshot.host.cpus) state.hostCpus = snapshot.host.cpus;
   if (snapshot.host && snapshot.host.memory_bytes) state.hostMemory = snapshot.host.memory_bytes;
   renderBenchHealth(snapshot);
@@ -646,20 +551,17 @@ function renderGrid(snapshot) {
   renderStaleImages(snapshot);
   const host = $("#cards");
   if (!snapshot.count) {
-    // AND THE BAND IS ALREADY DRAWN, above this guard on purpose. An empty
-    // bench is exactly when "which stacks are missing" is the only question on
-    // the page, and returning before renderDarkStacks() would answer it with
-    // one grey sentence about mounting the stack.
+    // AND THE BAND IS ALREADY DRAWN, above this guard on purpose: an empty
+    // bench is exactly when "which stacks are missing" is the only question,
+    // and returning earlier would answer it with one grey sentence.
     host.innerHTML = `<p class="empty">No containers. Mount the stack to see them here.</p>`;
     return;
   }
   // THE STACK IS DRAWN ONCE AND COLOURED THROUGHOUT. `--group` is set on the
-  // heading and on the block of cards under it, and the stylesheet spends it on
-  // the heading's text and each card's left edge -- never on the dot, the
-  // status, the meters or the app rows, which are the five state tones' and
-  // must keep meaning health. The colour comes from palette.py with the rest of
-  // them; a hue picked here would be the second table this page was built to
-  // avoid.
+  // heading and the block of cards under it, and the stylesheet spends it on
+  // the heading text and each card left edge — never on the dot, the status,
+  // the meters or the app rows, which are the state tones and must keep
+  // meaning health. The colour comes from palette.py with the rest.
   host.innerHTML = snapshot.groups.map((group) => {
     const hue = ` style="--group: ${escapeAttr(group.hue || "")}"`;
     return `
@@ -669,8 +571,8 @@ function renderGrid(snapshot) {
 
   $$(".card", host).forEach((card) => {
     card.onclick = (event) => {
-      // ANY BUTTON ON THE TILE, not just the ✕. The card grew a second one, and
-      // a list of exempt attributes is a list that goes stale the third time.
+      // ANY BUTTON ON THE TILE, not just the ✕: a list of exempt attributes
+      // is a list that goes stale the third time.
       if (event.target.closest("button")) return;
       select(card.dataset.container);
     };
@@ -681,12 +583,9 @@ function renderGrid(snapshot) {
       runContainerAction("remove", button.dataset.remove, button);
     };
   });
-  // THE FIX WHERE THE FINDING IS. renderStaleImages() draws this same verb in
-  // the band above the grid, and that band is the COUNT -- it is how a stale
-  // container gets found among forty. This is how it gets acted on without
-  // scrolling back up: the card already carries the verdict, so it carries the
-  // one button that answers it. Same server verb, same one-at-a-time lock, and
-  // the label is the server's like every other button on this page.
+  // THE FIX WHERE THE FINDING IS. The band above is the COUNT — how a stale
+  // container gets found among forty; this is how it gets acted on without
+  // scrolling back up. Same server verb, same one-at-a-time lock.
   $$("[data-rebuild]", host).forEach((button) => {
     const row = state.actions && state.actions.container_actions.rebuild;
     button.textContent = row ? row.label : "rebuild";
@@ -704,9 +603,8 @@ function applyMeters(resources) {
   state.resources = resources.containers;
   if (resources.host && resources.host.cpus) state.hostCpus = resources.host.cpus;
   if (resources.host && resources.host.memory_bytes) state.hostMemory = resources.host.memory_bytes;
-  // The ring is the same sample, so it moves on the same tick. It is REBUILT
-  // rather than written into: a donut's geometry is its data, and there is no
-  // equivalent of "the number in this box changed".
+  // The ring is the same sample, so it moves on the same tick. REBUILT rather
+  // than written into: a donut geometry is its data.
   if (state.view === "donuts") renderDonuts();
   $$(".card").forEach((card) => {
     const row = resources.containers[card.dataset.container];
@@ -722,20 +620,15 @@ function applyMeters(resources) {
 }
 
 /* ------------------------------------------------------- the other two views
- *
  * THREE READINGS OF ONE SNAPSHOT, AND ONLY THE CARDS ARE A GRID. Everything
- * below is drawn from `state.snapshot` and `state.resources`, which are what
- * the scan and meter cadences already put there -- no view here fetches
+ * below is drawn from state.snapshot and state.resources — no view fetches
  * anything of its own except the endpoint table, which is a join the docker
  * half cannot supply. Switching view HIDES #cards rather than emptying it, so
- * the five-second meter cadence keeps writing into the cards while the donut
- * is up and coming back is a toggle rather than a rescan.
- *
- * WHY EITHER EXISTS. A card grid answers "how is this container" forty times
- * and cannot be read for the two questions asked most often at a broken bench:
- * WHO IS EATING THE BOX -- a share, which is a comparison ACROSS cards and so
- * exists nowhere on any one of them -- and WHAT IS ON 8080, which the grid can
- * only answer by reading every card's port lines in turn. */
+ * the meter cadence keeps writing into them and coming back is a toggle.
+ * WHY EITHER EXISTS: a card grid answers "how is this container" forty times
+ * and cannot be read for the two questions asked at a broken bench — WHO IS
+ * EATING THE BOX (a comparison ACROSS cards, so it exists on none of them) and
+ * WHAT IS ON 8080. */
 const VIEWS = ["cards", "donuts", "ports"];
 
 function applyView(name) {
@@ -750,8 +643,8 @@ function applyView(name) {
   try { localStorage.setItem("apk.manager.view", state.view); } catch { /* no store */ }
   renderViews();
   // The docker half of the port table rides the scan cadence; the endpoint
-  // half is endpoints.sh -- `docker port` and an inspect per container -- and
-  // is far too expensive to put on a cadence. Re-read on arrival instead.
+  // half is endpoints.sh — docker port plus an inspect per container — and is
+  // far too expensive to put on a cadence. Re-read on arrival instead.
   if (state.view === "ports") loadWebPages();
 }
 
@@ -765,12 +658,10 @@ function renderViews() {
 }
 
 /* ------------------------------------------------------ reading the numbers
- *
- * DOCKER PRINTS TWO UNIT TABLES IN ONE ROW AND THEY ARE NOT THE SAME TABLE.
- * MemUsage is binary -- `12.5MiB / 7.66GiB` -- and NetIO is decimal, `1.2MB`.
- * Both are read here, so both are in the map; a parser that knew only powers
- * of 1024 would report the network 5% low and slowly, which is the shape of
- * error nobody catches by looking. */
+ * DOCKER PRINTS TWO UNIT TABLES IN ONE ROW AND THEY ARE NOT THE SAME TABLE:
+ * MemUsage is binary (`12.5MiB / 7.66GiB`) and NetIO is decimal (`1.2MB`).
+ * Both are read here, so both are in the map — a parser that knew only powers
+ * of 1024 would report the network 5% low, which nobody catches by looking. */
 const BYTE_UNITS = { b: 1, kb: 1e3, mb: 1e6, gb: 1e9, tb: 1e12,
                      kib: 1024, mib: 1024 ** 2, gib: 1024 ** 3, tib: 1024 ** 4 };
 
@@ -795,14 +686,11 @@ const percent = (text) => {
 };
 
 /* ------------------------------------------------------------------ donuts */
-
-/* THE SLICES ARE THE STACK'S COLOUR, NOT A COLOUR OF THIS FILE'S. `hue` comes
- * down per group from palette.hues_for(), which is the same table the group
- * headings and card edges spend, so a ring reads against the grid beside it
- * without anybody learning a second key. Members of one stack are separated by
- * OPACITY rather than by a hue of their own: a stack is the thing you are
- * looking for when a box is pinned, and four Netbox containers that are four
- * unrelated colours hide the fact that Netbox is the answer. */
+/* THE SLICES ARE THE STACK COLOUR, not a colour of this file: `hue` comes down
+ * per group from palette.hues_for(), the same table the group headings and card
+ * edges spend. Members of one stack are separated by OPACITY rather than by a
+ * hue of their own — four Netbox containers in four unrelated colours hide the
+ * fact that Netbox is the answer. */
 function sliceRows(valueOf) {
   const rows = [];
   for (const group of state.snapshot?.groups || []) {
@@ -827,9 +715,9 @@ function sliceRows(valueOf) {
 }
 
 /* A RING WITH FORTY SLICES IS A COLOUR WHEEL. Ten named and the rest summed is
- * the reading that survives a bench this size -- and the tail is kept as a
- * slice rather than dropped, because a ring whose slices do not add up to its
- * own centre number is worse than one with a grey wedge in it. */
+ * the reading that survives a bench this size, and the tail is kept as a slice
+ * rather than dropped: a ring whose slices do not add up to its own centre
+ * number is worse than one with a grey wedge in it. */
 function rollUpTail(rows, keep = 10) {
   if (rows.length <= keep) return rows;
   const tail = rows.slice(keep);
@@ -847,9 +735,9 @@ function donutHTML(rows, centre, centreNote, format) {
   let travelled = 0;
   const arcs = rows.map((row) => {
     const length = (row.value / total) * RING_LENGTH;
-    // A HAIRLINE, NOT A ROUND CAP. Two touching slices of one stack hue read
-    // as a single slice; `stroke-linecap: round` separates them by overlapping
-    // the neighbour, which moves the boundary rather than showing it.
+    // A HAIRLINE, NOT A ROUND CAP: two touching slices of one stack hue read as
+    // one slice, and stroke-linecap: round separates them by overlapping the
+    // neighbour, which moves the boundary rather than showing it.
     const drawn = Math.max(length - 1.4, 0.5);
     const arc = `<circle r="${RING.radius}" cx="60" cy="60" fill="none"
         stroke="${escapeAttr(row.hue || "#6f7480")}" stroke-opacity="${row.shade.toFixed(2)}"
@@ -892,10 +780,10 @@ function renderDonuts() {
     return;
   }
 
-  // COUNTED BEFORE THE ROLL-UP, drawn after it. The heading says how many
-  // containers are in the total; the ring names ten of them and sums the rest.
-  // Counting the drawn slices instead reported eleven containers on a bench of
-  // twenty-four, and the eleventh was the word "more".
+  // COUNTED BEFORE THE ROLL-UP, drawn after it: the heading says how many
+  // containers are in the total, and the ring names ten and sums the rest.
+  // Counting drawn slices reported eleven containers on a bench of twenty-four,
+  // and the eleventh was the word "more".
   const cpuAll = sliceRows((row) => percent(row.cpu_percent));
   const ramAll = sliceRows((row) => bytes((row.memory || "").split("/")[0]));
   const cpu = rollUpTail(cpuAll);
@@ -903,42 +791,34 @@ function renderDonuts() {
   const cpuTotal = cpuAll.reduce((sum, row) => sum + row.value, 0);
   const ramTotal = ramAll.reduce((sum, row) => sum + row.value, 0);
 
-  // THE IDLE HALF, DRAWABLE AT LAST BECAUSE SOMETHING NOW CARRIES THE CORE
-  // COUNT. Every slice above is in docker's units, where one fully busy core is
-  // 100%; the box in those same units is therefore `cores × 100`, and the wedge
-  // is the subtraction. `state.hostCpus` is the daemon's own NCPU, arriving on
-  // /api/resources and /api/containers alike -- NOT nproc and not the browser's
-  // hardwareConcurrency, both of which answer about the wrong machine. Zero
-  // means the server has not said, and the ring below then goes back to what it
-  // could always draw honestly: the containers' share of each other, captioned.
-  // PLAN-1049.01.
+  // THE IDLE HALF, drawable because something now carries the core count.
+  // Every slice above is in docker units, where one fully busy core is 100%, so
+  // the box in those units is cores × 100 and the wedge is the subtraction.
+  // state.hostCpus is the daemon own NCPU — NOT nproc and not the browser
+  // hardwareConcurrency, which answer about the wrong machine. Zero means the
+  // server has not said, and the ring falls back to the containers share of
+  // each other, captioned.
   const cores = state.hostCpus;
   const boxCPU = cores * 100;
-  // AND IT IS NOT CALLED "IDLE". Everything on this box that is not in a
-  // container -- the desktop, a cargo build, the manager serving this page when
-  // it is run at a terminal -- is inside this wedge, and docker can see none of
-  // it. "Idle" would be the one number on this page that is confidently wrong.
+  // AND IT IS NOT CALLED "IDLE": everything on this box that is not in a
+  // container — the desktop, a cargo build, a terminal manager — is inside this
+  // wedge, and docker can see none of it.
   const spare = Math.max(boxCPU - cpuTotal, 0);
   const cpuRing = cores
     ? [...cpu, {name: "", leaf: "not in containers", stack: "", hue: "#6f7480",
-                // `rolled` is the legend's DIM-AND-UNCLICKABLE style, which is
-                // what this row needs for the same reason the tail did: it is
-                // the one entry that is not a container you can open.
+                // `rolled` is the legend DIM-AND-UNCLICKABLE style, for the
+                // reason the tail needs it: not a container you can open.
                 shade: 1, value: spare, rolled: true}]
     : cpu;
   const boxShare = boxCPU ? (cpuTotal / boxCPU) * 100 : 0;
-  // THE HOST'S OWN RAM, ASKED FOR FIRST AND INFERRED ONLY IF NOBODY ANSWERED.
-  // This used to be the inference alone: docker reports an UNCONSTRAINED
-  // container's limit as the whole machine's memory, so the widest limit in the
-  // sample IS the box. That holds only while nothing sets a limit -- one
-  // `mem_limit:` on the containers being sampled makes the widest limit a
-  // CONTAINER's, and the ring then divides by 2 GiB on a 32 GiB box and calls
-  // an idle bench 60% full, with nothing on screen to say it moved.
-  // `state.hostMemory` is the daemon's own MemTotal off /api/resources and
-  // /api/containers, which no compose file can shift. THE INFERENCE STAYS as
-  // the fallback rather than being deleted: it is what the ring draws when
-  // `docker info` will not answer, and it is right far more often than wrong.
-  // PLAN-1049.02.
+  // THE HOST OWN RAM, ASKED FOR FIRST AND INFERRED ONLY IF NOBODY ANSWERED.
+  // The inference alone was: docker reports an UNCONSTRAINED container limit as
+  // the whole machine memory, so the widest limit in the sample IS the box —
+  // which holds only while nothing sets a limit. One mem_limit: makes it a
+  // CONTAINER limit, and the ring then divides by 2 GiB on a 32 GiB box and
+  // calls an idle bench 60% full with nothing on screen to say it moved.
+  // state.hostMemory is the daemon own MemTotal, which no compose file shifts.
+  // THE INFERENCE STAYS as the fallback for a docker info that will not answer.
   const sampledRAM = Math.max(0, ...samples.map((row) => bytes((row.memory || "").split("/")[1])));
   const boxRAM = state.hostMemory || sampledRAM;
 
@@ -994,30 +874,22 @@ function renderDonuts() {
 }
 
 /* ------------------------------------------------------------------- ports */
-
-/* WHAT IS ON 8080, AS A JOIN OF THE TWO HALVES THAT EACH KNOW HALF OF IT.
- *
+/* WHAT IS ON 8080, AS A JOIN OF THE TWO HALVES THAT EACH KNOW HALF OF IT:
  *   · docker knows every port it has BOUND, and nothing about what answers.
  *   · endpoints.sh knows what answers and under which scheme, and it is the
- *     one copy of that table -- the manager may not spell a port itself.
- *
- * NEITHER IS SUFFICIENT ALONE, and the two shortfalls are not symmetric. A
- * bound port with no endpoint row is a number with no name; an endpoint row
- * with no bound port is the case a ports table built from `docker ps` cannot
- * have at all -- the BareMetal supervisor on 8100 runs `network_mode: host`,
- * publishes nothing, and has no Ports column to be read out of. So the rows
- * are keyed on the PORT and both sides may create one. */
-/* A RANGE IS N PORTS, AND THE JOIN ONLY LANDS IF IT IS DRAWN AS N ROWS.
- * `docker ps` folds a consecutive publication into `3209-3211 → 3209-3211/tcp`
- * and endpoints.sh names 3209, 3210 and 3211 one at a time, correctly -- they
- * are three different NMOS APIs. Kept folded, the table drew a range row with
- * no name beside three named rows that each said `not bound`, which is the one
- * reading that is wrong on both halves at once.
- *
- * SIXTY-FOUR IS THE CEILING and it is not a tuning knob: a container that
- * publishes `1-65535` is a container that would otherwise fill this pane with
- * sixty-five thousand rows, and the range said as one row is the honest
- * rendering of a publication nobody meant to enumerate. */
+ *     one copy of that table.
+ * NEITHER IS SUFFICIENT ALONE, and the shortfalls are not symmetric: a bound
+ * port with no endpoint row is a number with no name, while an endpoint row
+ * with no bound port cannot exist at all in a table built from docker ps — the
+ * BareMetal supervisor on 8100 runs network_mode: host and publishes nothing.
+ * So rows are keyed on the PORT and both sides may create one.
+ * A RANGE IS N PORTS, AND THE JOIN ONLY LANDS IF IT IS DRAWN AS N ROWS: docker
+ * ps folds a consecutive publication into `3209-3211 → 3209-3211/tcp` while
+ * endpoints.sh correctly names three different NMOS APIs. Kept folded, the
+ * table drew an unnamed range row beside three named rows each saying "not
+ * bound" — wrong on both halves at once.
+ * SIXTY-FOUR IS THE CEILING and not a tuning knob: a container publishing
+ * 1-65535 would otherwise fill this pane with sixty-five thousand rows. */
 function spreadRange(text) {
   const [first, last] = String(text).split("-");
   if (last === undefined) return [first];
@@ -1053,9 +925,9 @@ function portRows() {
             stack: group.label, hue: group.hue || "", tone: container.tone,
             status: container.status,
             // Docker maps a range one-for-one and in order, so the nth host
-            // port is the nth container port. A pair of ranges that are not
-            // the same length is not something docker prints; if one ever
-            // arrives, the whole range is said rather than a wrong pairing.
+            // port is the nth container port. A pair of ranges of different
+            // lengths is not something docker prints; if one arrives, the whole
+            // range is said rather than a wrong pairing.
             target: `${targets.length === hosts.length ? targets[index] : parsed[2]}/${parsed[3]}`,
           });
         });
@@ -1069,20 +941,18 @@ function portRows() {
   }
 
   for (const endpoint of state.endpoints || []) {
-    // THE AUTHORITY, PARSED THE WAY api.undeclared_ports() PARSES IT, and not
-    // with `new URL`: half of these are `mqtt://` and `mysql://`, and one of
-    // them carries credentials — `mysql://apkaudio:DEV.DB@localhost:3306/…`,
-    // whose FIRST colon-and-digits is not a port. Same three steps as the
-    // server: take what is between `://` and the next `/`, drop anything
-    // before an `@`, and the port is what follows the last colon. `[::1]:8080`
-    // survives that for free.
+    // THE AUTHORITY, PARSED THE WAY api.undeclared_ports() PARSES IT and not
+    // with `new URL`: half of these are mqtt:// and mysql://, and one carries
+    // credentials whose FIRST colon-and-digits is not a port. Same three steps
+    // as the server — what is between :// and the next /, drop anything before
+    // an @, and the port is what follows the last colon. [::1]:8080 survives.
     const authority = ((endpoint.uri || "").split("://")[1] || "").split("/")[0].split("@").pop();
     const found = authority.includes(":") ? /^(\d+)$/.exec(authority.split(":").pop()) : null;
     if (!found) continue;
     const known = byName[endpoint.container];
-    // The proto is the row's, not the endpoint's: an endpoint is named for a
-    // port docker has bound over TCP, and inventing a second `8080/` row for
-    // it would split the one fact the table exists to state.
+    // The proto is the row, not the endpoint: an endpoint is named for a port
+    // docker bound over TCP, and a second `8080/` row would split the one fact
+    // the table exists to state.
     const row = rows.has(`${found[1]}/tcp`) ? rows.get(`${found[1]}/tcp`)
                                             : rowFor(found[1], "tcp");
     row.endpoints.push({
@@ -1103,20 +973,18 @@ function portOpenHTML(row) {
   const copy = row.endpoints.filter((e) => e.kind === "copy");
   const links = open.map((e) => e.state === "up"
     ? `<a href="${escapeAttr(e.uri)}" target="_blank" rel="noreferrer">🌐 open ↗</a>`
-    // LISTED, NOT OPENED, and the rule is already the Web Pages menu's: a
-    // stopped container behind a link produces a browser error page, which
-    // reads as a broken SITE rather than as a container that is not running.
+    // LISTED, NOT OPENED, the Web Pages menu rule: a stopped container behind
+    // a link produces a browser error page, which reads as a broken SITE.
     : `<span class="down">⏸️ ${escapeHTML(e.state)}</span>`);
   const copies = copy.map((e) =>
     `<button class="linky" data-copy="${escapeAttr(e.uri)}" title="${escapeAttr(e.uri)}">📋 copy URI</button>`);
   if (links.length || copies.length) return [...links, ...copies].join(" ");
   if (!row.bound.length) return `<span class="down">—</span>`;
   // NOTHING NAMED IT, SO THE SCHEME IS A GUESS AND SAYS SO. The PORT is not a
-  // guess -- docker has it bound this second -- and the host is the one this
-  // page was reached on, which is the machine the bench is on by definition.
-  // It is styled down and titled rather than dropped: `endpoints.sh` names the
-  // handful of services it knows, and a table that offered nothing for the
-  // other thirty would send the reader to type the same URL by hand.
+  // guess — docker has it bound this second — and the host is the one this page
+  // was reached on. Styled down and titled rather than dropped: a table that
+  // offered nothing for the other thirty would send the reader to type the
+  // same URL by hand.
   const guess = `http://${location.hostname}:${String(row.port).split("-")[0]}/`;
   return `<a class="guess" href="${escapeAttr(guess)}" target="_blank" rel="noreferrer"
              title="No endpoint is declared for this port — docker has it bound, but the http:// is this page's guess.">🔎 try http ↗</a>`;
@@ -1134,9 +1002,8 @@ function renderPorts() {
   const named = rows.filter((row) => row.endpoints.length).length;
   const body = rows.map((row) => {
     // ONE CONTAINER, SAID ONCE. Three NetBox endpoints on 8081 are three
-    // things to open and ONE container to name; repeating the name per
-    // endpoint made the row read as three containers fighting over a port,
-    // which is the one thing a port table must never say by accident.
+    // things to open and ONE container to name; repeating the name per endpoint
+    // read as three containers fighting over a port.
     const seen = new Set();
     const who = row.bound.length
       ? row.bound.filter((b) => !seen.has(b.container) && seen.add(b.container)).map((b) => `
@@ -1197,8 +1064,8 @@ function row(key, value, cls = "") {
 
 function planeHTML(plane) {
   // A container with no app plane gets NO HEADING. Most of the bench has none,
-  // and an empty "APP PLANE: none" on each of them is furniture teaching the
-  // reader to scroll past the place the answer appears on the ones that do.
+  // and an empty "APP PLANE: none" on each is furniture teaching the reader to
+  // scroll past the place the answer appears on the ones that do.
   if (!plane) return "";
   let body = "";
   if (plane.source) body += row("Read from", `<a href="${escapeAttr(plane.source)}" target="_blank" rel="noreferrer">${escapeHTML(plane.source)}</a>`, "url");
@@ -1249,18 +1116,13 @@ function planeHTML(plane) {
 }
 
 /* THE HANDLES — how you talk to this container, in the two ways there are.
- *
- * FETCHED AFTER THE PANE IS PAINTED, not with it. The bus half holds a
- * subscription open for a settle window, and folding that into /api/container
- * would put four seconds between clicking a card and reading its diagnosis. So
- * the pane paints, this says it is listening, and the answer lands underneath.
- *
- * A SECTION THAT SAYS WHY IT IS EMPTY. Every other block in this pane is drawn
- * only when it has content; this one is always drawn, because the whole reason
- * it exists is somebody opening a container and finding no sign of an API. "No
- * routes" and "nobody asked" look identical as a blank space — so the reason
- * comes back from the script as a row and is printed where the rows would be.
- */
+ * FETCHED AFTER THE PANE IS PAINTED: the bus half holds a subscription open for
+ * a settle window, and folding it into /api/container would put four seconds
+ * between clicking a card and reading its diagnosis.
+ * A SECTION THAT SAYS WHY IT IS EMPTY. Every other block is drawn only when it
+ * has content; this one is always drawn, because the whole reason it exists is
+ * somebody opening a container and finding no sign of an API — "no routes" and
+ * "nobody asked" look identical as a blank space. */
 function surfaceHTML(surface) {
   const api = surface && surface.api;
   const bus = surface && surface.bus;
@@ -1271,16 +1133,16 @@ function surfaceHTML(surface) {
   } else if (!api.routes || !api.routes.length) {
     html += row("HTTP", escapeHTML(api.reason || api.error || "no route table"), "dim");
   } else {
-    /* WHERE THEY CAME FROM, ON THE PANE. `declared` is the service's own table,
-     * `404` is its refusal read for the paths it names, `self-describing` is an
-     * NMOS base path answering with its children. A reader who knows which of
-     * the three this was knows how much to trust a missing row. */
+    /* WHERE THEY CAME FROM: `declared` is the service own table, `404` its
+     * refusal read for the paths it names, `self-describing` an NMOS base path
+     * answering with its children. A reader who knows which knows how much to
+     * trust a missing row. */
     if (api.source) html += row("Read from", `${escapeHTML(api.source)} <span class="dim">(${escapeHTML(api.how || "")})</span>`, "url");
     if (api.note)   html += row("Note", escapeHTML(api.note), "dim");
     html += `<ul class="routes">${api.routes.map((route) => {
-      /* A VERB IS NEVER A LINK. `POST /agents/<id>/stop` silences a node's
-       * telemetry, and the GET/POST split this whole package is built on would
-       * mean nothing if the pane offered the POSTs as things to click. */
+      /* A VERB IS NEVER A LINK. `POST /agents/<id>/stop` silences a node
+       * telemetry, and the GET/POST split this package is built on would mean
+       * nothing if the pane offered the POSTs as things to click. */
       const handle = route.state === "open" && !route.path.includes("<")
         ? `<a class="v url" href="${escapeAttr(route.uri)}" target="_blank" rel="noreferrer">${escapeHTML(route.path)}</a>`
         : `<span class="v">${escapeHTML(route.path)}</span>`;
@@ -1300,8 +1162,8 @@ function surfaceHTML(surface) {
   }
   html += row("Census", `${escapeHTML(bus.broker || "")} · listened ${escapeHTML(String(bus.observedSeconds))}s · ${(bus.topics || []).length} topic(s)`, "dim");
   if (!(bus.topics || []).length) {
-    /* MQTT cannot tell a subscriber who published, so this is a real answer and
-     * not a failure: nothing that arrived in the window named this container. */
+    /* MQTT cannot tell a subscriber who published, so this is a real answer
+     * and not a failure: nothing in the window named this container. */
     html += row("Topics", "nothing on the bus named this container as its publisher.", "dim");
     return html;
   }
@@ -1316,19 +1178,12 @@ function surfaceHTML(surface) {
 }
 
 /* WHAT THIS CONTAINER IS, AND WHY THE BENCH NEEDS IT.
- *
- * THE ONLY BLOCK ON THIS PANE THAT IS NOT A MEASUREMENT, and it is drawn FIRST
- * for that reason: everything under it says how the container is, which is not
- * a readable answer to somebody who does not yet know what the container is
- * for. "Broker-SqlCapture is restarting" only means something once you know it
- * is the thing that writes the bus down.
- *
- * A SECTION THAT SAYS WHY IT IS EMPTY, the same rule surfaceHTML() follows. A
- * container with no entry in purpose.sh is printed as exactly that, naming the
- * file, because a missing paragraph and a container nobody has described look
- * identical as a blank space -- and the second one is fixed by writing four
- * lines in one table.
- */
+ * THE ONLY BLOCK ON THIS PANE THAT IS NOT A MEASUREMENT, and drawn FIRST for
+ * that reason: everything under it says how the container is, which is not
+ * readable to somebody who does not yet know what it is for.
+ * A SECTION THAT SAYS WHY IT IS EMPTY, the rule surfaceHTML() follows: a
+ * container with no purpose.sh entry is printed as exactly that, naming the
+ * file, because that is fixed by writing four lines in one table. */
 function purposeHTML(purpose, name) {
   let html = `<h3>📘 WHAT THIS CONTAINER IS &amp; WHY IT IS NEEDED</h3>`;
   if (!purpose) {
@@ -1364,7 +1219,7 @@ function renderDetail(detail) {
     html += row("Networks", "none", "dim");
   } else {
     // A host-networked container has a Networks entry with an empty IPAddress,
-    // and that is correct rather than missing: it has the host's addresses.
+    // and that is correct rather than missing: it has the host addresses.
     html += detail.networks.map((net) =>
       row(net.name, net.ip ? escapeHTML(net.ip) : "host networking — the host's own addresses",
           net.ip ? "" : "dim")).join("");
@@ -1393,10 +1248,9 @@ function renderDetail(detail) {
   loadSurface(detail.name);
 }
 
-/* THE SECOND FETCH. Guarded on the selection because the census takes seconds
- * and a person clicking across five cards would otherwise have five answers in
- * flight, each one overwriting the pane of a container they are no longer
- * looking at. */
+/* THE SECOND FETCH. Guarded on the selection because the census takes seconds,
+ * and clicking across five cards would leave five answers in flight each
+ * overwriting the pane of a container nobody is looking at. */
 async function loadSurface(name) {
   let surface = null;
   try {
@@ -1418,14 +1272,14 @@ function renderLaunchers(detail) {
       buttons.push(`<a class="btn ${scheme === "http" ? "accent" : "plain"} small"
         href="${escapeAttr(endpoint.uri)}" target="_blank" rel="noreferrer">🌐 Open ${escapeHTML(endpoint.label)} (${escapeHTML(endpoint.uri)})</a>`);
     } else {
-      // A `mqtt://` or `mysql://` handed to a browser is at best a dialog
-      // asking what application to use, so these are copied and never opened.
+      // A mqtt:// or mysql:// handed to a browser is at best a dialog asking
+      // what application to use, so these are copied and never opened.
       buttons.push(`<button class="btn teal small" data-copy="${escapeAttr(endpoint.uri)}">📋 Copy ${escapeHTML(endpoint.label)} (${escapeHTML(endpoint.uri)})</button>`);
     }
   }
-  // A published port the endpoint table does not know about — something running
-  // beside this ecosystem. Its own page states its name; page-titles.sh fetched
-  // and remembered it, so the launcher reads as a place and not as a number.
+  // A published port the endpoint table does not know about. Its own page
+  // states its name; page-titles.sh fetched and remembered it, so the launcher
+  // reads as a place and not as a number.
   for (const port of detail.undeclared) {
     const label = port.title ? `${port.title} (${port.port})` : `Open Port ${port.port}`;
     buttons.push(`<a class="btn plain small" href="${escapeAttr(port.uri)}" target="_blank" rel="noreferrer">🌐 ${escapeHTML(label)}</a>`);
@@ -1471,8 +1325,8 @@ async function scan({ apps = true, quiet = false } = {}) {
   try {
     renderGrid(await get(`/api/containers${apps ? "" : "?apps=0"}`));
     $("#scan-state").textContent = new Date().toLocaleTimeString();
-    // The pane already open on a container is repainted along with the grid,
-    // because the two disagreeing is the thing the follow cadence exists for.
+    // The pane already open on a container is repainted with the grid, because
+    // the two disagreeing is what the follow cadence exists for.
     if (state.selected && !state.busy) {
       get(`/api/container/${encodeURIComponent(state.selected)}?live=1`)
         .then(renderDetail).catch(() => {});
@@ -1485,16 +1339,11 @@ async function scan({ apps = true, quiet = false } = {}) {
 }
 
 /* ARMED ON THE WALL CLOCK, NOT ON THE MOMENT THE SELECT CHANGED. Same
- * frequency either way; what the alignment buys is that a 15s scan lands on
- * :00, :15, :30 and :45 — the four tops of the pace clock — so the block of
- * log a scan produces is one colour, and the next one is the next colour. A
- * free-running cadence straddles the quarter and every scan comes out two
- * colours, which reads as two events. A swimmer leaves on the top; so does
- * the bench.
- *
- * ONLY WHEN THE INTERVAL DIVIDES THE MINUTE. 25s does not, so there is no
- * boundary to hold it to and it runs free — an alignment that has to lie
- * about where the boundary is would be worse than none. */
+ * frequency either way; the alignment buys that a 15s scan lands on :00, :15,
+ * :30 and :45 — the four tops of the pace clock — so the block of log a scan
+ * produces is one colour. A free-running cadence straddles the quarter and
+ * every scan comes out two colours, which reads as two events.
+ * ONLY WHEN THE INTERVAL DIVIDES THE MINUTE: 25s does not, so it runs free. */
 function armScan(seconds) {
   state.scanEvery = seconds;
   clearTimeout(state.scanPhase);
@@ -1512,17 +1361,14 @@ function armScan(seconds) {
   state.scanPhase = setTimeout(() => { scan({ quiet: true }); run(); }, step - (Date.now() % step));
 }
 
-/* HOW MUCH OF THE CARD TO DRAW, and it is a CLASS ON THE GRID rather than a
- * branch in cardHTML(). Building three shapes of card would put the density in
- * the markup, so a level change would mean a re-render -- and a re-render of a
- * grid whose meters are 5s old redraws them as "—" until the next tick. The
- * card is always whole; manager.css hides what this level does not want.
- *
- * REMEMBERED, unlike the ⏱ cadence beside it, which resets to 15s every load
- * on purpose because leaving a fast poll armed costs the box something. A
- * detail level costs nothing and is a way of reading rather than a setting, so
- * the manager opens the way you left it. Wrapped because a browser with site
- * data blocked THROWS on the property access, and the grid is not optional. */
+/* HOW MUCH OF THE CARD TO DRAW, as a CLASS ON THE GRID rather than a branch in
+ * cardHTML(): three shapes of card would put the density in the markup, so a
+ * level change would mean a re-render — and re-rendering a grid whose meters
+ * are 5s old redraws them as "—" until the next tick. The card is always
+ * whole; manager.css hides what this level does not want.
+ * REMEMBERED, unlike the ⏱ cadence, which resets to 15s every load because
+ * leaving a fast poll armed costs the box something. Wrapped because a browser
+ * with site data blocked THROWS on the property access. */
 const DENSITIES = ["low", "med", "high"];
 
 function applyDensity(level) {
@@ -1546,24 +1392,21 @@ function armMeters(on) {
 }
 
 /* A DEPTH, NOT A FLAG. A stop pressed during a rebuild puts two runs in flight
- * from one tab, and they finish in either order; a boolean meant whichever
- * returned FIRST re-enabled the whole bar while the other was still going. The
- * count is what `state.busy` has always been read for anyway -- everything that
- * tests it wants "is anything running", and a number answers that too. */
+ * from one tab and they finish in either order; a boolean meant whichever
+ * returned FIRST re-enabled the whole bar while the other was still going. */
 function follow(on) {
   state.busy = Math.max(0, (state.busy || 0) + (on ? 1 : -1));
   on = state.busy > 0;
   clearInterval(state.followTimer);
-  // apps=0: apps.sh curls a supervisor that is in the middle of being
-  // restarted, and waiting on it is what would make this cadence miss its beat.
+  // apps=0: apps.sh curls a supervisor in the middle of being restarted, and
+  // waiting on it is what would make this cadence miss its beat.
   state.followTimer = on
     ? setInterval(() => scan({ apps: false, quiet: true }), 2000)
     : null;
   // EVERY BUTTON GOES DARK EXCEPT THE ONES THAT MEAN STOP. Disabling the whole
   // bar was right for a second build and wrong for 🛑 and 🚨: the tab that
-  // started the rebuild is the tab whose hand is on it, and greying its stop
-  // for the eleven minutes of a build leaves that hand nothing to press.
-  // `preempts` comes from the server's action table — see api.action_table().
+  // started the rebuild is the tab whose hand is on it. `preempts` comes from
+  // the server action table.
   $$(".btn[data-action], .btn[data-cverb], .btn[data-saction]").forEach((button) => {
     button.disabled = on && !preempts(button);
   });
@@ -1577,17 +1420,12 @@ function preempts(button) {
 
 /* ------------------------------------------------------------------- verbs */
 /* WHICH BUTTON IS THE ONE THAT IS RUNNING. follow() greys the whole bar for the
- * length of a verb — it has to, because the server takes ONE action at a time
- * and refuses the second rather than queueing it — and a bar of forty identical
- * dimmed buttons does not say which of them the press went to. Four bands and a
- * toolbar can offer the same verb, so "the page is busy" was the only thing the
- * page said back, and on a build that takes minutes that is indistinguishable
- * from a click that never landed.
- *
+ * length of a verb — it has to, because the server takes ONE action at a time —
+ * and a bar of forty identical dimmed buttons does not say which press landed.
+ * On a build that takes minutes, "the page is busy" is indistinguishable from a
+ * click that never landed.
  * THE MARK IS ON THE ELEMENT THAT WAS PRESSED, not on the verb: two rows
- * offering `up-stack` for two different stacks are two different presses, and
- * lighting both would be the same lie one size smaller. The stylesheet keeps a
- * `.running` button at full contrast and pulses it while its neighbours dim. */
+ * offering up-stack for two stacks are two different presses. */
 function markRunning(button, on) {
   if (!button) return;
   button.classList.toggle("running", on);
@@ -1624,9 +1462,8 @@ async function runContainerAction(key, name, button) {
 }
 
 /* ONE STACK, AND THE NAME IS THE DIRECTORY UNDER APK:DOCKERS/. The bands hold
- * it already — it is the heading of the row the button sits in — so nothing
- * here maps a stack to a compose file; up-stack.sh does that, through the same
- * arrays the bench-wide verbs expand. */
+ * it already, so nothing here maps a stack to a compose file — up-stack.sh does
+ * that, through the same arrays the bench-wide verbs expand. */
 async function runStackAction(key, stack, button) {
   const row = state.actions.stack_actions?.[key];
   if (!row || !stack) return;
@@ -1666,17 +1503,16 @@ function wireMenus() {
 }
 
 function labelVerbs() {
-  // EVERY BUTTON'S WORDS COME FROM THE SERVER. A label typed here would be a
-  // second name for a verb whose first name is in api.ACTIONS, and the two
-  // would part company the first time one was edited.
+  // EVERY BUTTON WORDS COME FROM THE SERVER. A label typed here would be a
+  // second name for a verb whose first name is in api.ACTIONS.
   $$("[data-action]").forEach((button) => {
     const row = state.actions.actions[button.dataset.action];
     button.textContent = row ? row.label : button.dataset.action;
     button.onclick = () => runAction(button.dataset.action, button);
   });
-  // THE SAME NAMING, ONE RUNG DOWN. A stack verb is drawn only by the bands,
-  // never by the toolbar, and it carries the stack it is about on the element
-  // — so the label is still the server's and the argument is the row's.
+  // THE SAME NAMING, ONE RUNG DOWN. A stack verb is drawn only by the bands and
+  // carries the stack it is about on the element, so the label is still the
+  // server and the argument is the row.
   $$("[data-saction]").forEach((button) => {
     const row = state.actions.stack_actions?.[button.dataset.saction];
     button.textContent = row ? row.label : button.dataset.saction;
@@ -1686,35 +1522,25 @@ function labelVerbs() {
 }
 
 /* ONE CLICK IS GRANTED ONE WINDOW, AND THIS MENU HAS SEVEN PAGES IN IT.
- *
- * `open all` was `live.forEach((e) => window.open(e.uri))`. A browser gives a
- * click one window and blocks every one after it as a pop-up, so the button
- * opened the first live page and filed the other four under "Pop-ups blocked"
- * in the omnibox: a launcher that looks broken while it is being obeyed. Two
- * changes, and neither of them asks anybody to allow pop-ups for this origin:
- *
- *   · ONE PAGE IS A LINK, NOT A SCRIPT. `<a target="_blank">` is a navigation
- *     the person made, never a script-opened window, so it is never blocked —
- *     and with no feature string anywhere near it, it is a TAB.
+ * `open all` was live.forEach((e) => window.open(e.uri)), so a browser opened
+ * the first live page and filed the rest under "Pop-ups blocked": a launcher
+ * that looks broken while it is being obeyed. Two changes, neither of which
+ * asks anybody to allow pop-ups:
+ *   · ONE PAGE IS A LINK, NOT A SCRIPT. <a target="_blank"> is a navigation the
+ *     person made, so it is never blocked — and with no feature string, a TAB.
  *   · EVERY PAGE IS ONE WINDOW. `open all` opens a single wall and draws one
- *     iframe per live endpoint into it. That is the whole bench on one screen,
- *     which is what the button was reaching for, and it spends exactly the one
- *     window a click is allowed to spend.
- *
- * A tile that stays blank is a page that refuses to be framed
- * (`X-Frame-Options`, or a `frame-ancestors` policy), which is the server's
- * ruling and not a fault here — so every tile also carries its own address as
- * a link out, and the wall says so in its own header rather than leaving a
- * grey rectangle to be read as a dead container.
- */
+ *     iframe per live endpoint into it, spending the one window a click gets.
+ * A tile that stays blank is a page refusing to be framed (X-Frame-Options, or
+ * frame-ancestors), which is the server ruling — so every tile carries its own
+ * address as a link out and the wall says so in its header. */
 function openWebPageWall(live) {
   const wall = window.open("", "_blank");
   if (!wall) return; /* even the one window was refused; there is nothing to draw into */
 
-  /* The wall is written into `about:blank` and inherits no stylesheet, so the
+  /* The wall is written into about:blank and inherits no stylesheet, so the
    * furniture greys are handed over by value. The tones stay behind: nothing
-   * on this wall reports a state, and palette.py's rule is that a colour
-   * meaning a condition has one home. */
+   * here reports a state, and palette.py rule is that a colour meaning a
+   * condition has one home. */
   const css = getComputedStyle(document.documentElement);
   const tone = (name, fallback) => (css.getPropertyValue(name) || "").trim() || fallback;
 
@@ -1768,11 +1594,10 @@ function openWebPageWall(live) {
   wall.focus();
 }
 
-// endpoints.sh is `docker port` and an inspect PER CONTAINER, and both surfaces
-// that want it can ask at once -- boot fills the menu while a remembered ports
-// view asks for the table. One in flight at a time; the second caller gets the
-// first one's answer, which is the same answer a second run would have taken
-// seconds to produce.
+// endpoints.sh is docker port plus an inspect PER CONTAINER, and both surfaces
+// that want it can ask at once. One in flight at a time; the second caller gets
+// the first answer, which is the same answer a second run would take seconds
+// to produce.
 async function loadWebPages() {
   if (state.endpointsLoading) return state.endpointsLoading;
   const run = loadWebPagesOnce();
@@ -1784,9 +1609,8 @@ async function loadWebPagesOnce() {
   const host = $("#web-pages");
   try {
     const { endpoints } = await get("/api/endpoints");
-    // ONE FETCH, TWO SURFACES. This menu wants the browsable rows; the port
-    // table wants every row, including the `copy` ones a broker answers on.
-    // A second call would be the same eight-second script run twice.
+    // ONE FETCH, TWO SURFACES: this menu wants the browsable rows, the port
+    // table wants every row including the `copy` ones a broker answers on.
     state.endpoints = endpoints;
     if (state.view === "ports") renderPorts();
     const browsable = endpoints.filter((e) => e.kind === "open");
@@ -1795,9 +1619,9 @@ async function loadWebPagesOnce() {
       `<button data-open-all>🚀 Open all ${live.length} live page(s) in one window</button><div class="sep"></div>` +
       browsable.map((e) => {
         const name = e.title ? `${e.title} — ${e.label}` : e.label;
-        // A `down` endpoint is listed, not opened. Opening it produces a
+        // A `down` endpoint is listed, not opened: opening it produces a
         // browser error page that reads as a broken site rather than as a
-        // stopped container, which is the thing a person is actually looking at.
+        // stopped container.
         return e.state === "up"
           ? `<a href="${escapeAttr(e.uri)}" target="_blank" rel="noreferrer">🌐 ${escapeHTML(name)} — ${escapeHTML(e.uri)}</a>`
           : `<div class="note">⏸️ ${escapeHTML(name)} is ${escapeHTML(e.state)} — ${escapeHTML(e.uri)}</div>`;
@@ -1828,9 +1652,8 @@ async function boot() {
   // NOT `select`: that name is the module-level function the card grid calls to
   // open a container, and shadowing it here is how a click stops working.
   const cadence = $("#auto-refresh");
-  // The floor is the server's, asked for rather than typed: a full scan is four
-  // scripts against every container on the box and takes a second or two of any
-  // gap already.
+  // The floor is the server, asked for rather than typed: a full scan is four
+  // scripts against every container and takes a second or two of any gap.
   [5, 10, 15, 20, 25, 30].forEach((seconds) => {
     const option = document.createElement("option");
     option.value = String(seconds);
@@ -1846,16 +1669,12 @@ async function boot() {
   density.onchange = () => applyDensity(density.value);
   applyDensity(density.value);
 
-  // REMEMBERED for the same reason the detail level is: which reading of the
-  // bench you want is a way of working, not a setting, and it costs the box
-  // nothing to come back to it.
-  //
-  // A RADIO GROUP AND NOT A `<select>` SINCE 2026-09-10, so `#view` is the
-  // group and the value lives on whichever input is checked. `change` fires on
-  // the input that just BECAME checked and not on the one that lost it, so
-  // there is no need to ask which; the group's own name is what deselects the
-  // other two. The `checked` in the markup is the cards default, and is
-  // overwritten here before the first paint by whatever was remembered.
+  // REMEMBERED for the reason the detail level is: which reading of the bench
+  // you want is a way of working, not a setting.
+  // A RADIO GROUP AND NOT A <select>, so #view is the group and the value lives
+  // on whichever input is checked. `change` fires on the input that just BECAME
+  // checked, so there is no need to ask which. The `checked` in the markup is
+  // the cards default and is overwritten here before the first paint.
   const wanted = VIEWS.includes(savedView()) ? savedView() : "cards";
   $$("#view input[name=view]").forEach((radio) => {
     radio.checked = radio.value === wanted;
@@ -1891,9 +1710,9 @@ async function boot() {
 
   $("#copy-log").onclick = () => {
     // THE TEXT IS ON SCREEN BEFORE THE COPY, and the selection is a FILTER
-    // rather than a fixed tail — the lines you want are rarely the last five,
-    // and when a rebuild fails they are eight red ones scattered through four
-    // hundred. The button this replaces copied silently.
+    // rather than a fixed tail — when a rebuild fails the lines you want are
+    // eight red ones scattered through four hundred. The button this replaces
+    // copied silently.
     sheet("📋 Execution log", logText(false), { filter: true });
   };
   $("#sheet-errors-only").onchange = (event) => {
