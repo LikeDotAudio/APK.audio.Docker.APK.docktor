@@ -42,6 +42,8 @@ CLI_ACTIONS = {
 
 # Verb -> (banner, script). Everything after the verb is forwarded verbatim.
 CLI_ACTIONS_WITH_ARGS = {
+    ('fetch-and-run', 'sync-repos', 'clone-and-run', 'repos'): ("🐙 Fetching Git repositories and launching Docker stacks...", 'fetch-and-run.sh'),
+    ('open', 'open-repo', 'git-open', 'repo'): ("📂 Opening/inspecting microservice Git repository...", 'open-repo.sh'),
     ('sos', 'panic', 'panic-reboot', '--panic', '-p'): ("🚨 Emergency SOS Panic Stop...", 'panic.sh'),
     ('logs', 'log'): ("📜 Reading container log...", 'logs.sh'),
     ('restart', 'bounce'): ("🔄 Restarting container...", 'restart.sh'),
@@ -108,6 +110,10 @@ USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
   clear-logs           TRUNCATE every container's log file on disk
   log-rates            sample log size and live growth rate per container
   ports                free every published host port
+  fetch-and-run <urls|dirs…> [--build] [--rebuild]
+                       clone/pull a list of Git repositories or local paths,
+                       locate their docker-compose files, and bring up stacks.
+                       Pass `--file repos.txt` to read a list of repos.
   sos | panic | --panic [--dry-run]
                        emergency stop -- kills everything but the manager,
                        and on an already-empty bench reboots the manager
