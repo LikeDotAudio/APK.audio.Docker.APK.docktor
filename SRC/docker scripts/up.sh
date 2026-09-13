@@ -49,4 +49,9 @@ if [ $status -ne 0 ]; then
 fi
 
 echo -e "\n${BOLD}${GREEN}✅ APK.audio Ecosystem Containers Active!${OFF}"
+
+# Open browser to DockTor Web UI immediately after DockTor container is up
+log_step "Loading DockTor Web UI (http://127.0.0.1:8765/)..."
+python3 -c "import webbrowser; webbrowser.open('http://127.0.0.1:8765/')" 2>/dev/null || true
+
 exit 0

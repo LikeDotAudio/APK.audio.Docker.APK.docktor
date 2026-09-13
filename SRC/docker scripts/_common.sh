@@ -325,9 +325,9 @@ for_each_stack() {
     local -a order
 
     if [ "$direction" = "reverse" ]; then
-        order=(node netbox ember aes70 nmos portal mqtt core)
+        order=(node netbox ember aes70 nmos portal mqtt core docktor)
     else
-        order=(core mqtt portal nmos aes70 ember netbox node)
+        order=(docktor core mqtt portal nmos aes70 ember netbox node)
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
@@ -336,6 +336,7 @@ for_each_stack() {
     for stack in "${order[@]}"; do
         echo -e "\n── ${stack} ──"
         case "$stack" in
+            docktor|manager) compose=("${COMPOSE_MANAGER[@]}");;
             core)   compose=("${COMPOSE_CORE[@]}");;
             mqtt)   compose=("${COMPOSE_MQTT[@]}");;
             portal) compose=("${COMPOSE_PORTAL[@]}");;
