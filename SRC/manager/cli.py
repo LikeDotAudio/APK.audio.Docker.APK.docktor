@@ -30,7 +30,6 @@ CLI_ACTIONS = {
     ('up', 'remount', 'mount', 'start'): ("🚀 Remounting APK.audio containers...", 'up.sh', []),
     ('rebuild', 'clean'): ("⚡ Clean rebuilding APK.audio containers...", 'rebuild-all.sh', []),
     ('down', 'stop'): ("🛑 Stopping APK.audio containers...", 'down.sh', []),
-    ('sos', 'panic'): ("🚨 Emergency SOS Panic Stop...", 'panic.sh', ['PANIC_CLI']),
     ('gates',): ("🛡️ Running pre-build gates only...", 'test-gates.sh', []),
     ('verify',): ("🧪 Verifying the running ecosystem...", 'verify.sh', []),
     ('ports',): ("💥 Freeing every published host port...", 'free-ports.sh', []),
@@ -43,6 +42,7 @@ CLI_ACTIONS = {
 
 # Verb -> (banner, script). Everything after the verb is forwarded verbatim.
 CLI_ACTIONS_WITH_ARGS = {
+    ('sos', 'panic', 'panic-reboot', '--panic', '-p'): ("🚨 Emergency SOS Panic Stop...", 'panic.sh'),
     ('logs', 'log'): ("📜 Reading container log...", 'logs.sh'),
     ('restart', 'bounce'): ("🔄 Restarting container...", 'restart.sh'),
     # NOT the bare `rebuild` above, which is the whole-bench one: this builds
@@ -108,9 +108,11 @@ USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
   clear-logs           TRUNCATE every container's log file on disk
   log-rates            sample log size and live growth rate per container
   ports                free every published host port
-  sos | panic          emergency stop -- kills everything but the manager,
+  sos | panic | --panic [--dry-run]
+                       emergency stop -- kills everything but the manager,
                        and on an already-empty bench reboots the manager
-                       instead, rebuilding every image from the code
+                       instead, rebuilding every image from the code.
+                       Pass `--dry-run` to rehearse without touching containers.
   nuke                 REHEARSAL by default: what a nuke would remove, and
                        nothing removed. ☢️ THE PRESS IS
                        `nuke --yes-nuke-everything`, which deletes every

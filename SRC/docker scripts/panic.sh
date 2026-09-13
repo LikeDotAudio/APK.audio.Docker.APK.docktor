@@ -34,15 +34,30 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 # measured on a shared host — it answers WHAT WOULD GO and WHAT WOULD NOT COME
 # BACK without taking the bench out from under anybody.
 DRY_RUN=0
+PRUNE=0
+CLEAR_LOGS=0
+NUKE=0
 SENDER=""
 for arg in "$@"; do
     case "$arg" in
-        --dry-run|-n) DRY_RUN=1;;
+        --dry-run|-n)  DRY_RUN=1;;
+        --prune)        PRUNE=1;;
+        --clear-logs)   CLEAR_LOGS=1;;
+        --nuke)         NUKE=1;;
         -*) log_error "Unknown option: $arg"
-            echo "Usage: ./panic.sh [sender] [--dry-run]"; exit 2;;
+            echo "Usage: ./panic.sh [sender] [--dry-run] [--prune] [--clear-logs] [--nuke]"; exit 2;;
         *)  [ -z "$SENDER" ] && SENDER="$arg";;
     esac
 done
+
+if [ "$NUKE" = "1" ]; then
+    log_step "PANIC delegating to nuke.sh"
+    if [ "$DRY_RUN" = "1" ]; then
+        exec "$MANAGEMENT_SCRIPTS_DIR/nuke.sh" "$SENDER" --dry-run
+    else
+        exec "$MANAGEMENT_SCRIPTS_DIR/nuke.sh" --yes-nuke-everything "$SENDER"
+    fi
+fi
 SENDER="${SENDER:-PANIC_SCRIPT}"
 REBOOT_CONTAINER="${MANAGER_CONTAINER}-Panic-Reboot"
 
@@ -190,6 +205,16 @@ log_step "Stacks this panic emptied"
 # the mode that puts STACKS_STALE on the bus.
 log_step "Images already older than the code"
 "$MANAGEMENT_SCRIPTS_DIR/staleness.sh" --report || true
+
+if [ "$CLEAR_LOGS" = "1" ]; then
+    log_step "PANIC clearing docker container logs"
+    "$MANAGEMENT_SCRIPTS_DIR/clear-logs.sh" || true
+fi
+
+if [ "$PRUNE" = "1" ]; then
+    log_step "PANIC pruning unused docker build cache & dangling resources"
+    "$MANAGEMENT_SCRIPTS_DIR/prune.sh" || true
+fi
 
 if [ "$MODE" = "STOP" ]; then
     announce PANIC_COMPLETE "{\"sender\":\"$SENDER\",\"mode\":\"STOP\",\"spared\":\"$MANAGER_CONTAINER\"}"
