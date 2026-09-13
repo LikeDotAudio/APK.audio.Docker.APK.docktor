@@ -283,7 +283,7 @@ emit_endpoint Netbox-App 8080/tcp 8081 open \
 emit_endpoint Netbox-App 8080/tcp 8081 open \
     "NetBox GraphQL" "http://{host}:{port}/graphql/"
 
-# --- Server:Ember ---------------------------------------------------------
+# --- PROTOCOL:DEV:EMBER ---------------------------------------------------------
 # ONE ROW, NOT TWO. ember-docs publishes 3221 and serves Lawo specification
 # PDFs — somebody else specification, so it is in EXCLUDED_PORTS.
 # copy, not open: S101 is a framed TCP stream. Ember+/S101 has no registered URI

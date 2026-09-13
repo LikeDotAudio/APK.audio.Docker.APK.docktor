@@ -2,13 +2,13 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🚀 Mount ONE stack. Gates first, its own ports second, its own compose third.
-#   ./up-stack.sh 'Server:Ember'
+#   ./up-stack.sh 'PROTOCOL:DEV:EMBER'
 # up.sh is the bench verb (eight compose files, core before node, minutes of
 # build). This is the same act scoped to one stack, because the dashboard offers
 # a fix PER STACK and had only the bench-wide verb behind it — the fix for
 # DockTor rebuilt the other eight and did not touch the manager
 # compose file at all, since for_each_stack does not drive it.
-# THE ARGUMENT IS THE DIRECTORY UNDER APK:DOCKERS/ (Server:Ember,
+# THE ARGUMENT IS THE DIRECTORY UNDER APK:DOCKERS/ (PROTOCOL:DEV:EMBER,
 # DockTor), which is what stacks.sh prints. compose_for_stack turns it
 # into the same ARRAY the bench-wide verbs expand, so the node arrives with its
 # hardware overlay and the manager with its own file.
@@ -23,7 +23,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 STACK="${1:-}"
 if [ -z "$STACK" ]; then
     log_error "Which stack? Name the directory under APK:DOCKERS/."
-    echo "Usage: ./up-stack.sh 'Server:Ember'"
+    echo "Usage: ./up-stack.sh 'PROTOCOL:DEV:EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi

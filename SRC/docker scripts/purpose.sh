@@ -348,7 +348,7 @@ PURPOSE = {
         "disappears while you are reading it is what sends people back to a browser tab "
         "on the real internet."),
 
-    # --- Server:Ember ----------------------------------------------------------
+    # --- PROTOCOL:DEV:EMBER ----------------------------------------------------------
     "Ember-Provider": (
         "A real Ember+ provider on S101/TCP 9000",
         "The embserver provider, serving a GLOW tree whose values come from CSV files "

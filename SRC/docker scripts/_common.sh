@@ -34,7 +34,7 @@ else
     REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 fi
 
-# Exported, not just assigned: Server:Ember/docker-compose.yml and
+# Exported, not just assigned: PROTOCOL:DEV:EMBER/docker-compose.yml and
 # docker-compose.manager.yml interpolate ${APKAUDIO_REPO} and Ember spells it
 # `:?` — unset is a hard refusal at interpolation.
 export APKAUDIO_REPO="$REPO_ROOT"
@@ -53,7 +53,7 @@ PORTAL_COMPOSE_FILE="$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml"
 NMOS_COMPOSE_FILE="$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml"
 AES70_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml"
 NETBOX_COMPOSE_FILE="$DOCKERS_DIR/Server:Netbox/Docker/docker-compose.yml"
-EMBER_COMPOSE_FILE="$DOCKERS_DIR/Server:Ember/Docker/docker-compose.yml"
+EMBER_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml"
 
 GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
 BOLD="\033[1m"; OFF="\033[0m"

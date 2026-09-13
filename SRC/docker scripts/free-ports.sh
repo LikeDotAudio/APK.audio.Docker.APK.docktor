@@ -4,7 +4,7 @@
 # 💥 KABOOM — take every port the stack is about to bind, by force.
 #   ./free-ports.sh                         every port the driven files publish
 #   ./free-ports.sh 8080 1883               only these
-#   ./free-ports.sh --stack 'Server:Ember'  only what ONE stack publishes
+#   ./free-ports.sh --stack 'PROTOCOL:DEV:EMBER'  only what ONE stack publishes
 #   ./free-ports.sh --list                  print what it WOULD take, evict nothing
 # docker compose up does not negotiate for a published port: it fails that one
 # container with "port is already allocated", leaves the rest running, and the
