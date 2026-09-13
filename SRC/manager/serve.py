@@ -587,7 +587,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False):
     THE RESOURCE SAMPLER IS STARTED HERE — the once-a-minute beat that publishes
     a full stats sample belongs to whichever process is the long-running one.
     """
-    from .readers import start_resource_sampler
+    from .readers import start_resource_sampler, start_watchdog
 
     url = f"http://{'localhost' if bind in ('0.0.0.0', '127.0.0.1', '::') else bind}:{port}/"
     httpd = _bind_or_wait(bind, port, url, open_browser)
@@ -601,6 +601,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False):
                             "authentication and can stop and rebuild the bench — "
                             "put an authenticating proxy in front of it.")
     start_resource_sampler()
+    start_watchdog()
 
     if open_browser:
         # Opt-in, and never in a container: there is no browser there, and

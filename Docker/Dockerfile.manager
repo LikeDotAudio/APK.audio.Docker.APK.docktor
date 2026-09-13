@@ -49,8 +49,8 @@ WORKDIR /app
 # The two halves of the tool, and two COPYs because they are two things: the
 # package is what is imported, the scripts are what is RUN. Every docker verb is
 # in the second and none in the first.
-COPY ["APK:DOCKERS/DockTor/SRC/manager", "/app/APK:DOCKERS/DockTor/SRC/manager"]
-COPY ["APK:DOCKERS/DockTor/SRC/docker scripts", "/app/APK:DOCKERS/DockTor/SRC/docker scripts"]
+COPY ["APK:DOCKERS/APK:docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
+COPY ["APK:DOCKERS/APK:docktor/SRC/docker scripts", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
 COPY ["APK:DOCKERS/Manager:docktor.py", "/app/APK:DOCKERS/Manager:docktor.py"]
 
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
@@ -62,7 +62,7 @@ COPY ["APK:DOCKERS/APK:BareMetal/SRC/contracts/tokens/brand.json", "/app/APK:DOC
 # guess at the order is the defect that removes.
 COPY ["APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
 
-RUN chmod +x "/app/APK:DOCKERS/DockTor/SRC/docker scripts/"*.sh
+RUN chmod +x "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts/"*.sh
 
 EXPOSE 8765
 

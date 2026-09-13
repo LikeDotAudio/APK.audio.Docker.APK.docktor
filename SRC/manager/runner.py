@@ -211,6 +211,12 @@ def cancel_running_scripts(reason="", grace_seconds=8.0):
     return names
 
 
+def is_any_script_running():
+    """True if any management script is currently running."""
+    with _RUNNING_LOCK:
+        return bool(_RUNNING)
+
+
 def run_management_script(name, args=(), on_line_callback=None, quiet=False,
                           cancellable=False):
     """Run one script from the collection; return (exit_code, combined output).

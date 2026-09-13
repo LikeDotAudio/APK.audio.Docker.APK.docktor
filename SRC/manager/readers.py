@@ -19,7 +19,7 @@ import threading
 
 from .bus import emit
 from .paths import DOCKERS_DIRECTORY
-from .runner import run_management_script
+from .runner import run_management_script, is_any_script_running
 
 RESOURCE_SAMPLE_SECONDS = 60
 
@@ -520,4 +520,32 @@ def run_container_tests(on_line_callback=None):
     exit_code, _ = run_management_script('verify.sh',
                                          on_line_callback=on_line_callback)
     return exit_code == 0
+
+
+def start_watchdog(interval=30):
+    """Periodically inspect declared stacks and auto-remount any down/empty stacks.
+
+    Pushes for 100% green lights across all driven ecosystem stacks.
+    """
+    def loop():
+        time.sleep(15)
+        while True:
+            try:
+                if not is_any_script_running():
+                    stack_list = read_stacks(quiet=True)
+                    for s in stack_list:
+                        if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
+                            stack_name = s.get("stack")
+                            if stack_name and not is_any_script_running():
+                                emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
+                                run_management_script('up-stack.sh', args=[stack_name], cancellable=True)
+                                time.sleep(10)
+            except Exception as err:
+                emit("WATCHDOG_ERROR", {"error": str(err)})
+            time.sleep(interval)
+
+    thread = threading.Thread(target=loop, daemon=True, name="watchdog-reconciler")
+    thread.start()
+    emit("WATCHDOG_STARTED", {"interval_seconds": interval})
+    return thread
 

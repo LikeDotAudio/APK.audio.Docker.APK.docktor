@@ -33,7 +33,7 @@ services:
   manager:
     build:
       context: "../../.."                                          # repo root
-      dockerfile: "APK:DOCKERS/DockTor/Docker/Dockerfile.manager"
+      dockerfile: "APK:DOCKERS/APK:docktor/Docker/Dockerfile.manager"
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped

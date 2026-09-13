@@ -269,7 +269,7 @@ node_hardware_report() {
 # Dockerfile.manager does not COPY the compose file, so /app has no such path.
 # The fallback literal is deliberate: an unset name makes panic.sh's exclusion
 # match nothing and the panic takes the manager with it.
-MANAGER_COMPOSE_FILE="$DOCKERS_DIR/DockTor/Docker/docker-compose.manager.yml"
+MANAGER_COMPOSE_FILE="$DOCKERS_DIR/APK:docktor/Docker/docker-compose.manager.yml"
 [ -f "$MANAGER_COMPOSE_FILE" ] \
     || MANAGER_COMPOSE_FILE="$MANAGEMENT_SCRIPTS_DIR/../../Docker/docker-compose.manager.yml"
 
