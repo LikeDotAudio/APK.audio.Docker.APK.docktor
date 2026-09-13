@@ -52,7 +52,7 @@ validate_stack "Server:Broker:MQTT"    "${COMPOSE_MQTT[@]}"
 validate_stack "APK:audio:WebPortal"   "${COMPOSE_PORTAL[@]}"
 validate_stack "Server:Discovery:NMOS" "${COMPOSE_NMOS[@]}"
 validate_stack "PROTOCOL:DEV:AES70"    "${COMPOSE_AES70[@]}"
-validate_stack "Server:Netbox"         "${COMPOSE_NETBOX[@]}"
+validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"
 # PROTOCOL:DEV:EMBER can fail config on the ENVIRONMENT rather than the file: it
 # interpolates ${APKAUDIO_REPO:?}. _common.sh exports it, so a failure here
 # means the export went away, not that the YAML is wrong.

@@ -42,7 +42,7 @@ export APKAUDIO_REPO="$REPO_ROOT"
 # ── Compose files: <stack>/Docker/<file>. The only place either half is
 # spelled. ⚠️ A wrong path does not raise — compose warns and carries on, so
 # every stack reads as empty. Build contexts are repo-root-relative.
-COMPOSE_FILE="$DOCKERS_DIR/Server:Storage:SQL database/Docker/docker-compose.yml"
+COMPOSE_FILE="$DOCKERS_DIR/DATABASE:server:SQL/Docker/docker-compose.yml"
 BAREMETAL_COMPOSE_FILE="$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml"
 # Overridable so `check.sh node-hardware` can point it at fixtures; the
 # hardware decision runs at source time, so that is the only way to test it.
@@ -52,7 +52,7 @@ MQTT_COMPOSE_FILE="$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml"
 PORTAL_COMPOSE_FILE="$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml"
 NMOS_COMPOSE_FILE="$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml"
 AES70_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml"
-NETBOX_COMPOSE_FILE="$DOCKERS_DIR/Server:Netbox/Docker/docker-compose.yml"
+NETBOX_COMPOSE_FILE="$DOCKERS_DIR/DATABASE:server:NETBOX/Docker/docker-compose.yml"
 EMBER_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml"
 
 GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
