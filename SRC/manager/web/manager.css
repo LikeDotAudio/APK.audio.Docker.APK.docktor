@@ -673,7 +673,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * quarter of a minute. Spelled once here, read by both the dial and the log, so
  * the legend cannot drift from the thing it is a legend for. */
 :root {
-  --lane-red:    #e53935;
+  --lane-orange: rgb(244, 144, 44);
   --lane-yellow: #fdd835;
   --lane-green:  #43a047;
   --lane-blue:   #1e88e5;
@@ -682,7 +682,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .log-body { display: flex; flex: 1; min-height: 0; }
 .log-body .log { flex: 1; }
 
-.log .l.q0 { color: var(--lane-red); }
+.log .l.q0 { color: var(--lane-orange); }
 .log .l.q1 { color: var(--lane-yellow); }
 .log .l.q2 { color: var(--lane-green); }
 .log .l.q3 { color: var(--lane-blue); }
@@ -690,7 +690,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 /* AFTER the quarters, and the order is the whole rule: the two selectors weigh
  * the same, so this line is the only thing keeping a failure the colour of a
  * failure. A quarter is when a line arrived; `err` is what it says. */
-.log .l.err { color: var(--tone-hot); }
+.log .l.err { color: #ff3333 !important; font-weight: 600; }
 
 .pace {
   flex: 0 0 auto;
@@ -730,7 +730,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .pace .sweep  { animation: pace-sweep 60s linear infinite; stroke: #0d0d0d; stroke-width: 1; }
 .pace .minute { animation: pace-sweep 3600s linear infinite; fill: var(--ink); stroke: var(--ground); stroke-width: 1.5; }
 
-.pace .sweep.red    { fill: var(--lane-red); }
+.pace .sweep.orange, .pace .sweep.red { fill: var(--lane-orange); }
 .pace .sweep.yellow { fill: var(--lane-yellow); }
 .pace .sweep.green  { fill: var(--lane-green); }
 .pace .sweep.blue   { fill: var(--lane-blue); }

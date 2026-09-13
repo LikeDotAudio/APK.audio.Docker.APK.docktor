@@ -162,7 +162,7 @@ function openStream() {
 const LANES = [
   // `top` is the second of the minute at which this hand is at 60, which makes
   // it both the hand phase and the quarter it owns. One table, both jobs.
-  { colour: "red",    top:  0 },
+  { colour: "orange", top:  0 },
   { colour: "yellow", top: 15 },
   { colour: "green",  top: 30 },
   { colour: "blue",   top: 45 },

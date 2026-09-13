@@ -29,7 +29,7 @@ from .paths import ACCENT
 OK = "#00e676"      # up, and it says so itself -- a healthcheck passed
 LIVE = "#29b6f6"    # up, with nothing attesting to it. Running != healthy.
 WARM = "#ffc400"    # starting, restarting, working hard
-HOT = "#ff5252"     # unhealthy, exited, dead, out of headroom
+HOT = "#ff3333"     # unhealthy, exited, dead, out of headroom
 IDLE = "#78909c"    # created, paused, or simply nobody measuring
 # THE SIXTH, AND NOT A CONTAINER STATE — which is why it needed its own colour.
 # Every tone above answers "how is this container doing"; a stale image is a
