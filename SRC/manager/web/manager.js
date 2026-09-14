@@ -43,6 +43,10 @@ const state = {
   scanEvery: 0,
   scanTimer: null,
   scanPhase: null,  // the one-shot that walks the scan onto a pace-clock mark
+  autoRebuildTimer: null,
+  autoRebuildSeconds: 30,
+  autoRebuildKey: null,
+  autoRebuildCancelled: false,
   meterTimer: null,
   followTimer: null,
   busy: 0,          // a DEPTH of runs in flight, not a flag -- see follow()
@@ -582,17 +586,87 @@ function renderDarkStacks(snapshot) {
 function renderStaleImages(snapshot) {
   const host = $("#stale-images");
   const stale = snapshot.action_running ? [] : (snapshot.stale_services || []);
-  host.hidden = !stale.length;
-  if (!stale.length) { host.innerHTML = ""; return; }
 
-  // THE CAPTION IS SAID ONCE, IN THE LEAD, and the rows carry only what
-  // differs — seven rows repeating one sentence fills the pane and pushes the
-  // containers that ARE fine below the fold.
-  // WHAT THE ROW IS ABOUT IS THE CONTAINER, and it is the heading now. It used
-  // to be the stack, so a row read as four unlabelled strings about a stack
-  // with nothing wrong with it. Every field says what it is: the container, the
-  // image, how far it lags, and the file that decided so.
+  if (!stale.length) {
+    if (state.autoRebuildTimer) {
+      clearInterval(state.autoRebuildTimer);
+      state.autoRebuildTimer = null;
+    }
+    state.autoRebuildKey = null;
+    state.autoRebuildCancelled = false;
+    state.autoRebuildSeconds = 30;
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+
+  host.hidden = false;
+
+  const currentKey = stale.map((r) => r.container || r.service || r.image).sort().join(",");
+  if (state.autoRebuildKey !== currentKey) {
+    state.autoRebuildKey = currentKey;
+    state.autoRebuildSeconds = 30;
+    state.autoRebuildCancelled = false;
+    if (state.autoRebuildTimer) {
+      clearInterval(state.autoRebuildTimer);
+      state.autoRebuildTimer = null;
+    }
+  }
+
+  if (!state.autoRebuildTimer && !state.autoRebuildCancelled && !snapshot.action_running) {
+    state.autoRebuildTimer = setInterval(() => {
+      if (snapshot.action_running || state.autoRebuildCancelled) {
+        clearInterval(state.autoRebuildTimer);
+        state.autoRebuildTimer = null;
+        return;
+      }
+      state.autoRebuildSeconds -= 1;
+      const countEl = $("#stale-timer-count");
+      if (countEl) {
+        countEl.textContent = `${state.autoRebuildSeconds}`;
+      }
+      if (state.autoRebuildSeconds <= 0) {
+        clearInterval(state.autoRebuildTimer);
+        state.autoRebuildTimer = null;
+        const btn = $('button[data-action="rebuild-all"]') || $("#stale-rebuild-now");
+        runAction("rebuild-all", btn, true);
+      }
+    }, 1000);
+  }
+
   host.innerHTML = `
+    <div class="dark-stack stale auto-rebuild-banner" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+        <div>
+          <h3 style="margin: 0; font-size: 1.15em; color: #f87171; display: flex; align-items: center; gap: 8px;">
+            <span>⚡ Vigilant Auto-Rebuild Scheduled</span>
+            ${!state.autoRebuildCancelled ? `
+              <span style="background: #ef4444; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                <span id="stale-timer-count">${state.autoRebuildSeconds}</span>s countdown
+              </span>
+            ` : `
+              <span style="background: #6b7280; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                PAUSED
+              </span>
+            `}
+          </h3>
+          <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
+            ${!state.autoRebuildCancelled ? 
+              `DockTor detected <b>${stale.length} stale container${stale.length > 1 ? "s" : ""}</b> running older code. Automatic rebuild &amp; remount will execute when timer expires.` :
+              `Automatic rebuild has been paused by user. Click <b>Rebuild Now</b> to execute rebuild.`
+            }
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="stale-rebuild-now" class="btn small violet" style="white-space: nowrap;">⚡ Rebuild Now</button>
+          ${!state.autoRebuildCancelled ? `
+            <button id="stale-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
+          ` : `
+            <button id="stale-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+          `}
+        </div>
+      </div>
+    </div>
     <p class="dark-lead stale">⚡ <b>${stale.length} container${stale.length > 1 ? "s are" : " is"}
        running an image that was built before the code inside it.</b>
        ${stale.length > 1 ? "They are" : "It is"} up and healthy and every other reading on this
@@ -613,8 +687,39 @@ function renderStaleImages(snapshot) {
                data-container="${escapeAttr(row.container)}"></button></p>` : ""}
       </div>`).join("")}`;
 
-  // The verb words are the server, like every button here, and the container
-  // it is aimed at is the row. Guarded for the pre-/api/actions first grid.
+  const nowBtn = $("#stale-rebuild-now", host);
+  if (nowBtn) {
+    nowBtn.onclick = () => {
+      if (state.autoRebuildTimer) {
+        clearInterval(state.autoRebuildTimer);
+        state.autoRebuildTimer = null;
+      }
+      state.autoRebuildCancelled = true;
+      runAction("rebuild-all", nowBtn, true);
+    };
+  }
+
+  const cancelBtn = $("#stale-cancel-timer", host);
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      if (state.autoRebuildTimer) {
+        clearInterval(state.autoRebuildTimer);
+        state.autoRebuildTimer = null;
+      }
+      state.autoRebuildCancelled = true;
+      renderStaleImages(snapshot);
+    };
+  }
+
+  const resumeBtn = $("#stale-resume-timer", host);
+  if (resumeBtn) {
+    resumeBtn.onclick = () => {
+      state.autoRebuildCancelled = false;
+      state.autoRebuildSeconds = 30;
+      renderStaleImages(snapshot);
+    };
+  }
+
   if (state.actions) {
     $$("[data-cverb]", host).forEach((button) => {
       const row = state.actions.container_actions[button.dataset.cverb];
@@ -1544,10 +1649,10 @@ function markRunning(button, on) {
   button.classList.toggle("running", on);
 }
 
-async function runAction(key, button) {
+async function runAction(key, button, skipConfirm = false) {
   const row = state.actions.actions[key];
   if (!row) return;
-  if (!(await askAll(row))) return;
+  if (!skipConfirm && !(await askAll(row))) return;
   markRunning(button, true);
   follow(true);
   try {
