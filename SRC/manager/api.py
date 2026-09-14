@@ -20,6 +20,7 @@ reason for pressing it.
 """
 
 import os
+import re
 import glob
 import json
 import time
@@ -409,6 +410,24 @@ def snapshot(quiet=True, with_apps=True):
                  for row in (read_stale_images(quiet=quiet) if with_apps else [])
                  if row["container"]}
 
+    stacks = read_stacks(quiet=quiet)
+    stack_repo_map = {}
+    repo_root = os.environ.get("APKAUDIO_REPO") or REPOSITORY_ROOT
+    for s in stacks:
+        stk = s["stack"]
+        abs_stack_path = os.path.join(repo_root, "APK:DOCKERS", stk)
+        file_uri = f"file://{abs_stack_path}"
+        repo_info = {"name": stk, "path": file_uri}
+        if s.get("compose_file") and os.path.exists(s["compose_file"]):
+            try:
+                with open(s["compose_file"], encoding="utf-8", errors="replace") as handle:
+                    for cname in re.findall(r'container_name:\s*["\']?([^"\'\s#]+)', handle.read()):
+                        stack_repo_map[cname] = repo_info
+            except OSError:
+                pass
+        if s.get("project") and s["project"] not in stack_repo_map:
+            stack_repo_map[s["project"]] = repo_info
+
     cards = []
     for container in containers:
         name = container["name"]
@@ -422,17 +441,12 @@ def snapshot(quiet=True, with_apps=True):
             "dead": palette.is_dead(container["status"]),
             "ours": is_ours(container, projects),
             "group": palette.group_of(name),
-            # The card draws this and not `name`: the stack is already the
-            # heading, so `Netbox-` on all five is that heading a sixth time.
-            # `name` stays the identity the click and the meters key on.
             "leaf": palette.leaf_of(name),
             "published": published_ports(container["ports"]),
             "apps": apps.get(name, []),
             "resources": stats.get(name),
-            # ON THE CARD, because that is where a person is looking when they
-            # decide whether to trust what they see: a stale container is green
-            # on every other field it draws.
             "staleness": staleness.get(name),
+            "repo": stack_repo_map.get(name) or stack_repo_map.get(container.get("project")),
         })
         cards.append(row)
 
@@ -442,8 +456,10 @@ def snapshot(quiet=True, with_apps=True):
     groups = {}
     for card in cards:
         groups.setdefault(card["group"], []).append(card)
+    HEX_HASH_PATTERN = re.compile(r"^[0-9a-fA-F]{8,64}$")
     ordered = sorted(groups,
-                     key=lambda label: (not any(c["ours"] for c in groups[label]),
+                     key=lambda label: (bool(HEX_HASH_PATTERN.match(label)),
+                                        not any(c["ours"] for c in groups[label]),
                                         label.lower()))
     # WHAT IS NOT HERE, alongside what is. Every key above describes a
     # container that EXISTS, and a grid of those cannot draw an absence: a stack
@@ -452,13 +468,12 @@ def snapshot(quiet=True, with_apps=True):
     # ON EVERY SCAN, FAST CADENCE INCLUDED: stacks.sh is two docker ps calls and
     # six file reads, cheaper than the ps.sh above it, and the fast cadence runs
     # precisely while an action is emptying the bench.
-    stacks = read_stacks(quiet=quiet)
     # ONE COLOUR PER STACK, decided over the whole bench rather than per group,
     # so adjacent stacks are never drawn alike. Keyed on `ordered` because that
     # is the order the grid lays them out.
     hues = palette.hues_for(ordered)
     document = {
-        "groups": [{"label": label,
+        "groups": [{"label": f"⚙️ MOUNTING ({label})" if HEX_HASH_PATTERN.match(label) else label,
                     "ours": any(c["ours"] for c in groups[label]),
                     "hue": hues[label],
                     "containers": sorted(groups[label], key=lambda c: c["name"].lower())}

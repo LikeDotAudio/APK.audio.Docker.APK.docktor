@@ -27,6 +27,7 @@ docker rm -f Storage-MariaDB Storage-Portal Storage-Broker Node-BareMetal \
              Broker-Mosquitto Broker-SqlCapture Node-BareMetal-Broker \
              Portal-Broker Portal-Orchestrator Portal-Heartbeat \
              apkaudio-mariadb apkaudio-broker apk_audio_web \
+             Ember-Docs Ember-Provider AES70-Site \
              2>/dev/null || true
 
 log_step "2/5. Synchronizing Ecosystem Skills & Metadata..."
@@ -71,4 +72,10 @@ if [ $status -ne 0 ]; then
 fi
 
 echo -e "\n${BOLD}${GREEN}✅ APK.audio Ecosystem Successfully Rebuilt & Mounted!${OFF}\n"
+
+# Open browser to DockTor Web UI immediately after DockTor stack is up
+log_step "Loading DockTor Web UI (http://127.0.0.1:8765/)..."
+python3 -c "import webbrowser; webbrowser.open('http://127.0.0.1:8765/')" 2>/dev/null || true
+
 exec "$MANAGEMENT_SCRIPTS_DIR/status.sh"
+

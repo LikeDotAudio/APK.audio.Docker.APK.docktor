@@ -56,7 +56,7 @@ COPY ["APK:DOCKERS/Manager:docktor.py", "/app/APK:DOCKERS/Manager:docktor.py"]
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
 # DELIBERATELY HAS NO FALLBACK, so the token is not optional decoration here:
 # without it `import manager.paths` raises at the first line.
-COPY ["APK:DOCKERS/APK:BareMetal/SRC/contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/SRC/contracts/tokens/brand.json"]
+COPY ["APK:DOCKERS/APK:BareMetal/contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/contracts/tokens/brand.json"]
 
 # The broker order comes from this one module and there is no fallback list — a
 # guess at the order is the defect that removes.

@@ -295,7 +295,7 @@ for build in (baremetal, manager, netbox):
     if document and (not WANT or document["container"] == WANT):
         documents[document["container"]] = document
 
-for container in ("NMOS-Registry", "NMOS-Node"):
+for container in ("NMOS-Dev", "NMOS-Registry", "NMOS-Node"):
     if WANT and container != WANT:
         continue
     document = nmos(container)

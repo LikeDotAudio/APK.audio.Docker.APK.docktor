@@ -197,28 +197,10 @@ PURPOSE = {
         "bench as entirely down, because every probe went to its own empty loopback."),
 
     # --- Server:Discovery:NMOS -- the specification's furniture, and two of ours -
-    "NMOS-Registry": (
-        "The NMOS registry: IS-04 Registration and Query, IS-09 System",
-        "nmos-cpp's registry, built into a local image with this repository's config "
-        "COPYed over the image's own so the ports are the ones the specification "
-        "community uses rather than the image's defaults. Not an APK.audio component: "
-        "it is the specification's furniture, which is why this whole stack sits in its "
-        "own compose project.",
-        "It is what every NMOS agent on the bench registers into and what every NMOS "
-        "reader queries -- the bridge registers its devices here, the sandbox page reads "
-        "this Query API from the browser, and the conformance suite grades it. Nothing "
-        "else in this stack starts before it is healthy."),
-
-    "NMOS-Node": (
-        "The mock node -- the device to test against",
-        "The same nmos-cpp image with RUN_NODE=TRUE, which is the one switch that "
-        "selects the node binary instead of a second registry. It presents five senders "
-        "and five receivers that register themselves and then heartbeat: the fixture the "
-        "Receiver and Transmitter documents describe.",
-        "It gives the bench a device that behaves exactly as the specification says one "
-        "should, so a reader, a crawler or a conformance run can be developed against "
-        "something correct before it meets real equipment. It is somebody else's mock "
-        "and not a device we ship, and the naming keeps that readable."),
+    "NMOS-Dev": (
+        "The consolidated NMOS Workbench (Registry, Node, Sandbox & Bridge)",
+        "Consolidated single container running nmos-cpp registry, mock node, sandbox dashboard (Nginx), and apkaudio-nmos-bridge.",
+        "It hosts IS-04 Registration/Query & IS-09 System APIs, 5 mock Senders & Receivers, the 3208 Sandbox UI, and the DataBus MQTT-NMOS bridge."),
 
     "NMOS-Testing": (
         "The AMWA conformance suite",
@@ -230,24 +212,6 @@ PURPOSE = {
         "verdict is the closest thing to an outside opinion this bench has. It is also "
         "the largest thing in the stack, which is why it is the candidate for a "
         "`profiles:` key rather than for a compose file of its own."),
-
-    "NMOS-Sandbox": (
-        "The NMOS demo page on 3208",
-        "nginx serving one static dashboard that reads the registry's Query API from the "
-        "browser -- so its URLs are the published loopback ones, not the service names "
-        "the containers use. It used to be 250 lines of HTML inside a Python string in a "
-        "script that also started four processes.",
-        "It is the only thing in this stack a person opens rather than a script, and it "
-        "is what makes the registry's contents visible without a terminal. Splitting the "
-        "page from the process is what let both be replaced independently."),
-
-    "APK-NMOS-Bridge": (
-        "The DataBus, published as NMOS -- ours",
-        "An APK.audio service, and the one thing in this stack we ship: it subscribes to "
-        "the DataBus and registers one NMOS Device per element the bus carries traffic "
-        "about -- a Sender for something that puts a signal out, a Receiver for something "
-        "that takes one in -- then serves its own Node API on 3218. Its healthcheck asks "
-        "/x-manifest rather than /self, so a bridge that has lost the bus reports "
         "unhealthy instead of answering happily with an empty device list.",
         "It is how this ecosystem appears to any NMOS controller in the building: "
         "without it the bench's devices exist on the bus and nowhere a broadcast "
@@ -324,55 +288,23 @@ PURPOSE = {
 
     # --- PROTOCOL:DEV:AES70 ----------------------------------------------------
     "AES70-Dev": (
-        "The AES70 workbench",
+        "The AES70 workbench and offline documentation on 3220",
         "AES70py -- a pure-Python AES70/OCA CONTROLLER speaking OCP.1 over TCP -- "
-        "installed editable into Python 3.12 with its test suite, its examples and this "
-        "repository's probe. It publishes no ports, and that is the accurate statement "
-        "rather than an omission: a controller is a client, it opens outbound "
-        "connections and listens on nothing. The source is COPYed in, so an edit needs "
-        "a rebuild.",
-        "It is where AES70 work happens against real hardware on the LAN, with a "
-        "toolchain that is already installed and a device address already set to the "
-        "number this ecosystem's own AES70 agent uses. There is no device in this stack "
-        "to control because AES70 has no published emulator container -- that gap is a "
-        "roadmap item, not a fault in this container."),
-
-    "AES70-Site": (
-        "The AES70py documentation, served locally on 3220",
-        "A pinned mirror of the library's own project site, served by nginx as a "
-        "container of its own rather than as a second process in the workbench.",
-        "The terminal machines this ecosystem runs on are not browsing the web, and a "
-        "specification that is a hyperlink is one nobody at the bench can open. It is "
-        "separate from the workbench because the two have different lifetimes: the "
-        "workbench is recreated on every source rebuild, and documentation that "
-        "disappears while you are reading it is what sends people back to a browser tab "
-        "on the real internet."),
+        "installed editable into Python 3.12, plus Nginx serving an offline mirror of "
+        "the AES70 project site on 3220.",
+        "It provides both the AES70py development environment and the offline "
+        "AES70 documentation in a single container."),
 
     # --- PROTOCOL:DEV:EMBER ----------------------------------------------------------
     "Ember-Provider": (
-        "A real Ember+ provider on S101/TCP 9000",
-        "The embserver provider, serving a GLOW tree whose values come from CSV files "
-        "that stay OUTSIDE the image, in the checkout, bound read-only. Its select loop "
-        "re-reads them every 250 ms and pushes the change to any subscriber, so a CSV "
-        "edited on the host reaches a consumer within a quarter second. Three CSVs mean "
-        "three Control Surface nodes: upstream's own sample data as the known-good "
-        "baseline, an APK.audio console as the tree in use, and a BER edge-value set "
-        "that puts 1-, 2-, 3- and 5-byte integers on the wire.",
-        "Until it existed there was no Ember+ device on this bench to point a consumer "
-        "at, so this repository's own Ember+ reader could only be tested against "
-        "hand-written fixtures. It is published on loopback and stays there: the BER "
-        "crash that once made that mandatory is fixed, but nothing above libember has "
-        "had the same review and this provider still has no authentication."),
-
-    "Ember-Docs": (
-        "The Ember+ specification, served locally on 3221",
-        "nginx over Lawo's own Ember+ specification documents, built as a second target "
-        "of the same Dockerfile as the provider.",
-        "Same reason as the AES70 site one stack over: a bench machine that is not on "
-        "the web cannot follow a hyperlink to a protocol definition. It is its own "
-        "container so that rebuilding the provider -- which happens whenever the CSV set "
-        "or the build changes -- does not take the specification away from whoever is "
-        "reading it."),
+        "A real Ember+ provider on 9000 and offline specification docs on 3221",
+        "The embserver provider, serving a GLOW tree on S101/TCP 9000 from CSV files "
+        "bound read-only, plus Nginx serving Lawo's offline Ember+ specification PDFs on 3221. "
+        "Its select loop re-reads CSVs every 250 ms and pushes changes to subscribers. "
+        "Three CSVs provide three Control Surface nodes (baseline sample, APK.audio console, "
+        "and BER torture values).",
+        "It provides both the Ember+ protocol provider and the offline specification "
+        "documentation in a single consolidated container."),
 
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (

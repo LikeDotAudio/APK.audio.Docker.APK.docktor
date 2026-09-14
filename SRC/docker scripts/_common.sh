@@ -334,6 +334,10 @@ for_each_stack() {
     # an `else` would turn a typo into a silent fall-through to the last array.
     local -a compose
     for stack in "${order[@]}"; do
+        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; } && [ "$1" = "down" ] && [ -f "/.dockerenv" ]; then
+            log_warn "Skipping 'down' on $stack (running inside manager container)"
+            continue
+        fi
         echo -e "\n── ${stack} ──"
         case "$stack" in
             docktor|manager) compose=("${COMPOSE_MANAGER[@]}");;

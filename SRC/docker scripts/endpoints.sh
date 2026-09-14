@@ -23,11 +23,11 @@ WANT="${1:-}"
 # Excluding does not hide: the dashboard draws a fallback launcher for every
 # published port this table omits, named from page-titles.sh <title> read.
 EXCLUDED_PORTS=(
-    "3208|NMOS-Sandbox|bench scaffolding|the demo dashboard this bench runs for itself"
+    "3208|NMOS-Dev|bench scaffolding|the demo dashboard this bench runs for itself"
     "5000|NMOS-Testing|somebody else's specification|the AMWA conformance suite's GUI"
     "5001|NMOS-Testing|somebody else's specification|the Testing Facade the same suite reaches by name"
-    "3220|aes70-site|somebody else's specification|a mirror of the AES70 project site"
-    "3221|ember-docs|somebody else's specification|Lawo's own Ember+ specification PDFs"
+    "3220|AES70-Dev|somebody else's specification|a mirror of the AES70 project site"
+    "3221|Ember-Provider|somebody else's specification|Lawo's own Ember+ specification PDFs"
 )
 
 # Every published host port that is neither in the table nor excluded above.
@@ -215,48 +215,35 @@ emit_endpoint Portal-Broker 9001/tcp 9003 copy \
 # them, so a row would read declared for ever against a working container.
 # EVERY URI BELOW IS A PATH THAT ANSWERS 200, not a bare host:port.
 
-# The registry: IS-04 Registration + Query, IS-09 System, nmos-cpp Settings API.
-# 3211 is open — the Query API answers JSON, and it is the healthcheck target.
-emit_endpoint NMOS-Registry 3211/tcp 3211 open \
+# Consolidated NMOS-Dev container: IS-04 Reg + Query, IS-09 System, IS-04 Node, IS-05/IS-07, and DataBus bridge.
+emit_endpoint NMOS-Dev 3211/tcp 3211 open \
     "NMOS IS-04 Query API" "http://{host}:{port}/x-nmos/query/v1.3/"
 
-emit_endpoint NMOS-Registry 3210/tcp 3210 open \
+emit_endpoint NMOS-Dev 3210/tcp 3210 open \
     "NMOS IS-04 Registration API" "http://{host}:{port}/x-nmos/registration/v1.3/"
 
-# WebSocket, so copy and never open: it answers 426 Upgrade Required, which
-# looks like a broken endpoint to whoever clicked it.
-emit_endpoint NMOS-Registry 3213/tcp 3213 copy \
+emit_endpoint NMOS-Dev 3213/tcp 3213 copy \
     "NMOS IS-04 Query WebSocket" "ws://{host}:{port}/"
 
-emit_endpoint NMOS-Registry 10641/tcp 10641 open \
+emit_endpoint NMOS-Dev 10641/tcp 10641 open \
     "NMOS IS-09 System API" "http://{host}:{port}/x-nmos/system/v1.0/"
 
-emit_endpoint NMOS-Registry 3209/tcp 3209 open \
+emit_endpoint NMOS-Dev 3209/tcp 3209 open \
     "NMOS registry settings" "http://{host}:{port}/settings/all"
 
-# The mock node: the fixture Receiver.md and Transmitter.md describe.
-emit_endpoint NMOS-Node 3212/tcp 3212 open \
+emit_endpoint NMOS-Dev 3212/tcp 3212 open \
     "NMOS IS-04 Node API" "http://{host}:{port}/x-nmos/node/v1.3/self"
 
-# copy: an IS-05 Connection API is a media router with no authentication — a
-# PATCH to /single/receivers/<id>/staged re-points a stream. Loopback for that
-# reason; offering it as a click is not the same as offering the Query API.
-emit_endpoint NMOS-Node 3215/tcp 3215 copy \
+emit_endpoint NMOS-Dev 3215/tcp 3215 copy \
     "NMOS IS-05 Connection API" "http://{host}:{port}/x-nmos/connection/v1.1/"
 
-emit_endpoint NMOS-Node 3216/tcp 3216 open \
+emit_endpoint NMOS-Dev 3216/tcp 3216 open \
     "NMOS IS-07 Events API" "http://{host}:{port}/x-nmos/events/v1.0/"
 
-emit_endpoint NMOS-Node 3217/tcp 3217 copy \
+emit_endpoint NMOS-Dev 3217/tcp 3217 copy \
     "NMOS IS-07 Events WebSocket" "ws://{host}:{port}/"
 
-# The bridge — THE ONE CONTAINER IN THIS STACK THAT IS OURS. It registers one
-# NMOS Device per element the DataBus carries traffic about.
-# /x-nmos/node/v1.3/self, the same path as the NMOS-Node rows above. NOT
-# /x-manifest: that is the healthcheck target and answers 503 while the bridge
-# is disconnected, which is right for a healthcheck and wrong for a row this
-# file requires to answer 200.
-emit_endpoint APK-NMOS-Bridge 3218/tcp 3218 open \
+emit_endpoint NMOS-Dev 3218/tcp 3218 open \
     "NMOS IS-04 Node API (DataBus bridge)" "http://{host}:{port}/x-nmos/node/v1.3/self"
 
 # --- PROTOCOL:DEV:AES70 ---------------------------------------------------

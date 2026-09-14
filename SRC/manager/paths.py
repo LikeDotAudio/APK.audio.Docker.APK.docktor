@@ -53,7 +53,7 @@ BAREMETAL_ROOT = os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'SRC')
 # second spelling of the value and would go on painting the old colour after
 # the token moved. This file sits inside the repository that holds the token,
 # so an unreadable token is a broken checkout and says so on the first line.
-BRAND_TOKENS = os.path.join(BAREMETAL_ROOT, 'contracts', 'tokens', 'brand.json')
+BRAND_TOKENS = os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json')
 
 with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
     ACCENT = json.load(_tokens)['accent']['hex']

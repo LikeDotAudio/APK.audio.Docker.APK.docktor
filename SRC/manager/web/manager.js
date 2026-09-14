@@ -362,36 +362,8 @@ function cardHTML(container) {
   }
   if (container.image) lines.push(`📦 ${container.image}`);
 
-  const repoLookup = {
-    "Broker-Mosquitto": { name: "apk-mqtt-broker", path: "file:///home/anthony/Documents/GitProjects/apk-mqtt-broker" },
-    "Broker-SqlCapture": { name: "apk-mqtt-broker", path: "file:///home/anthony/Documents/GitProjects/apk-mqtt-broker" },
-    "Storage-Broker": { name: "apk-sql-database", path: "file:///home/anthony/Documents/GitProjects/apk-sql-database" },
-    "Storage-MariaDB": { name: "apk-sql-database", path: "file:///home/anthony/Documents/GitProjects/apk-sql-database" },
-    "Storage-PHP": { name: "apk-sql-database", path: "file:///home/anthony/Documents/GitProjects/apk-sql-database" },
-    "Storage-Portal": { name: "apk-sql-database", path: "file:///home/anthony/Documents/GitProjects/apk-sql-database" },
-    "Storage-Schema-Init": { name: "apk-sql-database", path: "file:///home/anthony/Documents/GitProjects/apk-sql-database" },
-    "NMOS-Registry": { name: "apk-nmos-discovery", path: "file:///home/anthony/Documents/GitProjects/apk-nmos-discovery" },
-    "NMOS-Node": { name: "apk-nmos-discovery", path: "file:///home/anthony/Documents/GitProjects/apk-nmos-discovery" },
-    "NMOS-Sandbox": { name: "apk-nmos-discovery", path: "file:///home/anthony/Documents/GitProjects/apk-nmos-discovery" },
-    "APK-NMOS-Bridge": { name: "apk-nmos-discovery", path: "file:///home/anthony/Documents/GitProjects/apk-nmos-discovery" },
-    "Ember-Provider": { name: "apk-ember-server", path: "file:///home/anthony/Documents/GitProjects/apk-ember-server" },
-    "Ember-Docs": { name: "apk-ember-server", path: "file:///home/anthony/Documents/GitProjects/apk-ember-server" },
-    "Netbox-App": { name: "apk-netbox-server", path: "file:///home/anthony/Documents/GitProjects/apk-netbox-server" },
-    "Netbox-Postgres": { name: "apk-netbox-server", path: "file:///home/anthony/Documents/GitProjects/apk-netbox-server" },
-    "Netbox-Valkey": { name: "apk-netbox-server", path: "file:///home/anthony/Documents/GitProjects/apk-netbox-server" },
-    "Netbox-Valkey-Cache": { name: "apk-netbox-server", path: "file:///home/anthony/Documents/GitProjects/apk-netbox-server" },
-    "Netbox-Worker": { name: "apk-netbox-server", path: "file:///home/anthony/Documents/GitProjects/apk-netbox-server" },
-    "DockTor": { name: "apk-docktor", path: "file:///home/anthony/Documents/GitProjects/apk-docktor" },
-    "AES70-Dev": { name: "apk-protocol-aes70", path: "file:///home/anthony/Documents/GitProjects/apk-protocol-aes70" },
-    "AES70-Site": { name: "apk-protocol-aes70", path: "file:///home/anthony/Documents/GitProjects/apk-protocol-aes70" },
-    "Node-BareMetal": { name: "apk-baremetal", path: "file:///home/anthony/Documents/GitProjects/apk-baremetal" },
-    "apk-yo": { name: "apk-yo", path: "file:///home/anthony/Documents/GitProjects/apk-yo" },
-    "Portal-Broker": { name: "apk-webportal", path: "file:///home/anthony/Documents/GitProjects/apk-webportal" },
-    "Portal-Heartbeat": { name: "apk-webportal", path: "file:///home/anthony/Documents/GitProjects/apk-webportal" }
-  };
-
-  const repo = repoLookup[container.name];
-  if (repo) {
+  const repo = container.repo;
+  if (repo && repo.name && repo.path) {
     lines.push(`🐙 repo: ${repo.name} (${repo.path})`);
   }
 

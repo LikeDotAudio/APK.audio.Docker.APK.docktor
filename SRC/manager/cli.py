@@ -137,11 +137,32 @@ def _stream(line):
     print(line, end='', flush=True)
 
 
+def _can_raise_a_browser():
+    if os.path.exists("/.dockerenv"):
+        return False
+    if not sys.stdout.isatty():
+        return False
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _open_browser_immediately():
+    if _can_raise_a_browser():
+        try:
+            import webbrowser
+            webbrowser.open_new_tab("http://127.0.0.1:8765/")
+        except Exception:
+            pass
+
+
 def run_cli_mode(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     args = [a for a in argv if a not in ('--cli', '--no-kaboom')]
     action = args[0].lower() if args else 'status'
     rest = args[1:]
+
+    if action in ('rebuild', 'clean', 'up', 'remount', 'mount', 'start', 'rebuild-one', 'rebuild-container'):
+        _open_browser_immediately()
+
 
     for names, (banner, script, script_args) in CLI_ACTIONS.items():
         if action in names:
