@@ -47,6 +47,14 @@ const state = {
   autoRebuildSeconds: 30,
   autoRebuildKey: null,
   autoRebuildCancelled: false,
+  autoRemountStoppedTimer: null,
+  autoRemountStoppedSeconds: 30,
+  autoRemountStoppedKey: null,
+  autoRemountStoppedCancelled: false,
+  autoRemountDarkTimer: null,
+  autoRemountDarkSeconds: 30,
+  autoRemountDarkKey: null,
+  autoRemountDarkCancelled: false,
   meterTimer: null,
   followTimer: null,
   busy: 0,          // a DEPTH of runs in flight, not a flag -- see follow()
@@ -445,14 +453,62 @@ function cardHTML(container) {
 function renderBenchHealth(snapshot) {
   const host = $("#bench-health");
   const disk = (snapshot.host && snapshot.host.disk) || {};
-  // MID-ACTION SUPPRESSION FOR THE STOPPED HALF ONLY: a rebuild stops
-  // containers on its way through, so naming them during one is naming the
-  // happy path — while a disk 96% full is exactly as true mid-rebuild, and a
-  // rebuild is when it is most likely to end the build.
   const stopped = snapshot.action_running ? [] : (snapshot.stopped_containers || []);
   const diskBad = disk.level === "warning" || disk.level === "critical";
-  host.hidden = !diskBad && !stopped.length;
-  if (host.hidden) { host.innerHTML = ""; return; }
+
+  if (!diskBad && !stopped.length) {
+    if (state.autoRemountStoppedTimer) {
+      clearInterval(state.autoRemountStoppedTimer);
+      state.autoRemountStoppedTimer = null;
+    }
+    state.autoRemountStoppedKey = null;
+    state.autoRemountStoppedCancelled = false;
+    state.autoRemountStoppedSeconds = 30;
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+
+  host.hidden = false;
+
+  if (stopped.length) {
+    const currentKey = stopped.map((r) => r.container || r.stack).sort().join(",");
+    if (state.autoRemountStoppedKey !== currentKey) {
+      state.autoRemountStoppedKey = currentKey;
+      state.autoRemountStoppedSeconds = 30;
+      state.autoRemountStoppedCancelled = false;
+      if (state.autoRemountStoppedTimer) {
+        clearInterval(state.autoRemountStoppedTimer);
+        state.autoRemountStoppedTimer = null;
+      }
+    }
+
+    if (!state.autoRemountStoppedTimer && !state.autoRemountStoppedCancelled && !snapshot.action_running) {
+      state.autoRemountStoppedTimer = setInterval(() => {
+        if (snapshot.action_running || state.autoRemountStoppedCancelled) {
+          clearInterval(state.autoRemountStoppedTimer);
+          state.autoRemountStoppedTimer = null;
+          return;
+        }
+        state.autoRemountStoppedSeconds -= 1;
+        const countEl = $("#stopped-timer-count");
+        if (countEl) {
+          countEl.textContent = `${state.autoRemountStoppedSeconds}`;
+        }
+        if (state.autoRemountStoppedSeconds <= 0) {
+          clearInterval(state.autoRemountStoppedTimer);
+          state.autoRemountStoppedTimer = null;
+          const btn = $("#stopped-remount-now");
+          runAction("up", btn, true);
+        }
+      }, 1000);
+    }
+  } else {
+    if (state.autoRemountStoppedTimer) {
+      clearInterval(state.autoRemountStoppedTimer);
+      state.autoRemountStoppedTimer = null;
+    }
+  }
 
   const gib = (kb) => `${((Number(kb) || 0) / (1024 * 1024)).toFixed(1)} GiB`;
   host.innerHTML = [
@@ -465,6 +521,38 @@ function renderBenchHealth(snapshot) {
          database that cannot write does not warn — it exits. Reclaim layers with Prune, or find
          the consumer before this becomes an outage.</p>` : "",
     stopped.length ? `
+      <div class="dark-stack auto-remount-stopped-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15em; color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+              <span>🚀 Vigilant Auto-Remount Scheduled</span>
+              ${!state.autoRemountStoppedCancelled ? `
+                <span style="background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                  <span id="stopped-timer-count">${state.autoRemountStoppedSeconds}</span>s countdown
+                </span>
+              ` : `
+                <span style="background: #6b7280; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                  PAUSED
+                </span>
+              `}
+            </h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
+              ${!state.autoRemountStoppedCancelled ? 
+                `DockTor detected <b>${stopped.length} exited container${stopped.length > 1 ? "s" : ""}</b>. Automatic remount will execute when timer expires.` :
+                `Automatic remount has been paused by user. Click <b>Remount Now</b> to execute remount.`
+              }
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="stopped-remount-now" class="btn small accent" style="white-space: nowrap;">🚀 Remount Now</button>
+            ${!state.autoRemountStoppedCancelled ? `
+              <button id="stopped-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
+            ` : `
+              <button id="stopped-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+            `}
+          </div>
+        </div>
+      </div>
       <p class="dark-lead">🛑 <b>${stopped.length} container${stopped.length > 1 ? "s" : ""}
          exited and ${stopped.length > 1 ? "were" : "was"} not restarted.</b>
          ${stopped.length > 1 ? "Their" : "Its"} compose file asked docker to keep
@@ -481,8 +569,39 @@ function renderBenchHealth(snapshot) {
         </div>`).join("")}` : "",
   ].join("");
 
-  // The verbs are named by the server and this markup was written after boot
-  // did the naming, so the buttons just planted are labelled and wired here.
+  const stoppedNowBtn = $("#stopped-remount-now", host);
+  if (stoppedNowBtn) {
+    stoppedNowBtn.onclick = () => {
+      if (state.autoRemountStoppedTimer) {
+        clearInterval(state.autoRemountStoppedTimer);
+        state.autoRemountStoppedTimer = null;
+      }
+      state.autoRemountStoppedCancelled = true;
+      runAction("up", stoppedNowBtn, true);
+    };
+  }
+
+  const stoppedCancelBtn = $("#stopped-cancel-timer", host);
+  if (stoppedCancelBtn) {
+    stoppedCancelBtn.onclick = () => {
+      if (state.autoRemountStoppedTimer) {
+        clearInterval(state.autoRemountStoppedTimer);
+        state.autoRemountStoppedTimer = null;
+      }
+      state.autoRemountStoppedCancelled = true;
+      renderBenchHealth(snapshot);
+    };
+  }
+
+  const stoppedResumeBtn = $("#stopped-resume-timer", host);
+  if (stoppedResumeBtn) {
+    stoppedResumeBtn.onclick = () => {
+      state.autoRemountStoppedCancelled = false;
+      state.autoRemountStoppedSeconds = 30;
+      renderBenchHealth(snapshot);
+    };
+  }
+
   if (state.actions) labelVerbs();
 }
 
@@ -500,35 +619,66 @@ function renderBenchHealth(snapshot) {
 function renderDarkStacks(snapshot) {
   const host = $("#dark-stacks");
   const dark = snapshot.dark_stacks || [];
-  host.hidden = !dark.length;
-  if (!dark.length) { host.innerHTML = ""; return; }
-
-  // THE REASON IS SAID ONCE, ABOVE THE ROWS; the rows carry only what differs.
-  // Three stacks each repeating one paragraph filled half the pane and pushed
-  // the containers that ARE running below the fold.
   const stranded = dark.filter((row) => !row.restorable);
-  // A DRIVEN STACK IS SUPPOSED TO BE DARK MID-REBUILD. `action_running` is the
-  // server ACTION_LOCK, so this holds for a rebuild started in another tab too,
-  // and follow(false) rescans when the verb finishes — a stack still dark then
-  // is the real finding. The stranded rows stay visible throughout.
   const driven = snapshot.action_running ? [] : dark.filter((row) => row.restorable);
-  // THE PAGE HAS TO BE ABLE TO ACCUSE ITSELF, and this is the case where the
-  // answer sits in front of the reader: the manager runs network_mode: host, so
-  // a terminal manager and the containerised one contend for the SAME
-  // 127.0.0.1:8765 and the terminal one wins by being first, which after a
-  // panic it always is. The container cannot bind, DockTor shows dark-and-
-  // driven, and the log truthfully says the remount succeeded. `manager` on the
-  // snapshot is who is serving THIS page.
   const servedBy = snapshot.manager || {};
   const selfHeld = servedBy.containerised === false &&
         driven.some((row) => row.stack === "DockTor");
-  // A ROW THAT NAMES A FAULT THIS PAGE CAN FIX CARRIES THE FIX. The driven rows
-  // used to end at "read the execution log" — a diagnosis handed to somebody
-  // already looking at the one screen that could act on it. `data-action` is
-  // the same wiring the toolbar uses, so the label is the SERVER and follow()
-  // greys this one with the rest.
-  // The stranded rows get a command instead: no verb here drives those compose
-  // files, so a button would be one that cannot work.
+
+  if (!dark.length) {
+    if (state.autoRemountDarkTimer) {
+      clearInterval(state.autoRemountDarkTimer);
+      state.autoRemountDarkTimer = null;
+    }
+    state.autoRemountDarkKey = null;
+    state.autoRemountDarkCancelled = false;
+    state.autoRemountDarkSeconds = 30;
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+
+  host.hidden = false;
+
+  if (driven.length && !selfHeld) {
+    const currentKey = driven.map((r) => r.stack).sort().join(",");
+    if (state.autoRemountDarkKey !== currentKey) {
+      state.autoRemountDarkKey = currentKey;
+      state.autoRemountDarkSeconds = 30;
+      state.autoRemountDarkCancelled = false;
+      if (state.autoRemountDarkTimer) {
+        clearInterval(state.autoRemountDarkTimer);
+        state.autoRemountDarkTimer = null;
+      }
+    }
+
+    if (!state.autoRemountDarkTimer && !state.autoRemountDarkCancelled && !snapshot.action_running) {
+      state.autoRemountDarkTimer = setInterval(() => {
+        if (snapshot.action_running || state.autoRemountDarkCancelled) {
+          clearInterval(state.autoRemountDarkTimer);
+          state.autoRemountDarkTimer = null;
+          return;
+        }
+        state.autoRemountDarkSeconds -= 1;
+        const countEl = $("#dark-timer-count");
+        if (countEl) {
+          countEl.textContent = `${state.autoRemountDarkSeconds}`;
+        }
+        if (state.autoRemountDarkSeconds <= 0) {
+          clearInterval(state.autoRemountDarkTimer);
+          state.autoRemountDarkTimer = null;
+          const btn = $("#dark-remount-now");
+          runAction("up", btn, true);
+        }
+      }, 1000);
+    }
+  } else {
+    if (state.autoRemountDarkTimer) {
+      clearInterval(state.autoRemountDarkTimer);
+      state.autoRemountDarkTimer = null;
+    }
+  }
+
   const rowHTML = (row) => `
     <div class="dark-stack${row.restorable ? " driven" : ""}">
       <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
@@ -551,6 +701,38 @@ function renderDarkStacks(snapshot) {
          compose files. Run the command to bring one back.</p>
       ${stranded.map(rowHTML).join("")}` : "",
     driven.length ? `
+      <div class="dark-stack auto-remount-dark-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15em; color: #fbbf24; display: flex; align-items: center; gap: 8px;">
+              <span>🚀 Vigilant Auto-Remount Scheduled</span>
+              ${!state.autoRemountDarkCancelled ? `
+                <span style="background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                  <span id="dark-timer-count">${state.autoRemountDarkSeconds}</span>s countdown
+                </span>
+              ` : `
+                <span style="background: #6b7280; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                  PAUSED
+                </span>
+              `}
+            </h3>
+            <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
+              ${!state.autoRemountDarkCancelled ? 
+                `DockTor detected <b>${driven.length} empty stack${driven.length > 1 ? "s" : ""}</b>. Automatic remount will execute when timer expires.` :
+                `Automatic remount has been paused by user. Click <b>Remount Now</b> to execute remount.`
+              }
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="dark-remount-now" class="btn small accent" style="white-space: nowrap;">🚀 Remount Now</button>
+            ${!state.autoRemountDarkCancelled ? `
+              <button id="dark-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
+            ` : `
+              <button id="dark-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+            `}
+          </div>
+        </div>
+      </div>
       <p class="dark-lead">⚠ <b>${driven.length} stack${driven.length > 1 ? "s" : ""} this tool DRIVES
          ${driven.length > 1 ? "are" : "is"} empty.</b> Each row's remount builds and mounts
          ${driven.length > 1 ? "that stack alone" : "it"}; if it has already been pressed, the
@@ -568,9 +750,39 @@ function renderDarkStacks(snapshot) {
       ${driven.map(rowHTML).join("")}` : "",
   ].join("");
 
-  // The verbs are named by the server, so the buttons just planted are
-  // labelled and wired here. Guarded: the first grid can land before
-  // /api/actions answers.
+  const darkNowBtn = $("#dark-remount-now", host);
+  if (darkNowBtn) {
+    darkNowBtn.onclick = () => {
+      if (state.autoRemountDarkTimer) {
+        clearInterval(state.autoRemountDarkTimer);
+        state.autoRemountDarkTimer = null;
+      }
+      state.autoRemountDarkCancelled = true;
+      runAction("up", darkNowBtn, true);
+    };
+  }
+
+  const darkCancelBtn = $("#dark-cancel-timer", host);
+  if (darkCancelBtn) {
+    darkCancelBtn.onclick = () => {
+      if (state.autoRemountDarkTimer) {
+        clearInterval(state.autoRemountDarkTimer);
+        state.autoRemountDarkTimer = null;
+      }
+      state.autoRemountDarkCancelled = true;
+      renderDarkStacks(snapshot);
+    };
+  }
+
+  const darkResumeBtn = $("#dark-resume-timer", host);
+  if (darkResumeBtn) {
+    darkResumeBtn.onclick = () => {
+      state.autoRemountDarkCancelled = false;
+      state.autoRemountDarkSeconds = 30;
+      renderDarkStacks(snapshot);
+    };
+  }
+
   if (state.actions) labelVerbs();
 }
 
