@@ -81,6 +81,9 @@ fi
 # Silent for the other eight.
 [ "$STACK_COMPOSE_FILE" = "$BAREMETAL_COMPOSE_FILE" ] && node_hardware_report
 
+# Every stack mounts the external log volume; LOGGER STORAGE owns it.
+[ "$STACK_COMPOSE_FILE" = "$LOGGER_COMPOSE_FILE" ] || ensure_log_storage
+
 log_step "Starting $STACK..."
 announce COMPOSE_RUN "{\"action\":\"up-stack\",\"stack\":\"$STACK\"}"
 "${STACK_COMPOSE[@]}" up -d --build

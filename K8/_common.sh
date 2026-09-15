@@ -66,6 +66,11 @@ NMOS_COMPOSE_FILE="$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml"
 AES70_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml"
 NETBOX_COMPOSE_FILE="$DOCKERS_DIR/DATABASE:server:NETBOX/Docker/docker-compose.yml"
 EMBER_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml"
+# LOGGER STORAGE — owns the apk-audio-logs volume (APK:Documentation/LOGS) that
+# every other stack mounts at /logs. The space in the folder name is real; every
+# expansion of this path is quoted.
+LOGGER_COMPOSE_FILE="$DOCKERS_DIR/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml"
+LOG_VOLUME_NAME="apk-audio-logs"
 
 GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
 BOLD="\033[1m"; OFF="\033[0m"
@@ -137,6 +142,7 @@ fi
 COMPOSE_AES70=("${COMPOSE_BASE[@]}" -f "$AES70_COMPOSE_FILE")
 COMPOSE_NETBOX=("${COMPOSE_BASE[@]}" -f "$NETBOX_COMPOSE_FILE")
 COMPOSE_EMBER=("${COMPOSE_BASE[@]}" -f "$EMBER_COMPOSE_FILE")
+COMPOSE_LOGGER=("${COMPOSE_BASE[@]}" -f "$LOGGER_COMPOSE_FILE")
 
 # ── Hardware overlay (docker-compose.hardware.yml): the only thing that hands
 # Node-BareMetal its device nodes and turns on the agents that read them.
@@ -256,10 +262,14 @@ node_hardware_report() {
     return 0
 }
 
-# ── THE 9 COMPOSE ARRAYS. All 8 stacks plus the manager are driven. The order
+# ── THE 10 COMPOSE ARRAYS. All 9 stacks plus the manager are driven. The order
 # below IS the dependency chain — compose cannot express depends_on across
 # projects, so nothing else holds it. Pass `reverse` to anything tearing down:
-#   core   first — publishes 1883, the broker everyone else names
+#   logger FIRST, ahead of the manager — every other file declares the
+#          apk-audio-logs volume `external: true`, and compose refuses an
+#          external volume that does not exist yet. (The manager file declares
+#          it non-external so the manager can always start; see that file.)
+#   core   next  — publishes 1883, the broker everyone else names
 #   mqtt   next  — its sql-capture opens a session against core's MariaDB
 #   portal next  — its orchestrator agents connect to a broker at boot
 #   nmos   next  — independent; ordered only for a stable log
@@ -337,9 +347,9 @@ for_each_stack() {
     local -a order
 
     if [ "$direction" = "reverse" ]; then
-        order=(node netbox ember aes70 nmos portal mqtt core docktor)
+        order=(node netbox ember aes70 nmos portal mqtt core docktor logger)
     else
-        order=(docktor core mqtt portal nmos aes70 ember netbox node)
+        order=(logger docktor core mqtt portal nmos aes70 ember netbox node)
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
@@ -353,6 +363,7 @@ for_each_stack() {
         echo -e "\n── ${stack} ──"
         case "$stack" in
             docktor|manager) compose=("${COMPOSE_MANAGER[@]}");;
+            logger) compose=("${COMPOSE_LOGGER[@]}");;
             core)   compose=("${COMPOSE_CORE[@]}");;
             mqtt)   compose=("${COMPOSE_MQTT[@]}");;
             portal) compose=("${COMPOSE_PORTAL[@]}");;
@@ -390,6 +401,7 @@ compose_for_stack() {
         "COMPOSE_AES70|$AES70_COMPOSE_FILE" \
         "COMPOSE_NETBOX|$NETBOX_COMPOSE_FILE" \
         "COMPOSE_EMBER|$EMBER_COMPOSE_FILE" \
+        "COMPOSE_LOGGER|$LOGGER_COMPOSE_FILE" \
         "COMPOSE_MANAGER|$MANAGER_COMPOSE_FILE"; do
         name="${entry%%|*}"
         file="${entry#*|}"
@@ -429,6 +441,21 @@ synch_skills() {
     elif [ $status -ne 0 ]; then
         log_warn "skills synch exited $status; the mount may be stale. Mounting anyway."
     fi
+    return 0
+}
+
+# ensure_log_storage — bring LOGGER STORAGE up unless the log volume already
+# exists. For the verbs that mount ONE stack or ONE container (up-stack.sh,
+# rebuild.sh): for_each_stack already puts the logger first, but a single-stack
+# mount on a fresh bench would otherwise fail on "external volume
+# apk-audio-logs not found". Never exits; a failure is said and left to compose.
+ensure_log_storage() {
+    if docker volume inspect "$LOG_VOLUME_NAME" >/dev/null 2>&1; then
+        return 0
+    fi
+    log_warn "Log volume $LOG_VOLUME_NAME is missing -- mounting LOGGER STORAGE first."
+    "${COMPOSE_LOGGER[@]}" up -d \
+        || log_error "LOGGER STORAGE did not come up; compose will name the missing volume below."
     return 0
 }
 

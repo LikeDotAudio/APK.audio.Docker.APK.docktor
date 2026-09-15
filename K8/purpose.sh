@@ -300,6 +300,18 @@ PURPOSE = {
         "It provides both the Ember+ protocol provider and the offline specification "
         "documentation in a single consolidated container."),
 
+    # --- DATABSE:volume:Log STORAGE -- LOGGER STORAGE --------------------------
+    "Logger-Storage": (
+        "The owner of the bench-wide log volume, APK:Documentation/LOGS",
+        "A busybox container that holds the apk-audio-logs named volume, bound to "
+        "APK:Documentation/LOGS in the checkout, opens /logs to every uid (mode 1777) "
+        "and then sleeps. Every other container mounts the same volume at /logs and is "
+        "told its own folder by APKAUDIO_LOG_DIR=/logs/<container_name>.",
+        "Every other stack declares the volume external, so this is what has to exist "
+        "before anything else mounts -- for_each_stack starts it first. Log files "
+        "written under /logs survive rebuilds, panics and nukes of the containers, "
+        "because they live in the checkout rather than in any container."),
+
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (
         "The chat hub: WebSockets on one side, the bus on the other",

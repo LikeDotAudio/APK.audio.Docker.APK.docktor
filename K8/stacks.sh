@@ -40,8 +40,8 @@ RUNNING_NAMES="$(docker ps --format '{{.Names}}' 2>/dev/null)" || RUNNING_NAMES=
 # THE DRIVEN SET IS NOT TYPED HERE — these are the same variables the verbs
 # expand, so a stack added to for_each_stack becomes driven here with no edit.
 # ⚠️ A compose file added to _common.sh but NOT listed here reports as undriven,
-#    the exact inversion of the fault this tool catches. Nine files below: the
-#    eight stacks plus the manager.
+#    the exact inversion of the fault this tool catches. Ten files below: the
+#    nine stacks (LOGGER STORAGE included) plus the manager.
 DOCKERS="$DOCKERS_DIR" \
 PRESENT="$PRESENT_NAMES" \
 RUNNING="$RUNNING_NAMES" \
@@ -53,6 +53,7 @@ $NMOS_COMPOSE_FILE
 $NETBOX_COMPOSE_FILE
 $AES70_COMPOSE_FILE
 $EMBER_COMPOSE_FILE
+$LOGGER_COMPOSE_FILE
 $MANAGER_COMPOSE_FILE" \
 MODE="$MODE" \
 python3 - <<'PY'

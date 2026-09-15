@@ -27,9 +27,10 @@ case "$TARGET" in
     aes70)     "${COMPOSE_AES70[@]}" "$@";;
     netbox)    "${COMPOSE_NETBOX[@]}" "$@";;
     ember)     "${COMPOSE_EMBER[@]}" "$@";;
+    logger)    "${COMPOSE_LOGGER[@]}" "$@";;
     both|all)  for_each_stack forward "$@";;
     *)
-        log_error "usage: compose.sh {core|mqtt|portal|nmos|aes70|ember|netbox|node|both} <compose args...>"
+        log_error "usage: compose.sh {logger|core|mqtt|portal|nmos|aes70|ember|netbox|node|both} <compose args...>"
         exit 2
         ;;
 esac

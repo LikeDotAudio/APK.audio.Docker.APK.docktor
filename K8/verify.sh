@@ -57,6 +57,8 @@ validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"
 # interpolates ${APKAUDIO_REPO:?}. _common.sh exports it, so a failure here
 # means the export went away, not that the YAML is wrong.
 validate_stack "PROTOCOL:DEV:EMBER"    "${COMPOSE_EMBER[@]}"
+# LOGGER STORAGE interpolates ${APKAUDIO_REPO:?} for its bind device, same as Ember.
+validate_stack "DATABSE:volume:Log STORAGE" "${COMPOSE_LOGGER[@]}"
 
 # Which node this run validated: validate_stack passes identically whether or
 # not COMPOSE_NODE names the hardware overlay, so this reports the decision.

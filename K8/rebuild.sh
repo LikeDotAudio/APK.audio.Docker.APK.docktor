@@ -40,6 +40,9 @@ label_of() {
     printf '%s' "$value"
 }
 
+# The rebuilt container mounts the external log volume; LOGGER STORAGE owns it.
+ensure_log_storage
+
 worst=0
 for container in "$@"; do
     if ! docker inspect "$container" >/dev/null 2>&1; then
