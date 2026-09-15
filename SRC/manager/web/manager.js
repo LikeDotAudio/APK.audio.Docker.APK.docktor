@@ -1231,47 +1231,89 @@ function renderViews() {
 }
 
 const RADIAL_NODES = [
-  { id: 'chrome', label: 'Chrome', icon: '🪟', x: 50, y: 15 },
-  { id: 'shell', label: 'Shell', icon: '🐚', x: 62, y: 18 },
-  { id: 'utilities', label: 'Utilities', icon: '🧰', x: 72, y: 26 },
-  { id: 'audio_dsp', label: 'Audio & DSP', icon: '🎛️', x: 78, y: 38 },
-  { id: 'games', label: 'Games', icon: '🎮', x: 80, y: 52 },
-  { id: 'nmos', label: 'NMOS', icon: '📡', x: 85, y: 78, special: true }, // Bottom Right Corner!
-  { id: 'big_picture', label: 'Big Picture', icon: '🌌', x: 70, y: 80 },
-  { id: 'pipeline', label: 'Pipeline', icon: '⚙️', x: 60, y: 84 },
-  { id: 'service_cycle', label: 'Service Cycle', icon: '🔄', x: 49, y: 84 },
-  { id: 'scanalyser', label: 'Scanalyser', icon: '🔭', x: 39, y: 80 },
-  { id: 'ingest_capture', label: 'Ingest & Capture', icon: '🎙️', x: 31, y: 72 },
-  { id: 'registry', label: 'Registry', icon: '🏷️', x: 26, y: 54 },
-  { id: 'artifacts', label: 'Artifacts', icon: '📦', x: 28, y: 36 },
-  { id: 'system', label: 'System', icon: '💻', x: 38, y: 22 }
+  { id: 'chrome', label: 'Chrome', icon: '🪟' },
+  { id: 'shell', label: 'Shell', icon: '🐚' },
+  { id: 'utilities', label: 'Utilities', icon: '🧰' },
+  { id: 'audio_dsp', label: 'Audio & DSP', icon: '🎛️' },
+  { id: 'games', label: 'Games', icon: '🎮' },
+  { id: 'nmos', label: 'NMOS', icon: '📡' },
+  { id: 'big_picture', label: 'Big Picture', icon: '🌌' },
+  { id: 'pipeline', label: 'Pipeline', icon: '⚙️' },
+  { id: 'service_cycle', label: 'Service Cycle', icon: '🔄' },
+  { id: 'scanalyser', label: 'Scanalyser', icon: '🔭' },
+  { id: 'ingest_capture', label: 'Ingest & Capture', icon: '🎙️' },
+  { id: 'registry', label: 'Registry', icon: '🏷️' },
+  { id: 'artifacts', label: 'Artifacts', icon: '📦' },
+  { id: 'system', label: 'System', icon: '💻' }
 ];
 
 function renderRadialArch() {
   const host = $("#radial-arch-view");
   if (!host) return;
 
-  const svgLines = RADIAL_NODES.map((node) => {
-    if (node.special) {
-      // Laser beam line for NMOS (bottom right corner)
-      return `<line x1="50%" y1="50%" x2="${node.x}%" y2="${node.y}%" stroke="#00ffff" stroke-width="3" filter="drop-shadow(0 0 6px #00ffff)" />`;
+  if (state.radialRotation === undefined) {
+    state.radialRotation = 0;
+  }
+
+  const N = RADIAL_NODES.length;
+  // Target angle in screen coordinates for the bottom-right active corner slot (~35 deg)
+  const targetAngle = 0.62;
+  // FIXED OUTER ORBITAL RADIUS: all 14 nodes remain on this distance (38.5%) and NEVER shrink!
+  const Rx = 38.5;
+  const Ry = 38.5;
+
+  const calculatedNodes = RADIAL_NODES.map((node, idx) => {
+    // Distribute nodes evenly around the circle, offset by current rotation angle
+    const baseAngle = (idx / N) * 2 * Math.PI - Math.PI / 2;
+    const angle = baseAngle + state.radialRotation;
+    const x = 50 + Rx * Math.cos(angle);
+    const y = 50 + Ry * Math.sin(angle);
+
+    let normAngle = angle % (2 * Math.PI);
+    if (normAngle < 0) normAngle += 2 * Math.PI;
+
+    let diff = Math.abs(normAngle - targetAngle);
+    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+
+    return { ...node, x, y, angle: normAngle, diff, idx };
+  });
+
+  // Find the node closest to the bottom-right corner target position
+  let activeIdx = 0;
+  let minDiff = Infinity;
+  calculatedNodes.forEach((node) => {
+    if (node.diff < minDiff) {
+      minDiff = node.diff;
+      activeIdx = node.idx;
     }
-    return `<line x1="50%" y1="50%" x2="${node.x}%" y2="${node.y}%" stroke="rgba(255,255,255,0.22)" stroke-dasharray="4 4" stroke-width="1.5" />`;
+  });
+
+  const svgLines = calculatedNodes.map((node) => {
+    const isActive = node.idx === activeIdx;
+    if (isActive) {
+      // Cyan laser beam line radiating from central orange hub to active bottom-right node
+      return `<line x1="50%" y1="50%" x2="${node.x.toFixed(2)}%" y2="${node.y.toFixed(2)}%" stroke="#00ffff" stroke-width="3.5" filter="drop-shadow(0 0 8px #00ffff)" />`;
+    }
+    // Clean dashed white vector line for nodes on the outer orbit
+    return `<line x1="50%" y1="50%" x2="${node.x.toFixed(2)}%" y2="${node.y.toFixed(2)}%" stroke="rgba(255,255,255,0.22)" stroke-dasharray="4 4" stroke-width="1.5" />`;
   }).join("");
 
-  const nodesHtml = RADIAL_NODES.map((node) => {
-    const isNMOS = node.id === 'nmos';
-    const iconInner = isNMOS 
+  const nodesHtml = calculatedNodes.map((node) => {
+    const isActive = node.idx === activeIdx;
+    const activeClass = isActive ? " active-corner-node" : "";
+    const iconInner = isActive
       ? `<div class="node-icon-wrapper"><span class="node-icon">${node.icon}</span></div>`
       : `<span class="node-icon">${node.icon}</span>`;
 
     return `
-      <div class="radial-node" data-node="${node.id}" style="left: ${node.x}%; top: ${node.y}%;">
+      <div class="radial-node${activeClass}" data-node-idx="${node.idx}" data-node="${node.id}" style="left: ${node.x.toFixed(2)}%; top: ${node.y.toFixed(2)}%;">
         ${iconInner}
         <span class="node-label">${escapeHTML(node.label)}</span>
       </div>
     `;
   }).join("");
+
+  const activeNode = calculatedNodes[activeIdx];
 
   host.innerHTML = `
     <div class="radial-arch-dome" id="radial-arch-dome">
@@ -1282,30 +1324,81 @@ function renderRadialArch() {
       ${nodesHtml}
       <div class="radial-controls-bottom">
         <button class="radial-btn-back" id="radial-back-btn">&lt;BACK</button>
+        <button class="radial-btn-spin" id="spin-prev-btn">◀ Spin Left</button>
+        <button class="radial-btn-spin" id="spin-next-btn">Spin Right ▶</button>
+        <span class="radial-active-badge">Active: <b>${escapeHTML(activeNode.label)}</b></span>
       </div>
       <button class="radial-btn-star" id="radial-star-btn">*</button>
     </div>
   `;
 
-  // Wire node click events
+  // Clicking any node smoothly rotates it into the bottom-right active corner slot!
   $$(".radial-node", host).forEach((nodeEl) => {
     nodeEl.onclick = () => {
-      const nodeKey = nodeEl.dataset.node;
-      const targetNode = RADIAL_NODES.find((n) => n.id === nodeKey);
-      const name = targetNode ? targetNode.label : nodeKey;
-      post("/api/chat", { message: `🎯 Node selected in Arch Radial Launcher: ${name} (${nodeKey}).` });
-      
-      if (nodeKey === "nmos") {
-        // Highlight NMOS / NetBox service
-        post("/api/chat", { message: "📡 NMOS Node (Bottom Right) activated — scanning IS-04 / IS-05 discovery status." });
-      }
+      const idx = parseInt(nodeEl.dataset.nodeIdx, 10);
+      const clickedNode = calculatedNodes[idx];
+
+      const baseAngle = (idx / N) * 2 * Math.PI - Math.PI / 2;
+      state.radialRotation = targetAngle - baseAngle;
+      renderRadialArch();
+
+      post("/api/chat", { message: `🎡 Spun Arch Dial to target: ${clickedNode.label} (${clickedNode.id}).` });
     };
   });
+
+  // Spin Left / Right buttons
+  const stepAngle = (2 * Math.PI) / N;
+  const prevBtn = $("#spin-prev-btn", host);
+  if (prevBtn) {
+    prevBtn.onclick = () => {
+      state.radialRotation -= stepAngle;
+      renderRadialArch();
+    };
+  }
+
+  const nextBtn = $("#spin-next-btn", host);
+  if (nextBtn) {
+    nextBtn.onclick = () => {
+      state.radialRotation += stepAngle;
+      renderRadialArch();
+    };
+  }
+
+  // Interactive mouse drag & wheel scroll spin
+  const dome = $("#radial-arch-dome", host);
+  if (dome) {
+    let isDragging = false;
+    let startX = 0;
+
+    dome.onmousedown = (e) => {
+      if (e.target.closest("button")) return;
+      isDragging = true;
+      startX = e.clientX;
+    };
+    window.onmousemove = (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - startX;
+      if (Math.abs(deltaX) > 3) {
+        state.radialRotation += (deltaX * 0.005);
+        startX = e.clientX;
+        renderRadialArch();
+      }
+    };
+    window.onmouseup = () => { isDragging = false; };
+
+    dome.onwheel = (e) => {
+      e.preventDefault();
+      state.radialRotation += (e.deltaY > 0 ? 0.08 : -0.08);
+      renderRadialArch();
+    };
+  }
 
   const backBtn = $("#radial-back-btn", host);
   if (backBtn) {
     backBtn.onclick = () => {
-      post("/api/chat", { message: "◀ Back button clicked in Arch Dial." });
+      state.radialRotation = 0;
+      renderRadialArch();
+      post("/api/chat", { message: "◀ Reset Arch Dial rotation to default position." });
     };
   }
 
