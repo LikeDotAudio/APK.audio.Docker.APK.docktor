@@ -446,6 +446,9 @@ stamps = built_at([r["image"] for r in rows if r["image"]])
 
 for row in rows:
     sources = copy_sources(row["dockerfile"], row["target"])
+    # CARRIED IN --json, context-relative: provenance.py links each one to the
+    # repository that owns it, off this same stage walk rather than a second parser.
+    row["sources"] = sources or []
     if sources is None:
         row.update({"stale": "unknown", "built": 0.0, "changed": 0.0,
                     "behind": 0, "newest": "",

@@ -469,7 +469,7 @@ function cardHTML(container) {
   const groupTag = container.groupLabel ? `<span class="group-pill"${hueStyle}>${escapeHTML(container.groupLabel)}</span>` : "";
 
   return `
-    <article class="card${container.ours ? " ours" : ""}${isStale ? " stale" : ""}${state.selected === container.name ? " selected" : ""}"${hueStyle}
+    <article class="card${container.ours ? " ours" : ""}${isStale ? " stale" : ""}${container.tone === "ok" || container.tone === "live" ? " up" : ""}${state.selected === container.name ? " selected" : ""}"${hueStyle}
              data-container="${escapeAttr(container.name)}">
       ${kill}
       <div class="head">${groupTag}${dot}<span class="name" title="${escapeAttr(container.name)}"
@@ -552,7 +552,8 @@ function renderBenchHealth(snapshot) {
           clearInterval(state.autoRemountStoppedTimer);
           state.autoRemountStoppedTimer = null;
           const btn = $("#stopped-remount-now");
-          runAction("up", btn, true);
+          runAction("up", btn, true,
+                    "the Vigilant Auto-Remount countdown (exited containers) in the DockTor web UI");
         }
       }, 1000);
     }
@@ -630,7 +631,8 @@ function renderBenchHealth(snapshot) {
         state.autoRemountStoppedTimer = null;
       }
       state.autoRemountStoppedCancelled = true;
-      runAction("up", stoppedNowBtn, true);
+      runAction("up", stoppedNowBtn, true,
+                "the Remount Now button (exited containers) in the DockTor web UI");
     };
   }
 
@@ -721,7 +723,8 @@ function renderDarkStacks(snapshot) {
           clearInterval(state.autoRemountDarkTimer);
           state.autoRemountDarkTimer = null;
           const btn = $("#dark-remount-now");
-          runAction("up", btn, true);
+          runAction("up", btn, true,
+                    "the Vigilant Auto-Remount countdown (empty stacks) in the DockTor web UI");
         }
       }, 1000);
     }
@@ -811,7 +814,8 @@ function renderDarkStacks(snapshot) {
         state.autoRemountDarkTimer = null;
       }
       state.autoRemountDarkCancelled = true;
-      runAction("up", darkNowBtn, true);
+      runAction("up", darkNowBtn, true,
+                "the Remount Now button (empty stacks) in the DockTor web UI");
     };
   }
 
@@ -907,7 +911,8 @@ function renderStaleImages(snapshot) {
 
         for (const containerName of targets) {
           try {
-            await post("/api/action/rebuild", { container: containerName });
+            await post("/api/action/rebuild", { container: containerName,
+              origin: "the Vigilant Auto-Rebuild countdown (stale containers) in the DockTor web UI" });
             await post("/api/chat", { message: `✅ Targeted rebuild completed for ${containerName}.` });
           } catch (err) {
             await post("/api/chat", { message: `❌ Targeted rebuild failed for ${containerName}: ${err.message || err}` });
@@ -983,7 +988,8 @@ function renderStaleImages(snapshot) {
 
       for (const containerName of targets) {
         try {
-          await post("/api/action/rebuild", { container: containerName });
+          await post("/api/action/rebuild", { container: containerName,
+            origin: "the Rebuild Now button (stale containers) in the DockTor web UI" });
           await post("/api/chat", { message: `✅ Targeted rebuild completed for ${containerName}.` });
         } catch (err) {
           await post("/api/chat", { message: `❌ Targeted rebuild failed for ${containerName}: ${err.message || err}` });
@@ -1808,6 +1814,38 @@ function purposeHTML(purpose, name) {
   return html;
 }
 
+/* WHERE IT COMES FROM, AS LINKS. The Config row says where this box built it;
+ * these rows are the GitHub homes of everything that went in. Each file links
+ * into the repository that OWNS it, because one image COPYs out of several —
+ * see provenance.py. A row with no URL is a path GitHub has no page for. */
+function provenanceHTML(p) {
+  if (!p) return "";
+  const link = (url, text) => url
+    ? `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">${escapeHTML(text)} ↗</a>`
+    : escapeHTML(text);
+  const owner = (name) => name ? ` <small>· ${escapeHTML(name)}</small>` : "";
+
+  let html = "";
+  if (p.repository) {
+    const branch = p.repository.branch ? ` <small>@ ${escapeHTML(p.repository.branch)}</small>` : "";
+    html += row("GitHub", link(p.repository.url, p.repository.url || p.repository.name) + branch,
+                p.repository.url ? "url" : "dim");
+  }
+
+  html += `<h3>🧬 WHAT MAKES &amp; INFLUENCES IT</h3>`;
+  if (!p.made_by.length && !p.images.length) {
+    return html + row("Sources", "nothing in this checkout declares it", "dim");
+  }
+  html += p.made_by.map((f) =>
+    row(f.role, link(f.url, f.path) + owner(f.repository), f.url ? "url" : "dim")).join("");
+  html += p.images.map((i) =>
+    row(p.built_here ? "Base image" : "Image", link(i.url, i.path), i.url ? "url" : "dim")).join("");
+  if (p.repositories.length > 1) {
+    html += row("Repositories", p.repositories.map((r) => link(r.url, r.name)).join(" · "));
+  }
+  return html;
+}
+
 function renderDetail(detail) {
   state.detail = detail;
   $("#detail-title").textContent = `🔍 ${detail.name}`;
@@ -2042,14 +2080,17 @@ function markRunning(button, on) {
   button.classList.toggle("running", on);
 }
 
-async function runAction(key, button, skipConfirm = false) {
+/* `origin` IS WHO PRESSED IT. A countdown firing and a person clicking land on
+ * the same verb, and a container stopped halfway down the run prints this. */
+async function runAction(key, button, skipConfirm = false, origin = null) {
   const row = state.actions.actions[key];
   if (!row) return;
   if (!skipConfirm && !(await askAll(row))) return;
   markRunning(button, true);
   follow(true);
   try {
-    await post(`/api/action/${encodeURIComponent(key)}`);
+    await post(`/api/action/${encodeURIComponent(key)}`,
+               { origin: origin || `the "${row.label}" button in the DockTor web UI` });
   } finally {
     // A STOP AND THE RUN IT CANCELLED FINISH IN EITHER ORDER, and both land
     // here. follow() counts, so the bar comes back when the LAST of them ends.

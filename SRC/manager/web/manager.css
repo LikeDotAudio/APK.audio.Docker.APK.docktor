@@ -1005,3 +1005,27 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
   background: #0d0d0d; color: var(--ink); border: 0; resize: vertical;
   font: 11.5px/1.5 var(--mono); padding: 10px 12px;
 }
+
+/* ------------------------------------------------------- a working card
+ * A CONTAINER THAT IS UP IS THE WHOLE TILE, NOT A GLYPH ON IT: renderCard()
+ * adds `.up` for tone ok (healthcheck passing) and live (up, no healthcheck),
+ * so a bench read from across the room is green where it works and dark where
+ * it does not. The fill is --tone-ok itself, so it stays the palette green.
+ * BLACK TEXT, EVERY ROW: #00e676 is a light green, and each state or meter
+ * colour on a dark card (.t-ok, the cpu badge) vanishes against it. :is()
+ * carries the weight of its heaviest argument, which is what outranks the
+ * `.cards.density-*` overrides without !important. Borders are untouched, so
+ * the group edge, stale, hover and selection still read. Last in the file on
+ * purpose: it must follow the .t-* rules it overrides. */
+.cards .card.up { background: var(--tone-ok); }
+.cards .card.up :is(.name, .status, .status-text, .dot, .kill, .group-pill,
+  .num-badge, .meter b, .meter span, .net, .net small, .detail-lines,
+  .stale-row, .stale-newest, .apps-head, .app, .app-name, .app-state, [class^="t-"]) {
+  color: #000;
+}
+.cards .card.up .num-badge,
+.cards .card.up .group-pill {
+  background: rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.35);
+}
+.cards .card.up .apps { border-top-color: rgba(0, 0, 0, 0.25); }

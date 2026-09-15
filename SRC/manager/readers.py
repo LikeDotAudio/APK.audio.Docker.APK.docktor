@@ -436,6 +436,17 @@ def _script_json(script, container_name=None, quiet=True):
         return {}
 
 
+def read_build_services(quiet=True):
+    """Every declared build with what goes into it, from staleness.sh --json.
+
+    [{"stack", "service", "container", "image", "compose_file", "context",
+    "dockerfile", "target", "sources", ...}] — `sources` context-relative, the
+    COPY/ADD paths of the stage that is built. An empty list on failure.
+    """
+    services = _script_json('staleness.sh', quiet=quiet).get("services")
+    return services if isinstance(services, list) else []
+
+
 def read_page_titles(uris, remembered_only=False):
     """The name each address answers with, keyed by the URI asked about.
 

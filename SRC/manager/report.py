@@ -546,7 +546,7 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
             "apps": published_apps, "retired": len(retired)}
 
 
-def run_reported(name, args=(), on_line_callback=None):
+def run_reported(name, args=(), on_line_callback=None, ordered_by=None):
     """run_management_script, with a status report either side of it.
 
     THE WRAPPER IS THE ONE CALL: the action surface keeps one
@@ -565,7 +565,8 @@ def run_reported(name, args=(), on_line_callback=None):
     # path and its only caller, so registering here registers exactly the runs a
     # stop may tear down and none of the screen own reads.
     exit_code, output = run_management_script(name, args, cancellable=True,
-                                              on_line_callback=on_line_callback)
+                                              on_line_callback=on_line_callback,
+                                              ordered_by=ordered_by)
     response = {"exit_code": exit_code,
                 "ok": exit_code == 0,
                 "duration_s": round(time.time() - started, 3)}

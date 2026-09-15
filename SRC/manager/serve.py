@@ -331,9 +331,14 @@ class ManagerHandler(BaseHTTPRequestHandler):
             LOG.publish("line", f"⚡ {table[key]['label']}"
                                 + (f" — {target}" if target else "") + "…")
             stream = StreamedRun()
+            # WHO PRESSED IT. The client names its trigger (a button, a
+            # countdown); the address is ours to add, not the client's to claim.
+            origin = str(body.get("origin") or "a button in the DockTor web UI")[:200]
+            ordered_by = f"{origin} (from {self.client_address[0]})"
             exit_code, closing = api.run_action(key, name=target, extra=extra,
                                                 on_line=stream,
-                                                scope="stack" if stack else "container")
+                                                scope="stack" if stack else "container",
+                                                ordered_by=ordered_by)
             if closing:
                 LOG.publish("line", closing)
             return self._json({"ok": exit_code == 0, "exit_code": exit_code,

@@ -33,7 +33,7 @@ services:
   manager:
     build:
       context: "../../.."                                          # repo root
-      dockerfile: "APK:DOCKERS/APK:docktor/Docker/Dockerfile.manager"
+      dockerfile: "APK:PODS/Docktor/Docker/Dockerfile.manager"
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped
@@ -63,6 +63,11 @@ services:
         #    API carries the mount. check.sh compose-binds holds this at zero.
         bind:
           propagation: rprivate
+      # LOGGER STORAGE: APK:Documentation/LOGS on the host. See the volumes:
+      # block at the bottom for why THIS file does not declare it external.
+      - type: volume
+        source: apk-audio-logs
+        target: /logs
     environment:
       # ⚠️ LOOPBACK, AND NOW THE ONLY THING HOLDING THE LINE. This API stops
       #    containers, rebuilds images and force-kills the bench with no
@@ -105,6 +110,7 @@ services:
       APKAUDIO_REPO: "${APKAUDIO_REPO}"
       APKAUDIO_UID: "${APKAUDIO_UID:-1000}"
       APKAUDIO_GID: "${APKAUDIO_GID:-1000}"
+      APKAUDIO_LOG_DIR: /logs/DockTor
     working_dir: "${APKAUDIO_REPO}"
     healthcheck:
       # The API own account of itself, which answers before docker is asked — so
@@ -123,3 +129,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+
+# LOGGER STORAGE. Every other stack declares this `external: true` and needs
+# DATABSE:volume:Log STORAGE up first. NOT HERE: the manager is what brings that
+# stack back, so it must be able to start on a bench where the volume does not
+# exist yet. Same name, same bind — whichever file creates it first, both mount
+# the one APK:Documentation/LOGS.
+volumes:
+  apk-audio-logs:
+    name: apk-audio-logs
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${APKAUDIO_REPO}/APK:Documentation/LOGS"

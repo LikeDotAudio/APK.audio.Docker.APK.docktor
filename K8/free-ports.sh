@@ -90,6 +90,48 @@ def capture(command):
         return None
 
 
+def _ancestor_chain():
+    """The scripts above this one, nearest first: `up.sh <- docktor.py serve`.
+
+    READ FROM /proc, NOT PASSED: a stop that cannot say who asked for it is the
+    question nobody can answer afterwards, and a hand-run `./up.sh` in a
+    terminal sets no variable. The python below the heredoc is this script's
+    own bash, so the walk starts at the grandparent."""
+    links = []
+    pid = os.getppid()
+    for _ in range(8):
+        try:
+            with open(f'/proc/{pid}/stat', encoding='utf-8', errors='replace') as handle:
+                parent = int(handle.read().rsplit(')', 1)[1].split()[1])
+            with open(f'/proc/{pid}/cmdline', 'rb') as handle:
+                argv = [a.decode(errors='replace') for a in handle.read().split(b'\0') if a]
+        except (OSError, ValueError, IndexError):
+            break
+        if not argv or pid <= 1:
+            break
+        # ONE WORD PER LINK, TWO FOR A VERB: `up.sh`, `docktor.py serve`. A whole
+        # argv is an editor's forty flags, and the reader wants the script name.
+        # SPLIT ON SPACES TOO: Electron rewrites its argv into one string.
+        words = [os.path.basename(w) for a in argv[:3] for w in a.split()]
+        if words and words[0] in ('bash', 'sh', 'python3', 'python') and len(words) > 1:
+            words = words[1:]
+        words = [w for w in words if w and not w.startswith('-')][:2] or words[:1]
+        link = ' '.join(words)[:60]
+        if link and link != 'free-ports.sh' and (not links or links[-1] != link):
+            links.append(link)
+        pid = parent
+    # FOUR IS ENOUGH to reach the manager or the terminal; past that it is the
+    # desktop session, which never ordered anything.
+    return ' <- '.join(links[:4]) or 'a shell with no parent script'
+
+
+# WHO ASKED. APKAUDIO_ORDERED_BY is set by the manager (which button, which
+# countdown, which CLI verb); the chain is what actually ran.
+ORDERED_BY = os.environ.get('APKAUDIO_ORDERED_BY') or 'nobody named (run by hand)'
+CHAIN = _ancestor_chain()
+ORDER = f"received command from {ORDERED_BY} via {CHAIN}"
+
+
 def port_is_free(port, host='127.0.0.1'):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -248,10 +290,11 @@ def free_the_port(port):
 
     for pid in processes_holding(port):
         attempted = True
-        print(f"    \U0001f4a5 killing {describe_process(pid)} (pid {pid}) on port {port}",
-              flush=True)
+        print(f"    \U0001f4a5 {ORDER} to kill {describe_process(pid)} (pid {pid}) "
+              f"holding port {port}", flush=True)
         announce("PORT_EVICT_PROCESS", {"port": port, "pid": pid,
-                                        "command": describe_process(pid)})
+                                        "command": describe_process(pid),
+                                        "ordered_by": ORDERED_BY, "chain": CHAIN})
         for sig in (15, 9):
             try:
                 os.kill(pid, sig)
@@ -264,10 +307,11 @@ def free_the_port(port):
 
     for identifier, name in containers_publishing(port):
         attempted = True
-        print(f"    \U0001f4a5 stopping container {name} ({identifier}) publishing port {port}",
-              flush=True)
+        print(f"    \U0001f4a5 {name} ({identifier}) {ORDER} to shut down "
+              f"-- it publishes port {port}", flush=True)
         announce("PORT_EVICT_CONTAINER", {"port": port, "container": name,
-                                          "id": identifier})
+                                          "id": identifier,
+                                          "ordered_by": ORDERED_BY, "chain": CHAIN})
         capture(['docker', 'stop', '-t', '5', identifier])
         for _ in range(30):
             if port_is_free(port):

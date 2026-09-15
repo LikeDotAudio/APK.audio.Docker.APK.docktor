@@ -166,6 +166,10 @@ def run_cli_mode(argv=None):
     args = [a for a in argv if a not in ('--cli', '--no-kaboom')]
     action = args[0].lower() if args else 'status'
     rest = args[1:]
+    # WHO ASKED, for free-ports.sh to print beside every stop. setdefault: a
+    # CLI run launched by something that already named itself keeps that name.
+    os.environ.setdefault('APKAUDIO_ORDERED_BY',
+                          "the terminal: docktor.py " + " ".join(argv or ['status']))
 
     if action in ('rebuild', 'clean', 'up', 'remount', 'mount', 'start', 'rebuild-one', 'rebuild-container'):
         _open_browser_immediately()

@@ -218,7 +218,7 @@ def is_any_script_running():
 
 
 def run_management_script(name, args=(), on_line_callback=None, quiet=False,
-                          cancellable=False):
+                          cancellable=False, ordered_by=None):
     """Run one script from the collection; return (exit_code, combined output).
 
     THE EXIT CODE IS PART OF THE RETURN VALUE. The streamer this replaces threw
@@ -233,6 +233,9 @@ def run_management_script(name, args=(), on_line_callback=None, quiet=False,
     suppressed: a script that is not there is news at any beat.
     `cancellable` PUTS THIS RUN WHERE A STOP CAN REACH IT. Only the action path
     passes it.
+    `ordered_by` IS WHO ASKED, and it travels as APKAUDIO_ORDERED_BY for the
+    same reason --no-kaboom does: free-ports.sh is two scripts down, and a
+    container it stops has to be able to say whose command that was.
     """
     script = os.path.join(DOCKER_SCRIPTS, name)
     if not os.path.exists(script):
@@ -244,10 +247,15 @@ def run_management_script(name, args=(), on_line_callback=None, quiet=False,
 
     argv = [script, *args]
     if not quiet:
-        emit("SCRIPT_START", {"script": name, "argv": argv})
+        emit("SCRIPT_START", {"script": name, "argv": argv,
+                              "ordered_by": ordered_by})
+    environment = None
+    if ordered_by:
+        environment = {**os.environ, "APKAUDIO_ORDERED_BY": ordered_by}
     process = subprocess.Popen(
         argv,
         cwd=REPOSITORY_ROOT,
+        env=environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

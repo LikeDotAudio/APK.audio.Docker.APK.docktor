@@ -40,6 +40,7 @@ from .readers import (read_containers, read_container_apps, read_app_plane,
 from .diagnose import (diagnose_state, health_status, port_mappings,
                        network_addresses, service_endpoints, configuration_path)
 from .report import publish_status_report, publish_refresh_status, run_reported
+from .provenance import container_provenance
 
 
 # ---------------------------------------------------------------------------
@@ -646,6 +647,7 @@ def container_detail(name, quiet=False):
     titles = read_page_titles([uri for _port, uri in undeclared]) if undeclared else {}
     state = data.get("State", {}) or {}
     config = data.get("Config", {}) or {}
+    config_path = configuration_path(name, quiet=quiet)
     return {
         "name": name,
         # WHAT IT IS, beside what it is DOING: every other field here measures
@@ -676,7 +678,11 @@ def container_detail(name, quiet=False):
         "undeclared": [{"port": port, "uri": uri,
                         "title": titles.get(uri, {}).get("title", "")}
                        for port, uri in undeclared],
-        "config_path": configuration_path(name, quiet=quiet),
+        "config_path": config_path,
+        # WHERE IT COMES FROM: the GitHub home of the compose file, and a link for
+        # every file and image that goes into the build. See provenance.py.
+        "provenance": container_provenance(name, config_path, config.get("Image", ""),
+                                           quiet=quiet),
         "plane": read_app_plane(name, quiet=quiet).get(name),
         "inspect": data,
     }
@@ -860,13 +866,17 @@ def chat(message):
             "sounds_like_panic": text.lower() in PANIC_WORDS}
 
 
-def run_action(key, name=None, extra=(), on_line=None, scope="container"):
+def run_action(key, name=None, extra=(), on_line=None, scope="container",
+               ordered_by=None):
     """Run one verb from the tables above. (exit_code, closing sentence).
 
     REFUSED, NOT QUEUED, when another action holds the bench — unless this verb
     carries `preempts`, in which case it CANCELS the holder and takes the bench.
     `name` is the argument and `scope` says which table it names. One parameter,
     not two, because the two are alternatives and never both.
+    `ordered_by` names the hand on the button — a press, a countdown, a CLI
+    verb — and is carried to every script the verb runs, so a container
+    stopped three scripts down can say whose command it was.
     """
     if name is None:
         row = ACTIONS.get(key)
@@ -902,10 +912,13 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container"):
 
     # READ AFTER THE ACQUIRE: a preempting verb bumps the epoch on its way in,
     # and reading earlier would have every stop report itself as stopped.
-    chat(f"🤖 DockTor Action: {row['label']}" + (f" — {name}" if name else ""))
+    who = ordered_by or "an unnamed caller of the DockTor API"
+    order = f"{row['label']}" + (f" — {name}" if name else "") + f", ordered by {who}"
+    chat(f"🤖 DockTor Action: {order}")
     epoch_before = cancel_epoch()
     try:
-        exit_code, _ = run_reported(row["script"], args, on_line_callback=on_line)
+        exit_code, _ = run_reported(row["script"], args, on_line_callback=on_line,
+                                    ordered_by=order)
     finally:
         ACTION_LOCK.release()
 
