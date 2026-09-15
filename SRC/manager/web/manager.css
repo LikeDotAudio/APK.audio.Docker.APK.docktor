@@ -83,6 +83,7 @@ body {
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .4; cursor: not-allowed; filter: none; }
 .btn.small { padding: 5px 8px; font-size: 11px; }
+.btn.micro { padding: 2px 6px; font-size: 10px; border-radius: 4px; }
 
 /* THE ONE BUTTON THAT WAS PRESSED, WHILE EVERY OTHER ONE IS DIMMED. The server
  * runs one action at a time, so the whole bar is disabled for the length of a
@@ -338,14 +339,31 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 .group-head.ours { color: var(--accent); }
 .group-head:first-child { margin-top: 0; }
+
+.group-pill {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--group, rgba(255, 255, 255, 0.2));
+  color: var(--group, #ffffff);
+  white-space: nowrap;
+}
+
 .group {
   display: grid; gap: 6px;
-  /* Four across is the layout of record: the roster is read as a wall of rigs,
-   * and a reflowing count made every window width a different picture. The
-   * cards shrink to the column instead — minmax(0,1fr) is what lets them. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-@media (max-width: 1100px) { .group { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.group.group-all {
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 1100px) { .group { grid-template-columns: repeat(3, minmax(0, 1fr)); } .group.group-all { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
 @media (max-width: 820px)  { .group { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px)  { .group { grid-template-columns: 1fr; } }
 
@@ -432,39 +450,48 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * auto-fill is what turns saved height into saved scrolling. High stays four
  * across. These carry .cards so they outrank the width media queries. */
 .cards.density-low .group {
-  /* 136px was the track for 10.5px type and a `Netbox-` on every name. The
-   * name is bigger and shorter now, and the column is sized to the longest one
-   * the bench actually has. */
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
 }
 .cards.density-low .group-head { margin: 7px 2px 3px; }
-/* One line tall and still the biggest type on the card: the name is the ONLY
- * thing this level draws, so the pixels the hidden rows gave back belong to it.
- * Dropping the prefix the group heading already carries is what paid for the
- * size. The left edge keeps its 3px: a hairline of a hue is not a colour. */
-/* AND THE EMOJI IS THE WHOLE STATUS ROW HERE, BESIDE THE NAME. This level draws
- * names and nothing else, so the only health signal on a folded tile used to be
- * the dot — which is why the status row is KEPT here with its sentence dropped
- * and its emoji doubled. Two columns, emoji then name. */
+
 .cards.density-low .card {
-  padding: 4px 6px; border-width: 1px; border-left-width: 3px;
-  display: grid; grid-template-columns: auto minmax(0, 1fr);
-  align-items: center; column-gap: 6px;
+  padding: 6px 10px;
+  border-width: 1px;
+  border-left-width: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: unset;
 }
-.cards.density-low .card .name { font-size: 12.5px; }
+.cards.density-low .card .head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  padding-right: 18px;
+}
+.cards.density-low .card .name { font-size: 13px; font-weight: 700; color: #ffffff; }
 .cards.density-low .card .status {
-  grid-column: 1; grid-row: 1; margin: 0; font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 11.5px;
 }
-.cards.density-low .card .status .status-text { display: none; }
-.cards.density-low .card .status .status-emoji { font-size: 2em; }
-.cards.density-low .card .head { grid-column: 2; grid-row: 1; }
-/* The emoji says it, in colour, at twice the type size. A dot beside it is the
- * same fact drawn twice and a narrower column to draw it in. */
-.cards.density-low .card .dot { display: none; }
-/* The ✕ sits over the name once the card is one line tall. */
-.cards.density-low .card .head { padding-right: 15px; }
-.cards.density-low .card .kill { top: 2px; right: 2px; font-size: 12px; }
+.cards.density-low .card .status .status-text { display: inline-block; font-size: 11px; }
+.cards.density-low .card .status .status-emoji { font-size: 1.1em; }
+.cards.density-low .card .dot { display: inline-block; }
+.cards.density-low .card .kill { top: 4px; right: 4px; font-size: 12px; }
+
+.cards.density-low .card .card-num-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  margin-top: 2px;
+}
+
 .cards.density-low .card .stale-row,
 .cards.density-low .card .stale-fix,
 .cards.density-low .card .meters,
@@ -472,7 +499,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .cards.density-low .card .detail-lines,
 .cards.density-low .card .apps { display: none; }
 
-.cards.density-med .group { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+.cards.density-med .group { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .cards.density-med .card .meters,
 .cards.density-med .card .net { display: none; }
 .cards.density-med .card .status { margin-bottom: 3px; }
@@ -591,6 +618,82 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 
 /* ------------------------------------------------------------ detail pane */
+.topbar .verbs.right { flex-wrap: nowrap; gap: 8px; margin-left: auto; }
+
+/* Live System Telemetry Bar */
+.system-telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #090c10;
+  border-bottom: 1px solid var(--edge);
+  padding: 6px 16px;
+  font-size: 11.5px;
+  user-select: none;
+}
+
+.telemetry-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 3px 10px;
+  border-radius: 6px;
+}
+
+.telemetry-pill.highlight-disk {
+  background: rgba(244, 144, 44, 0.12);
+  border-color: rgba(244, 144, 44, 0.35);
+}
+
+.telemetry-label {
+  color: var(--dimmer);
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.telemetry-val {
+  color: #ffffff;
+  font-weight: 800;
+  font-family: var(--mono);
+}
+
+.card-num-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.num-badge {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e0e0e0;
+}
+
+.num-badge.cpu-badge {
+  color: #81c784;
+  border-color: rgba(129, 199, 132, 0.3);
+}
+
+.num-badge.ram-badge {
+  color: #64b5f6;
+  border-color: rgba(100, 181, 246, 0.3);
+}
+
+.num-badge.disk-badge {
+  color: #ffb74d;
+  border-color: rgba(255, 183, 77, 0.3);
+}
+
 .launchers {
   display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 9px;
   border-bottom: 1px solid var(--edge);
@@ -679,8 +782,103 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   --lane-blue:   #1e88e5;
 }
 
-.log-body { display: flex; flex: 1; min-height: 0; }
-.log-body .log { flex: 1; }
+.log-body { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 4px; background: #080a0d; }
+
+.swimlane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #0d0d0d;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.swimlane .log {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+}
+
+.swimlane-header {
+  background: rgba(244, 144, 44, 0.12);
+  border-bottom: 1px solid rgba(244, 144, 44, 0.25);
+  color: #ffffff;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.swimlane-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swimlane-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swimlane-header.recovery-header {
+  background: rgba(230, 81, 0, 0.22);
+  border-bottom: 1px solid rgba(255, 87, 34, 0.4);
+  color: #ffab40;
+}
+
+.swimlane-header.errors-header {
+  background: rgba(198, 40, 40, 0.25);
+  border-bottom: 1px solid rgba(239, 83, 80, 0.4);
+  color: #ff8a80;
+}
+
+.swimlane-badge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.swimlane-badge.recovery-badge {
+  background: rgba(255, 87, 34, 0.25);
+  color: #ffd180;
+  border: 1px solid rgba(255, 87, 34, 0.4);
+}
+
+.swimlane-badge.errors-badge {
+  background: rgba(198, 40, 40, 0.3);
+  color: #ff8a80;
+  border: 1px solid rgba(239, 83, 80, 0.5);
+}
+
+.rec-tag {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 5px;
+  background: rgba(255, 171, 64, 0.2);
+  color: #ffab40;
+  border: 1px solid rgba(255, 171, 64, 0.4);
+}
+
+.log .l.err .rec-tag {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ff5252;
+  border-color: #ff5252;
+}
+
+.recovery-log {
+  background: #0d0907 !important;
+}
 
 .log .l.q0 { color: var(--lane-orange); }
 .log .l.q1 { color: var(--lane-yellow); }
@@ -788,3 +986,157 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
   background: #0d0d0d; color: var(--ink); border: 0; resize: vertical;
   font: 11.5px/1.5 var(--mono); padding: 10px 12px;
 }
+
+/* ----------------------------------------------------------- Arch Radial Launcher */
+.radial-arch-view {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  width: 100%;
+  min-height: 560px;
+  background: var(--ground);
+}
+
+.radial-arch-dome {
+  position: relative;
+  width: 100%;
+  max-width: 820px;
+  height: 540px;
+  background: radial-gradient(circle at 50% 60%, #0d0e12 0%, #050608 100%);
+  border-radius: 410px 410px 16px 16px;
+  border: 2.5px solid rgba(255, 144, 44, 0.7);
+  box-shadow: 0 0 50px rgba(255, 144, 44, 0.4), inset 0 0 35px rgba(255, 144, 44, 0.25);
+  overflow: hidden;
+  user-select: none;
+}
+
+.radial-svg-layer {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.radial-center-hub {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px; height: 32px;
+  background: #ff902c;
+  border-radius: 8px;
+  box-shadow: 0 0 25px #ff902c, 0 0 10px #ffffff;
+  z-index: 10;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.radial-center-hub:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 35px #ff902c, 0 0 15px #ffffff;
+}
+
+.radial-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.radial-node:hover {
+  transform: translate(-50%, -50%) scale(1.12);
+  z-index: 12;
+}
+.radial-node .node-icon {
+  font-size: 26px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+}
+.radial-node .node-label {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e0e0e0;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.9);
+  white-space: nowrap;
+}
+
+/* NMOS Node Special Styling (Locked in Bottom Right Corner) */
+.radial-node[data-node="nmos"] {
+  z-index: 15;
+}
+.radial-node[data-node="nmos"] .node-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,224,51,0.25) 0%, rgba(255,160,0,0.05) 70%, transparent 100%);
+  box-shadow: 0 0 40px rgba(255, 224, 51, 0.8), inset 0 0 20px rgba(255, 224, 51, 0.5);
+  animation: nmos-pulse 2.5s ease-in-out infinite alternate;
+}
+.radial-node[data-node="nmos"] .node-icon {
+  font-size: 52px;
+  filter: drop-shadow(0 0 12px #ffe033);
+}
+.radial-node[data-node="nmos"] .node-label {
+  font-size: 15px;
+  font-weight: 900;
+  color: #ffe033;
+  letter-spacing: 1.5px;
+  text-shadow: 0 0 14px #ffe033, 0 0 25px rgba(255, 224, 51, 0.8);
+  margin-top: 6px;
+}
+
+@keyframes nmos-pulse {
+  0% { box-shadow: 0 0 30px rgba(255, 224, 51, 0.6), inset 0 0 15px rgba(255, 224, 51, 0.3); }
+  100% { box-shadow: 0 0 55px rgba(255, 224, 51, 0.95), inset 0 0 25px rgba(255, 224, 51, 0.6); }
+}
+
+/* Bottom controls inside arch dome */
+.radial-controls-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 10;
+}
+.radial-btn-back {
+  background: rgba(255, 255, 255, 0.9);
+  color: #000;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.radial-btn-star {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  color: #000;
+  font-weight: 800;
+  font-size: 15px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  z-index: 10;
+}
+

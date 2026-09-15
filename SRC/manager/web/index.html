@@ -67,6 +67,12 @@
     <button class="btn deep" data-action="verify"></button>
   </div>
 
+  <div class="system-telemetry-strip" id="system-telemetry-bar" title="Host System Hardware Telemetry">
+    <span class="telemetry-pill" title="Host CPU Usage">💻 <span id="sys-cpu-num">0.0%</span></span>
+    <span class="telemetry-pill" title="Host RAM Footprint">🧠 <span id="sys-ram-num">0 MB / 0 GB</span></span>
+    <span class="telemetry-pill highlight-disk" title="Hard Disk Space">💾 <span id="sys-disk-num">Querying…</span></span>
+  </div>
+
   <div class="verbs right">
     <label class="select">⏱
       <select id="auto-refresh">
@@ -115,6 +121,7 @@
         <label><input type="radio" name="view" value="cards" checked><span>Cards</span></label>
         <label><input type="radio" name="view" value="donuts"><span>Donuts — CPU / RAM</span></label>
         <label><input type="radio" name="view" value="ports"><span>Ports</span></label>
+        <label><input type="radio" name="view" value="radial"><span>Arch Dial</span></label>
       </div>
       <!-- NO `clear-dead` BUTTON HERE ANY MORE: it was the one destructive verb
            outside 🛑 Stop & Clean, in a pane head that otherwise only holds
@@ -168,6 +175,9 @@
          host-networked node (8100) exists only in the second. -->
     <div class="ports" id="ports" hidden></div>
 
+    <!-- ARCH RADIAL LAUNCHER DIAL VIEW -->
+    <div class="radial-arch-view" id="radial-arch-view" hidden></div>
+
     </div><!-- /.pane-body -->
   </section>
 
@@ -191,16 +201,65 @@
     <button class="btn teal small" id="chat">💬 Chat</button>
     <h2>📋 Execution Log</h2>
     <span class="log-note" id="stream-state">connecting…</span>
+
+    <div class="segmented log-mode-selector" id="log-lane-mode" role="radiogroup" aria-label="Swimlane view mode" title="Switch between all swimlanes view, execution log, recovery log, or errors log">
+      <span class="segmented-lead">🏊 Swimlanes</span>
+      <label><input type="radio" name="lanemode" value="split" checked><span>🛡️ All Swimlanes</span></label>
+      <label><input type="radio" name="lanemode" value="execution"><span>📜 Execution</span></label>
+      <label><input type="radio" name="lanemode" value="recovery"><span>🚨 Recovery</span></label>
+      <label><input type="radio" name="lanemode" value="errors"><span>⚠️ Errors</span></label>
+    </div>
+
     <button class="btn plain small" id="copy-log">📋 Copy log…</button>
     <button class="btn plain small" id="clear-log">🧹 Clear Execution Log</button>
     <button class="btn violet small" data-action="clear-logs"></button>
   </div>
-  <!-- THE LOG AND ITS LEGEND, SIDE BY SIDE AND IN THAT ORDER. Every line in
-       the pre to its left is painted the colour of whichever hand was at the
-       top of this clock when it was written, so the pair only reads as one
-       instrument while both are on screen. -->
-  <div class="log-body">
-    <pre class="log" id="log"></pre>
+  <!-- THE SWIMLANES LOG BODY.
+       Lane 1 holds raw execution / build stdout.
+       Lane 2 holds recovery actions, watchdog remounts, crashes, evictions and rebuilds.
+       Lane 3 holds errors, failures, exceptions and hot warnings. -->
+  <div class="log-body" id="log-body-container">
+    <div class="swimlane execution-lane" id="lane-execution">
+      <div class="swimlane-header">
+        <div class="swimlane-title-group">
+          <span>📜 Execution &amp; Build Stream</span>
+          <span class="swimlane-badge" id="exec-count">0 lines</span>
+        </div>
+        <div class="swimlane-actions">
+          <button class="btn plain micro" id="copy-exec-log" title="Copy execution log stream">📋 Copy log…</button>
+          <button class="btn plain micro" id="clear-exec-log" title="Clear execution log stream">🧹 Clear</button>
+        </div>
+      </div>
+      <pre class="log" id="log"></pre>
+    </div>
+
+    <div class="swimlane recovery-lane" id="lane-recovery">
+      <div class="swimlane-header recovery-header">
+        <div class="swimlane-title-group">
+          <span>🚨 Recovery &amp; Watchdog Swimlane</span>
+          <span class="swimlane-badge recovery-badge" id="recovery-count">0 events</span>
+        </div>
+        <div class="swimlane-actions">
+          <button class="btn plain micro" id="copy-recovery-log" title="Copy recovery log stream">📋 Copy log…</button>
+          <button class="btn plain micro" id="clear-recovery-log" title="Clear recovery log stream">🧹 Clear</button>
+        </div>
+      </div>
+      <pre class="log recovery-log" id="recovery-log"></pre>
+    </div>
+
+    <div class="swimlane errors-lane" id="lane-errors">
+      <div class="swimlane-header errors-header">
+        <div class="swimlane-title-group">
+          <span>⚠️ Errors &amp; Failures Swimlane</span>
+          <span class="swimlane-badge errors-badge" id="errors-count">0 errors</span>
+        </div>
+        <div class="swimlane-actions">
+          <button class="btn plain micro" id="copy-errors-log" title="Copy errors log stream">📋 Copy log…</button>
+          <button class="btn plain micro" id="clear-errors-log" title="Clear errors log stream">🧹 Clear</button>
+        </div>
+      </div>
+      <pre class="log errors-log" id="errors-log"></pre>
+    </div>
 
     <!-- A SWIM PACE CLOCK: 60 at the top, four hands fifteen seconds apart,
          numbers every five. Here for the pool-deck reason — you do not read a

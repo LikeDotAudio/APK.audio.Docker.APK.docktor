@@ -119,19 +119,55 @@ const busTone = (word) =>
  * `bar` where it means overwrite and `bardone` where it means overwrite once
  * more and freeze. Holding the element is the whole trick. */
 const logBox = $("#log");
+const recoveryLogBox = $("#recovery-log");
+const errorsLogBox = $("#errors-log");
 let liveBar = null;
+let execLineCount = 0;
+let recoveryLineCount = 0;
+let errorsLineCount = 0;
+
+function isRecoveryLine(text, tone) {
+  if (tone === "hot") return true;
+  return /WATCHDOG|REMOUNT|REBUILD|CRASH|FAILED|ERROR|EVICT|PANIC|SOS|STATUS_PUBLISH_FAILED|CHAT_PUBLISH_FAILED|STACK_NEEDS_REBUILD|PORT_EVICT_CONTAINER|Vigilant|Remount|Rebuild/i.test(text)
+         || text.includes("🛑") || text.includes("💥") || text.includes("⚡") || text.includes("⚠️") || text.includes("⛔") || text.includes("🚨");
+}
+
+function isErrorLine(text, tone) {
+  if (tone === "hot") return true;
+  return /FAIL|ERROR|Errno|Exception|Fatal|Crash|Refused|Panic|SOS|stale/i.test(text)
+         || text.includes("❌") || text.includes("⚠️") || text.includes("💥") || text.includes("🛑");
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 function logRecord(record) {
-  if (record.kind === "clear") { logBox.textContent = ""; liveBar = null; return; }
+  const execCountEl = $("#exec-count");
+  const recoveryCountEl = $("#recovery-count");
+  const errorsCountEl = $("#errors-count");
 
-  const pinned = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 24;
+  if (record.kind === "clear") {
+    logBox.textContent = "";
+    if (recoveryLogBox) recoveryLogBox.textContent = "";
+    if (errorsLogBox) errorsLogBox.textContent = "";
+    liveBar = null;
+    execLineCount = 0;
+    recoveryLineCount = 0;
+    errorsLineCount = 0;
+    if (execCountEl) execCountEl.textContent = "0 lines";
+    if (recoveryCountEl) recoveryCountEl.textContent = "0 events";
+    if (errorsCountEl) errorsCountEl.textContent = "0 errors";
+    return;
+  }
+
+  const pinnedExec = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 24;
+  const pinnedRec = recoveryLogBox ? (recoveryLogBox.scrollTop + recoveryLogBox.clientHeight >= recoveryLogBox.scrollHeight - 24) : false;
+  const pinnedErr = errorsLogBox ? (errorsLogBox.scrollTop + errorsLogBox.clientHeight >= errorsLogBox.scrollHeight - 24) : false;
 
   if (record.kind === "bar" || record.kind === "bardone") {
     if (!liveBar) {
       liveBar = document.createElement("span");
-      // Stamped when the bar STARTS and never restamped: it is one line being
-      // overwritten, so a bar that changed colour under a build would be
-      // reporting the clock rather than the build.
       liveBar.className = `l q${paceQuarter(record.at)}`;
       logBox.append(liveBar);
     }
@@ -143,10 +179,47 @@ function logRecord(record) {
     line.className = `l q${paceQuarter(record.at)}${record.tone === "hot" ? " err" : ""}`;
     line.textContent = record.text;
     logBox.append(line);
+    execLineCount++;
+    if (execCountEl) execCountEl.textContent = `${execLineCount} lines`;
+
+    // Duplicate recovery, crash, and watchdog events to Swimlane 2
+    if (recoveryLogBox && isRecoveryLine(record.text, record.tone)) {
+      const recLine = document.createElement("span");
+      let category = "🚨 EVENT";
+      if (/WATCHDOG/i.test(record.text)) category = "🛡️ WATCHDOG";
+      else if (/REMOUNT|up-stack/i.test(record.text)) category = "🔄 REMOUNT";
+      else if (/REBUILD|build/i.test(record.text)) category = "🧱 REBUILD";
+      else if (/EVICT|PORT/i.test(record.text)) category = "💥 EVICTION";
+      else if (/PANIC|SOS/i.test(record.text)) category = "🛑 PANIC/SOS";
+      else if (/FAIL|ERROR|Errno/i.test(record.text) || record.tone === "hot") category = "⚠️ CRASH/ERR";
+
+      recLine.className = `l q${paceQuarter(record.at)}${record.tone === "hot" ? " err" : ""}`;
+      recLine.innerHTML = `<span class="rec-tag">${category}</span> ${escapeHtml(record.text)}`;
+      recoveryLogBox.append(recLine);
+      recoveryLineCount++;
+      if (recoveryCountEl) recoveryCountEl.textContent = `${recoveryLineCount} events`;
+    }
+
+    // Duplicate errors, exceptions, and failures to Swimlane 3
+    if (errorsLogBox && isErrorLine(record.text, record.tone)) {
+      const errLine = document.createElement("span");
+      let category = "⚠️ ERROR";
+      if (/PANIC|SOS/i.test(record.text)) category = "🛑 PANIC/SOS";
+      else if (/EVICT/i.test(record.text)) category = "💥 EVICTION";
+      else if (/CRASH/i.test(record.text)) category = "💥 CRASH";
+      else if (/FAIL|Errno/i.test(record.text)) category = "❌ FAILURE";
+
+      errLine.className = `l q${paceQuarter(record.at)} err`;
+      errLine.innerHTML = `<span class="rec-tag" style="background:rgba(239,83,80,0.25);color:#ff8a80;border-color:rgba(239,83,80,0.5);">${category}</span> ${escapeHtml(record.text)}`;
+      errorsLogBox.append(errLine);
+      errorsLineCount++;
+      if (errorsCountEl) errorsCountEl.textContent = `${errorsLineCount} errors`;
+    }
   }
-  // Only when the reader was already at the bottom: scrolling a log somebody
-  // scrolled UP takes away what they were reading.
-  if (pinned) logBox.scrollTop = logBox.scrollHeight;
+
+  if (pinnedExec) logBox.scrollTop = logBox.scrollHeight;
+  if (pinnedRec && recoveryLogBox) recoveryLogBox.scrollTop = recoveryLogBox.scrollHeight;
+  if (pinnedErr && errorsLogBox) errorsLogBox.scrollTop = errorsLogBox.scrollHeight;
 }
 
 function openStream() {
@@ -392,14 +465,22 @@ function cardHTML(container) {
       ${container.apps.length > 8 ? `<div class="app"><span class="app-name">…and ${container.apps.length - 8} more</span></div>` : ""}
     </div>` : "";
 
+  const hueStyle = container.groupHue ? ` style="--group: ${escapeAttr(container.groupHue)}"` : "";
+  const groupTag = container.groupLabel ? `<span class="group-pill"${hueStyle}>${escapeHTML(container.groupLabel)}</span>` : "";
+
   return `
-    <article class="card${container.ours ? " ours" : ""}${isStale ? " stale" : ""}${state.selected === container.name ? " selected" : ""}"
+    <article class="card${container.ours ? " ours" : ""}${isStale ? " stale" : ""}${state.selected === container.name ? " selected" : ""}"${hueStyle}
              data-container="${escapeAttr(container.name)}">
       ${kill}
-      <div class="head">${dot}<span class="name" title="${escapeAttr(container.name)}"
+      <div class="head">${groupTag}${dot}<span class="name" title="${escapeAttr(container.name)}"
         >${container.role} ${escapeHTML(container.leaf || container.name)}</span></div>
       <div class="status t-${container.tone}"><span class="status-emoji">${container.emoji}</span> <span
         class="status-text">${escapeHTML(container.status || "unknown")}</span></div>
+      <div class="card-num-badges">
+        <span class="num-badge cpu-badge">💻 ${escapeHTML(r.cpu_percent || "0%")}</span>
+        <span class="num-badge ram-badge">🧠 ${escapeHTML(r.memory ? r.memory.split("/")[0].trim() : "—")}</span>
+        ${r.block_io ? `<span class="num-badge disk-badge">💾 ${escapeHTML(r.block_io)}</span>` : ""}
+      </div>
       ${staleRow}
       <div class="meters">
         ${meter(r.cpu_percent, container.tone, "CPU")}
@@ -798,7 +879,14 @@ function renderStaleImages(snapshot) {
   }
 
   if (!state.autoRebuildTimer && !state.autoRebuildCancelled && !snapshot.action_running) {
-    state.autoRebuildTimer = setInterval(() => {
+    const staleNames = stale.map((row) => row.container || row.service).filter(Boolean);
+    const announceKey = staleNames.join(",");
+    if (state.lastAnnouncedStale !== announceKey) {
+      state.lastAnnouncedStale = announceKey;
+      post("/api/chat", { message: `⚡ Vigilant Auto-Rebuild scheduled (${state.autoRebuildSeconds}s countdown). Detected ${stale.length} stale container${stale.length > 1 ? "s" : ""}: ${staleNames.join(", ")}` });
+    }
+
+    state.autoRebuildTimer = setInterval(async () => {
       if (snapshot.action_running || state.autoRebuildCancelled) {
         clearInterval(state.autoRebuildTimer);
         state.autoRebuildTimer = null;
@@ -812,8 +900,19 @@ function renderStaleImages(snapshot) {
       if (state.autoRebuildSeconds <= 0) {
         clearInterval(state.autoRebuildTimer);
         state.autoRebuildTimer = null;
-        const btn = $('button[data-action="rebuild-all"]') || $("#stale-rebuild-now");
-        runAction("rebuild-all", btn, true);
+
+        const targets = stale.map((row) => row.container || row.service).filter(Boolean);
+        const decisionMsg = `🤖 DockTor Decision: Auto-rebuild countdown expired. Executing TARGETED hot-swap rebuild for ${targets.length} stale container${targets.length > 1 ? "s" : ""}: ${targets.join(", ")} (preserving the rest of the bench).`;
+        await post("/api/chat", { message: decisionMsg });
+
+        for (const containerName of targets) {
+          try {
+            await post("/api/action/rebuild", { container: containerName });
+            await post("/api/chat", { message: `✅ Targeted rebuild completed for ${containerName}.` });
+          } catch (err) {
+            await post("/api/chat", { message: `❌ Targeted rebuild failed for ${containerName}: ${err.message || err}` });
+          }
+        }
       }
     }, 1000);
   }
@@ -836,7 +935,7 @@ function renderStaleImages(snapshot) {
           </h3>
           <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
             ${!state.autoRebuildCancelled ? 
-              `DockTor detected <b>${stale.length} stale container${stale.length > 1 ? "s" : ""}</b> running older code. Automatic rebuild &amp; remount will execute when timer expires.` :
+              `DockTor detected <b>${stale.length} stale container${stale.length > 1 ? "s" : ""}</b> running older code. Targeted rebuild &amp; hot-swap will execute when timer expires.` :
               `Automatic rebuild has been paused by user. Click <b>Rebuild Now</b> to execute rebuild.`
             }
           </p>
@@ -873,13 +972,23 @@ function renderStaleImages(snapshot) {
 
   const nowBtn = $("#stale-rebuild-now", host);
   if (nowBtn) {
-    nowBtn.onclick = () => {
+    nowBtn.onclick = async () => {
       if (state.autoRebuildTimer) {
         clearInterval(state.autoRebuildTimer);
         state.autoRebuildTimer = null;
       }
       state.autoRebuildCancelled = true;
-      runAction("rebuild-all", nowBtn, true);
+      const targets = stale.map((row) => row.container || row.service).filter(Boolean);
+      await post("/api/chat", { message: `⚡ Rebuild Now clicked by user. Executing TARGETED hot-swap rebuild for ${targets.length} stale container${targets.length > 1 ? "s" : ""}: ${targets.join(", ")}.` });
+
+      for (const containerName of targets) {
+        try {
+          await post("/api/action/rebuild", { container: containerName });
+          await post("/api/chat", { message: `✅ Targeted rebuild completed for ${containerName}.` });
+        } catch (err) {
+          await post("/api/chat", { message: `❌ Targeted rebuild failed for ${containerName}: ${err.message || err}` });
+        }
+      }
     };
   }
 
@@ -891,6 +1000,7 @@ function renderStaleImages(snapshot) {
         state.autoRebuildTimer = null;
       }
       state.autoRebuildCancelled = true;
+      post("/api/chat", { message: "⏸ Auto-rebuild countdown paused by user." });
       renderStaleImages(snapshot);
     };
   }
@@ -900,6 +1010,7 @@ function renderStaleImages(snapshot) {
     resumeBtn.onclick = () => {
       state.autoRebuildCancelled = false;
       state.autoRebuildSeconds = 30;
+      post("/api/chat", { message: "▶ Auto-rebuild countdown resumed by user (30s)." });
       renderStaleImages(snapshot);
     };
   }
@@ -912,6 +1023,60 @@ function renderStaleImages(snapshot) {
                                                 button.dataset.container, button);
     });
   }
+}
+
+function updateTelemetryBar(snapshot) {
+  const cpuEl = $("#sys-cpu-num");
+  const ramEl = $("#sys-ram-num");
+  const diskEl = $("#sys-disk-num");
+
+  if (!snapshot || !snapshot.host) return;
+
+  // CPU
+  let totalCpu = 0;
+  for (const name in state.resources) {
+    const res = state.resources[name];
+    if (res && res.cpu_percent) {
+      const val = parseFloat(res.cpu_percent.replace("%", ""));
+      if (!isNaN(val)) totalCpu += val;
+    }
+  }
+  if (cpuEl) cpuEl.textContent = `${totalCpu.toFixed(1)}% (${snapshot.host.cpus || "?"} cores)`;
+
+  // RAM
+  let totalRamBytes = 0;
+  for (const name in state.resources) {
+    const res = state.resources[name];
+    if (res && res.memory) {
+      const part = res.memory.split("/")[0].trim();
+      totalRamBytes += parseBytesString(part);
+    }
+  }
+  const totalHostRamGb = snapshot.host.memory_bytes ? (snapshot.host.memory_bytes / (1024**3)).toFixed(1) : "?";
+  const usedRamMb = (totalRamBytes / (1024**2)).toFixed(0);
+  const ramPercent = snapshot.host.memory_bytes ? ((totalRamBytes / snapshot.host.memory_bytes) * 100).toFixed(1) : 0;
+  if (ramEl) ramEl.textContent = `${usedRamMb} MiB / ${totalHostRamGb} GiB (${ramPercent}%)`;
+
+  // DISK
+  const disk = snapshot.host.disk || {};
+  if (diskEl && disk.available_kb !== undefined) {
+    const freeGb = (disk.available_kb / (1024**2)).toFixed(1);
+    const totalGb = (disk.total_kb / (1024**2)).toFixed(1);
+    const usedPercent = disk.used_percent || 0;
+    diskEl.textContent = `${freeGb} GB Free / ${totalGb} GB (${usedPercent}% Used)`;
+  } else if (diskEl && disk.level) {
+    diskEl.textContent = `${disk.used_percent || 0}% Used`;
+  }
+}
+
+function parseBytesString(str) {
+  if (!str) return 0;
+  const match = str.match(/([\d.]+)\s*([A-Za-z]+)?/);
+  if (!match) return 0;
+  const val = parseFloat(match[1]);
+  const unit = (match[2] || "B").toUpperCase();
+  const scale = { "B": 1, "KB": 1024, "KIB": 1024, "MB": 1024**2, "MIB": 1024**2, "GB": 1024**3, "GIB": 1024**3, "TB": 1024**4, "TIB": 1024**4 };
+  return val * (scale[unit] || 1);
 }
 
 function renderGrid(snapshot) {
@@ -931,6 +1096,7 @@ function renderGrid(snapshot) {
   // which reads as the page changing its mind about the box.
   if (snapshot.host && snapshot.host.cpus) state.hostCpus = snapshot.host.cpus;
   if (snapshot.host && snapshot.host.memory_bytes) state.hostMemory = snapshot.host.memory_bytes;
+  updateTelemetryBar(snapshot);
   renderBenchHealth(snapshot);
   renderDarkStacks(snapshot);
   renderStaleImages(snapshot);
@@ -942,17 +1108,20 @@ function renderGrid(snapshot) {
     host.innerHTML = `<p class="empty">No containers. Mount the stack to see them here.</p>`;
     return;
   }
-  // THE STACK IS DRAWN ONCE AND COLOURED THROUGHOUT. `--group` is set on the
-  // heading and the block of cards under it, and the stylesheet spends it on
-  // the heading text and each card left edge — never on the dot, the status,
-  // the meters or the app rows, which are the state tones and must keep
-  // meaning health. The colour comes from palette.py with the rest.
-  host.innerHTML = snapshot.groups.map((group) => {
-    const hue = ` style="--group: ${escapeAttr(group.hue || "")}"`;
-    return `
-    <div class="group-head${group.ours ? " ours" : ""}"${hue}>${escapeHTML(group.label)} · ${group.containers.length}</div>
-    <div class="group"${hue}>${group.containers.map(cardHTML).join("")}</div>`;
+  // CONTINUOUS MATRIX: no forced carriage returns between groups.
+  // Cards flow back-to-back across the whole grid to fill available space.
+  const cardsHtml = snapshot.groups.map((group) => {
+    const hue = group.hue || "";
+    const groupName = group.label;
+    return group.containers.map((c) => {
+      c.groupLabel = groupName;
+      c.groupHue = hue;
+      c.groupOurs = group.ours;
+      return cardHTML(c);
+    }).join("");
   }).join("");
+
+  host.innerHTML = `<div class="group group-all">${cardsHtml}</div>`;
 
   $$(".card", host).forEach((card) => {
     card.onclick = (event) => {
@@ -1027,13 +1196,14 @@ function applyMeters(resources) {
  * and cannot be read for the two questions asked at a broken bench — WHO IS
  * EATING THE BOX (a comparison ACROSS cards, so it exists on none of them) and
  * WHAT IS ON 8080. */
-const VIEWS = ["cards", "donuts", "ports"];
+const VIEWS = ["cards", "donuts", "ports", "radial"];
 
 function applyView(name) {
   state.view = VIEWS.includes(name) ? name : "cards";
-  $("#cards").hidden  = state.view !== "cards";
-  $("#donuts").hidden = state.view !== "donuts";
-  $("#ports").hidden  = state.view !== "ports";
+  $("#cards").hidden            = state.view !== "cards";
+  $("#donuts").hidden           = state.view !== "donuts";
+  $("#ports").hidden            = state.view !== "ports";
+  $("#radial-arch-view").hidden = state.view !== "radial";
   // The detail level is a property of a CARD. Left on screen over a donut it
   // is a control with nothing to control, and the first thing tried when the
   // ring looks wrong.
@@ -1057,6 +1227,94 @@ function savedView() {
 function renderViews() {
   if (state.view === "donuts") renderDonuts();
   if (state.view === "ports") renderPorts();
+  if (state.view === "radial") renderRadialArch();
+}
+
+const RADIAL_NODES = [
+  { id: 'chrome', label: 'Chrome', icon: '🪟', x: 50, y: 15 },
+  { id: 'shell', label: 'Shell', icon: '🐚', x: 62, y: 18 },
+  { id: 'utilities', label: 'Utilities', icon: '🧰', x: 72, y: 26 },
+  { id: 'audio_dsp', label: 'Audio & DSP', icon: '🎛️', x: 78, y: 38 },
+  { id: 'games', label: 'Games', icon: '🎮', x: 80, y: 52 },
+  { id: 'nmos', label: 'NMOS', icon: '📡', x: 85, y: 78, special: true }, // Bottom Right Corner!
+  { id: 'big_picture', label: 'Big Picture', icon: '🌌', x: 70, y: 80 },
+  { id: 'pipeline', label: 'Pipeline', icon: '⚙️', x: 60, y: 84 },
+  { id: 'service_cycle', label: 'Service Cycle', icon: '🔄', x: 49, y: 84 },
+  { id: 'scanalyser', label: 'Scanalyser', icon: '🔭', x: 39, y: 80 },
+  { id: 'ingest_capture', label: 'Ingest & Capture', icon: '🎙️', x: 31, y: 72 },
+  { id: 'registry', label: 'Registry', icon: '🏷️', x: 26, y: 54 },
+  { id: 'artifacts', label: 'Artifacts', icon: '📦', x: 28, y: 36 },
+  { id: 'system', label: 'System', icon: '💻', x: 38, y: 22 }
+];
+
+function renderRadialArch() {
+  const host = $("#radial-arch-view");
+  if (!host) return;
+
+  const svgLines = RADIAL_NODES.map((node) => {
+    if (node.special) {
+      // Laser beam line for NMOS (bottom right corner)
+      return `<line x1="50%" y1="50%" x2="${node.x}%" y2="${node.y}%" stroke="#00ffff" stroke-width="3" filter="drop-shadow(0 0 6px #00ffff)" />`;
+    }
+    return `<line x1="50%" y1="50%" x2="${node.x}%" y2="${node.y}%" stroke="rgba(255,255,255,0.22)" stroke-dasharray="4 4" stroke-width="1.5" />`;
+  }).join("");
+
+  const nodesHtml = RADIAL_NODES.map((node) => {
+    const isNMOS = node.id === 'nmos';
+    const iconInner = isNMOS 
+      ? `<div class="node-icon-wrapper"><span class="node-icon">${node.icon}</span></div>`
+      : `<span class="node-icon">${node.icon}</span>`;
+
+    return `
+      <div class="radial-node" data-node="${node.id}" style="left: ${node.x}%; top: ${node.y}%;">
+        ${iconInner}
+        <span class="node-label">${escapeHTML(node.label)}</span>
+      </div>
+    `;
+  }).join("");
+
+  host.innerHTML = `
+    <div class="radial-arch-dome" id="radial-arch-dome">
+      <svg class="radial-svg-layer">
+        ${svgLines}
+      </svg>
+      <div class="radial-center-hub" id="radial-hub" title="APK.audio Hub Center"></div>
+      ${nodesHtml}
+      <div class="radial-controls-bottom">
+        <button class="radial-btn-back" id="radial-back-btn">&lt;BACK</button>
+      </div>
+      <button class="radial-btn-star" id="radial-star-btn">*</button>
+    </div>
+  `;
+
+  // Wire node click events
+  $$(".radial-node", host).forEach((nodeEl) => {
+    nodeEl.onclick = () => {
+      const nodeKey = nodeEl.dataset.node;
+      const targetNode = RADIAL_NODES.find((n) => n.id === nodeKey);
+      const name = targetNode ? targetNode.label : nodeKey;
+      post("/api/chat", { message: `🎯 Node selected in Arch Radial Launcher: ${name} (${nodeKey}).` });
+      
+      if (nodeKey === "nmos") {
+        // Highlight NMOS / NetBox service
+        post("/api/chat", { message: "📡 NMOS Node (Bottom Right) activated — scanning IS-04 / IS-05 discovery status." });
+      }
+    };
+  });
+
+  const backBtn = $("#radial-back-btn", host);
+  if (backBtn) {
+    backBtn.onclick = () => {
+      post("/api/chat", { message: "◀ Back button clicked in Arch Dial." });
+    };
+  }
+
+  const starBtn = $("#radial-star-btn", host);
+  if (starBtn) {
+    starBtn.onclick = () => {
+      post("/api/chat", { message: "✳ Central Star button clicked in Arch Dial." });
+    };
+  }
 }
 
 /* ------------------------------------------------------ reading the numbers
@@ -2095,6 +2353,33 @@ async function boot() {
   });
   applyView(wanted);
 
+  // Swimlane mode handler: split view, execution stream, recovery stream, or errors stream
+  $$("#log-lane-mode input[name=lanemode]").forEach((radio) => {
+    radio.onchange = () => {
+      const mode = radio.value;
+      const laneExec = $("#lane-execution");
+      const laneRec = $("#lane-recovery");
+      const laneErr = $("#lane-errors");
+      if (mode === "split") {
+        if (laneExec) laneExec.style.display = "flex";
+        if (laneRec) laneRec.style.display = "flex";
+        if (laneErr) laneErr.style.display = "flex";
+      } else if (mode === "execution") {
+        if (laneExec) laneExec.style.display = "flex";
+        if (laneRec) laneRec.style.display = "none";
+        if (laneErr) laneErr.style.display = "none";
+      } else if (mode === "recovery") {
+        if (laneExec) laneExec.style.display = "none";
+        if (laneRec) laneRec.style.display = "flex";
+        if (laneErr) laneErr.style.display = "none";
+      } else if (mode === "errors") {
+        if (laneExec) laneExec.style.display = "none";
+        if (laneRec) laneRec.style.display = "none";
+        if (laneErr) laneErr.style.display = "flex";
+      }
+    };
+  });
+
   // Both halves of the port table: the scan re-reads what docker has bound,
   // and endpoints.sh re-reads what answers on it.
   $("#refresh").onclick = () => { scan(); if (state.view === "ports") loadWebPages(); };
@@ -2121,15 +2406,54 @@ async function boot() {
     sheet(`📄 ${file.path || state.detail.name}`, file.text || file.error || "");
   };
 
-  $("#copy-log").onclick = () => {
-    // THE TEXT IS ON SCREEN BEFORE THE COPY, and the selection is a FILTER
-    // rather than a fixed tail — when a rebuild fails the lines you want are
-    // eight red ones scattered through four hundred. The button this replaces
-    // copied silently.
-    sheet("📋 Execution log", logText(false), { filter: true });
-  };
+  let activeSheetBox = logBox;
+
+  function openLogSheet(title, box) {
+    activeSheetBox = box || logBox;
+    const isErrCheck = $("#sheet-errors-only") ? $("#sheet-errors-only").checked : false;
+    sheet(title, logText(isErrCheck, activeSheetBox), { filter: true });
+  }
+
+  $("#copy-log").onclick = () => openLogSheet("📋 Execution log", logBox);
+
+  if ($("#copy-exec-log")) {
+    $("#copy-exec-log").onclick = () => openLogSheet("📜 Execution Stream log", logBox);
+  }
+  if ($("#clear-exec-log")) {
+    $("#clear-exec-log").onclick = () => {
+      logBox.innerHTML = "";
+      execLineCount = 0;
+      const execCountEl = $("#exec-count");
+      if (execCountEl) execCountEl.textContent = "0 lines";
+    };
+  }
+
+  if ($("#copy-recovery-log")) {
+    $("#copy-recovery-log").onclick = () => openLogSheet("🚨 Recovery & Watchdog log", recoveryLogBox);
+  }
+  if ($("#clear-recovery-log")) {
+    $("#clear-recovery-log").onclick = () => {
+      if (recoveryLogBox) recoveryLogBox.innerHTML = "";
+      recoveryLineCount = 0;
+      const recoveryCountEl = $("#recovery-count");
+      if (recoveryCountEl) recoveryCountEl.textContent = "0 events";
+    };
+  }
+
+  if ($("#copy-errors-log")) {
+    $("#copy-errors-log").onclick = () => openLogSheet("⚠️ Errors & Failures log", errorsLogBox);
+  }
+  if ($("#clear-errors-log")) {
+    $("#clear-errors-log").onclick = () => {
+      if (errorsLogBox) errorsLogBox.innerHTML = "";
+      errorsLineCount = 0;
+      const errorsCountEl = $("#errors-count");
+      if (errorsCountEl) errorsCountEl.textContent = "0 errors";
+    };
+  }
+
   $("#sheet-errors-only").onchange = (event) => {
-    $("#sheet-body").value = logText(event.target.checked);
+    $("#sheet-body").value = logText(event.target.checked, activeSheetBox);
   };
   $("#sheet-copy").onclick = () => navigator.clipboard.writeText($("#sheet-body").value);
   $("#sheet-close").onclick = () => $("#sheet").close();
@@ -2137,8 +2461,9 @@ async function boot() {
   scan();
 }
 
-function logText(errorsOnly) {
-  return $$(".l", logBox)
+function logText(errorsOnly, targetBox) {
+  const box = targetBox || logBox;
+  return $$(".l", box)
     .filter((line) => !errorsOnly || line.classList.contains("err"))
     .map((line) => line.textContent)
     .join("\n");
