@@ -228,6 +228,25 @@ ACTIONS = {
         "failed": "❌ Nuke exited {code} — read the output above for how far it "
                   "got. Exit 2 means it REFUSED and removed nothing.",
     },
+    "phoenix": {
+        "label": "🔥 Phoenix (Burn & Clean Rebuild)",
+        "script": "phoenix.sh", "args": ["PHOENIX_WEB"],
+        "preempts": True,
+        "verify": "PHOENIX",
+        "confirms": [
+            "🔥 PHOENIX — 1 of 2\n\n"
+            "This will delete EVERY container, image, network, build cache "
+            "AND NAMED VOLUME (all local data) on this host, and then "
+            "perform a clean rebuild from source code.\n\n"
+            "Anything running is CANCELLED first.",
+
+            "🔥 PHOENIX — 2 of 2\n\n"
+            "Last ask before burning down and restarting.\n\n"
+            "Type PHOENIX below to proceed.",
+        ],
+        "done": "🔥 PHOENIX COMPLETE — Ecosystem fully burned down and reborn fresh from code!",
+        "failed": "❌ Phoenix exited {code} — read the output above.",
+    },
     "disk": {
         "label": "💾 What Docker Is Holding",
         "script": "disk.sh", "args": [], "confirm": None,
@@ -883,6 +902,7 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container"):
 
     # READ AFTER THE ACQUIRE: a preempting verb bumps the epoch on its way in,
     # and reading earlier would have every stop report itself as stopped.
+    chat(f"🤖 DockTor Action: {row['label']}" + (f" — {name}" if name else ""))
     epoch_before = cancel_epoch()
     try:
         exit_code, _ = run_reported(row["script"], args, on_line_callback=on_line)
@@ -892,14 +912,17 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container"):
     # A CANCELLED RUN IS NOT A FAILED ONE — "❌ Rebuild FAILED, exited -15"
     # reads as a broken build to whoever deliberately broke it.
     if exit_code != 0 and cancel_epoch() != epoch_before:
-        return exit_code, ("🛑 %s was CANCELLED by a stop pressed while it ran. "
-                           "Nothing was rolled back — read the output above for "
-                           "how far it got." % row["label"])
+        msg = ("🛑 %s was CANCELLED by a stop pressed while it ran. "
+               "Nothing was rolled back — read the output above for "
+               "how far it got." % row["label"])
+        chat(f"📢 DockTor Result: {msg}")
+        return exit_code, msg
 
     template = row["done"] if exit_code == 0 else row["failed"]
     closing = template.format(code=exit_code, name=name or "")
     if cancelled:
         closing = "🛑 Cancelled first: %s\n%s" % (", ".join(cancelled), closing)
+    chat(f"📢 DockTor Result: {closing}")
     return exit_code, closing
 
 

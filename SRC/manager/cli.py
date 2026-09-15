@@ -71,6 +71,9 @@ CLI_ACTIONS_WITH_ARGS = {
     # and a terminal has the operator to type it.
     ('nuke',): ("☢️  NUKE — every container, image, VOLUME and cache on this host...",
                 'nuke.sh'),
+    ('phoenix', '--phoenix', '--Phoenix', 'burn', '--burn'): (
+        "🔥 PHOENIX — Burning it all down and rebuilding the ecosystem from scratch...",
+        'phoenix.sh'),
 }
 
 USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
@@ -126,6 +129,10 @@ USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
                        this host. The volumes are the data; nothing here
                        backs them up and nothing here restores them.
                        --include-manager takes the manager too (host only)
+  phoenix | --Phoenix  🔥 PHOENIX — burn it all down and start all over.
+                       Deletes every container, image, network, cache AND
+                       NAMED VOLUME (all local data) on this host, then
+                       performs a clean rebuild and remount from source code.
 
 Every action runs one file from 'APK:DOCKERS/DockTor/SRC/docker scripts/';
 run them directly too."""

@@ -1025,6 +1025,39 @@ function renderStaleImages(snapshot) {
   }
 }
 
+function getPillColors(pct) {
+  const val = parseFloat(pct) || 0;
+  if (val < 60) {
+    return {
+      fill: 'linear-gradient(90deg, rgba(57, 208, 107, 0.25), rgba(57, 208, 107, 0.55))',
+      border: 'rgba(57, 208, 107, 0.6)'
+    };
+  } else if (val <= 80) {
+    return {
+      fill: 'linear-gradient(90deg, rgba(244, 144, 36, 0.28), rgba(244, 144, 36, 0.58))',
+      border: 'rgba(244, 144, 36, 0.7)'
+    };
+  } else {
+    return {
+      fill: 'linear-gradient(90deg, rgba(228, 88, 98, 0.35), rgba(228, 88, 98, 0.7))',
+      border: 'rgba(228, 88, 98, 0.85)'
+    };
+  }
+}
+
+function updateTelemetryPill(pillId, fillId, pct) {
+  const pillEl = $(`#${pillId}`);
+  const fillEl = $(`#${fillId}`);
+  if (!pillEl || !fillEl) return;
+
+  const validPct = Math.max(0, Math.min(100, parseFloat(pct) || 0));
+  const colors = getPillColors(validPct);
+
+  fillEl.style.width = `${validPct.toFixed(1)}%`;
+  fillEl.style.background = colors.fill;
+  pillEl.style.borderColor = colors.border;
+}
+
 function updateTelemetryBar(snapshot) {
   const cpuEl = $("#sys-cpu-num");
   const ramEl = $("#sys-ram-num");
@@ -1041,7 +1074,12 @@ function updateTelemetryBar(snapshot) {
       if (!isNaN(val)) totalCpu += val;
     }
   }
+  let cpuPct = totalCpu;
+  if (snapshot.host.cpus && totalCpu > 100) {
+    cpuPct = totalCpu / snapshot.host.cpus;
+  }
   if (cpuEl) cpuEl.textContent = `${totalCpu.toFixed(1)}% (${snapshot.host.cpus || "?"} cores)`;
+  updateTelemetryPill("pill-cpu", "fill-cpu", cpuPct);
 
   // RAM
   let totalRamBytes = 0;
@@ -1054,19 +1092,21 @@ function updateTelemetryBar(snapshot) {
   }
   const totalHostRamGb = snapshot.host.memory_bytes ? (snapshot.host.memory_bytes / (1024**3)).toFixed(1) : "?";
   const usedRamMb = (totalRamBytes / (1024**2)).toFixed(0);
-  const ramPercent = snapshot.host.memory_bytes ? ((totalRamBytes / snapshot.host.memory_bytes) * 100).toFixed(1) : 0;
-  if (ramEl) ramEl.textContent = `${usedRamMb} MiB / ${totalHostRamGb} GiB (${ramPercent}%)`;
+  const ramPercent = snapshot.host.memory_bytes ? ((totalRamBytes / snapshot.host.memory_bytes) * 100) : 0;
+  if (ramEl) ramEl.textContent = `${usedRamMb} MiB / ${totalHostRamGb} GiB (${ramPercent.toFixed(1)}%)`;
+  updateTelemetryPill("pill-ram", "fill-ram", ramPercent);
 
   // DISK
   const disk = snapshot.host.disk || {};
+  let diskUsedPct = disk.used_percent || 0;
   if (diskEl && disk.available_kb !== undefined) {
     const freeGb = (disk.available_kb / (1024**2)).toFixed(1);
     const totalGb = (disk.total_kb / (1024**2)).toFixed(1);
-    const usedPercent = disk.used_percent || 0;
-    diskEl.textContent = `${freeGb} GB Free / ${totalGb} GB (${usedPercent}% Used)`;
+    diskEl.textContent = `${freeGb} GB Free / ${totalGb} GB (${diskUsedPct}% Used)`;
   } else if (diskEl && disk.level) {
-    diskEl.textContent = `${disk.used_percent || 0}% Used`;
+    diskEl.textContent = `${diskUsedPct}% Used`;
   }
+  updateTelemetryPill("pill-disk", "fill-disk", diskUsedPct);
 }
 
 function parseBytesString(str) {

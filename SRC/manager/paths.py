@@ -32,9 +32,11 @@ MANAGEMENT_DIRECTORY = os.path.dirname(SOURCE_DIRECTORY)
 DOCKERS_DIRECTORY = os.path.dirname(MANAGEMENT_DIRECTORY)
 REPOSITORY_ROOT = os.path.abspath(os.path.join(DOCKERS_DIRECTORY, '..'))
 
-# The one place this package spells `docker scripts/`. runner.py runs the files
-# in it and api.py reports where it is; both used to join it themselves.
-DOCKER_SCRIPTS_DIRECTORY = os.path.join(SOURCE_DIRECTORY, 'docker scripts')
+# The backend scripts for K8 / Kubernetes container management live in `Docktor/K8`.
+K8_SCRIPTS_DIRECTORY = os.path.join(MANAGEMENT_DIRECTORY, 'K8')
+if not os.path.isdir(K8_SCRIPTS_DIRECTORY):
+    K8_SCRIPTS_DIRECTORY = os.path.join(SOURCE_DIRECTORY, 'docker scripts')
+DOCKER_SCRIPTS_DIRECTORY = K8_SCRIPTS_DIRECTORY
 
 # NO COMPOSE FILE PATHS HERE — they live in `docker scripts/_common.sh` beside
 # us and nowhere else, with the projects rule, the ordering and the UID/GID.
@@ -46,14 +48,31 @@ DOCKER_SCRIPTS_DIRECTORY = os.path.join(SOURCE_DIRECTORY, 'docker scripts')
 #    inside an except), so a stale spelling costs a broker list without ever
 #    costing an error message. The brand token below is read WITHOUT a fallback
 #    precisely so this rung cannot go wrong in silence.
-BAREMETAL_ROOT = os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'SRC')
+def _find_first_existing_file(candidates):
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
 
-# The accent is stated once, in contracts, and read here rather than spelled.
-# Read at import and DELIBERATELY WITHOUT A FALLBACK: a default would be a
-# second spelling of the value and would go on painting the old colour after
-# the token moved. This file sits inside the repository that holds the token,
-# so an unreadable token is a broken checkout and says so on the first line.
-BRAND_TOKENS = os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json')
+def _find_first_existing_dir(candidates):
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+BAREMETAL_SRC_CANDIDATES = [
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK', 'APK:BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK', 'APK:BareMetal'),
+    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal'),
+]
+BAREMETAL_ROOT = _find_first_existing_dir(BAREMETAL_SRC_CANDIDATES)
+
+BRAND_TOKENS_CANDIDATES = [
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
+    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
+]
+BRAND_TOKENS = _find_first_existing_file(BRAND_TOKENS_CANDIDATES)
 
 with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
     ACCENT = json.load(_tokens)['accent']['hex']

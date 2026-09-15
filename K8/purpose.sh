@@ -212,12 +212,6 @@ PURPOSE = {
         "verdict is the closest thing to an outside opinion this bench has. It is also "
         "the largest thing in the stack, which is why it is the candidate for a "
         "`profiles:` key rather than for a compose file of its own."),
-        "unhealthy instead of answering happily with an empty device list.",
-        "It is how this ecosystem appears to any NMOS controller in the building: "
-        "without it the bench's devices exist on the bus and nowhere a broadcast "
-        "control system can see them. It lives in this stack because it needs the "
-        "registry on the same network, and compose cannot express a dependency across "
-        "files."),
 
     "APK-NMOS-Facade": (
         "The controller under test -- ours",

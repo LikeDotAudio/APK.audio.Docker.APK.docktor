@@ -633,18 +633,37 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 
 .telemetry-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  padding: 4px 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.pill-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0%;
+  z-index: 1;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  pointer-events: none;
+}
+
+.pill-content {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 3px 10px;
-  border-radius: 6px;
-}
-
-.telemetry-pill.highlight-disk {
-  background: rgba(244, 144, 44, 0.12);
-  border-color: rgba(244, 144, 44, 0.35);
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 
 .telemetry-label {

@@ -26,11 +26,23 @@ MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # APKAUDIO_REPO wins when set and valid; otherwise walk up. Dockerfile.manager
 # COPYs this folder to /app, so inside the manager the walk lands outside the
 # checkout (no compose files, no build context).
-if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:DOCKERS" ]; then
+if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
+    REPO_ROOT="$APKAUDIO_REPO"
+    DOCKERS_DIR="$REPO_ROOT/APK:PODS"
+elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:K8 PODS" ]; then
+    REPO_ROOT="$APKAUDIO_REPO"
+    DOCKERS_DIR="$REPO_ROOT/APK:K8 PODS"
+elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:DOCKERS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:DOCKERS"
 else
-    DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../.." && pwd)"
+    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK" ]; then
+        DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
+    elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" ]; then
+        DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" && pwd)"
+    else
+        DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../.." && pwd)"
+    fi
     REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 fi
 
@@ -334,8 +346,8 @@ for_each_stack() {
     # an `else` would turn a typo into a silent fall-through to the last array.
     local -a compose
     for stack in "${order[@]}"; do
-        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; } && [ "$1" = "down" ] && [ -f "/.dockerenv" ]; then
-            log_warn "Skipping 'down' on $stack (running inside manager container)"
+        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; } && [ -f "/.dockerenv" ]; then
+            log_warn "Skipping '$stack' (running inside manager container)"
             continue
         fi
         echo -e "\n── ${stack} ──"

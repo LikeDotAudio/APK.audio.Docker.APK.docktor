@@ -308,8 +308,6 @@ class ManagerHandler(BaseHTTPRequestHandler):
 
         if route == "/api/chat":
             result = api.chat(body.get("message"))
-            if result.get("ok"):
-                LOG.publish("line", f"\U0001F4AC [chat] {body.get('message')}")
             return self._json(result)
 
         if route == "/api/log/clear":

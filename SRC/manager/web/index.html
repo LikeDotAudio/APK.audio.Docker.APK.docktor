@@ -68,9 +68,18 @@
   </div>
 
   <div class="system-telemetry-strip" id="system-telemetry-bar" title="Host System Hardware Telemetry">
-    <span class="telemetry-pill" title="Host CPU Usage">💻 <span id="sys-cpu-num">0.0%</span></span>
-    <span class="telemetry-pill" title="Host RAM Footprint">🧠 <span id="sys-ram-num">0 MB / 0 GB</span></span>
-    <span class="telemetry-pill highlight-disk" title="Hard Disk Space">💾 <span id="sys-disk-num">Querying…</span></span>
+    <div class="telemetry-pill" id="pill-cpu" title="Host CPU Usage">
+      <div class="pill-bar-fill" id="fill-cpu"></div>
+      <span class="pill-content">💻 <span id="sys-cpu-num">0.0%</span></span>
+    </div>
+    <div class="telemetry-pill" id="pill-ram" title="Host RAM Footprint">
+      <div class="pill-bar-fill" id="fill-ram"></div>
+      <span class="pill-content">🧠 <span id="sys-ram-num">0 MB / 0 GB</span></span>
+    </div>
+    <div class="telemetry-pill" id="pill-disk" title="Hard Disk Space">
+      <div class="pill-bar-fill" id="fill-disk"></div>
+      <span class="pill-content">💾 <span id="sys-disk-num">Querying…</span></span>
+    </div>
   </div>
 
   <div class="verbs right">
