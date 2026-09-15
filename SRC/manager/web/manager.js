@@ -126,15 +126,28 @@ let execLineCount = 0;
 let recoveryLineCount = 0;
 let errorsLineCount = 0;
 
+/* A BUILD STEP IS PROGRESS, NOT NEWS. BuildKit echoes the whole RUN command in
+ * its step header, and brief.py renders a cached or finished step as `⚡ <step>`
+ * or `✅ <step>` — so a test gate whose command SAYS `FAILED ... exit 1` for the
+ * case it guards landed in the Errors lane on every green build (EMBER 11/13 and
+ * 13/13). A step that really fails arrives as `❌ ERROR`, or with tone "hot". */
+function isBuildProgressLine(text) {
+  return /^(#\d+\s+)?\[[^\]]*\b\d+\s*\/\s*\d+\]\s/.test(text)
+      || /[█░]/.test(text)
+      || (/^[⚡✅] /.test(text) && !/📡|🚀|WATCHDOG|REMOUNT|REBUILD|EVICT|PANIC|SOS/i.test(text));
+}
+
 function isRecoveryLine(text, tone) {
   if (tone === "hot") return true;
+  if (isBuildProgressLine(text)) return false;
   return /WATCHDOG|REMOUNT|REBUILD|CRASH|FAILED|ERROR|EVICT|PANIC|SOS|STATUS_PUBLISH_FAILED|CHAT_PUBLISH_FAILED|STACK_NEEDS_REBUILD|PORT_EVICT_CONTAINER|Vigilant|Remount|Rebuild/i.test(text)
          || text.includes("🛑") || text.includes("💥") || text.includes("⚡") || text.includes("⚠️") || text.includes("⛔") || text.includes("🚨");
 }
 
 function isErrorLine(text, tone) {
   if (tone === "hot") return true;
-  return /FAIL|ERROR|Errno|Exception|Fatal|Crash|Refused|Panic|SOS|stale/i.test(text)
+  if (isBuildProgressLine(text)) return false;
+  return /FAIL|ERROR|Errno|Exception|Fatal|Crash|Refused|Panic|SOS/i.test(text)
          || text.includes("❌") || text.includes("⚠️") || text.includes("💥") || text.includes("🛑");
 }
 
@@ -677,8 +690,11 @@ function renderDarkStacks(snapshot) {
   const stranded = dark.filter((row) => !row.restorable);
   const driven = snapshot.action_running ? [] : dark.filter((row) => row.restorable);
   const servedBy = snapshot.manager || {};
+  // BY THE COMPOSE FILE, NOT THE NAME: the stack was "DockTor", then
+  // "APK:docktor" and "Docktor" once the pods moved, and a name test matched
+  // neither — so a terminal manager's own stack counted down to an `up` forever.
   const selfHeld = servedBy.containerised === false &&
-        driven.some((row) => row.stack === "DockTor");
+        driven.some((row) => row.manager);
 
   if (!dark.length) {
     if (state.autoRemountDarkTimer) {
@@ -695,7 +711,7 @@ function renderDarkStacks(snapshot) {
 
   host.hidden = false;
 
-  if (driven.length && !selfHeld) {
+  if (driven.length && !selfHeld && !snapshot.watchdog) {
     const currentKey = driven.map((r) => r.stack).sort().join(",");
     if (state.autoRemountDarkKey !== currentKey) {
       state.autoRemountDarkKey = currentKey;
@@ -757,6 +773,12 @@ function renderDarkStacks(snapshot) {
          compose files. Run the command to bring one back.</p>
       ${stranded.map(rowHTML).join("")}` : "",
     driven.length ? `
+      ${snapshot.watchdog ? `
+      <p class="dark-lead">🛡️ <b>The server watchdog remounts these.</b> It checks every 30s
+         and brings up each empty stack alone, so this page does not count down to a
+         whole-bench <code>up</code> of its own. <b>Remount Now</b> is still here if you want it sooner.</p>
+      <p><button id="dark-remount-now" class="btn small accent" style="white-space: nowrap;">🚀 Remount Now</button></p>
+      ` : `
       <div class="dark-stack auto-remount-dark-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
           <div>
@@ -789,6 +811,7 @@ function renderDarkStacks(snapshot) {
           </div>
         </div>
       </div>
+      `}
       <p class="dark-lead">⚠ <b>${driven.length} stack${driven.length > 1 ? "s" : ""} this tool DRIVES
          ${driven.length > 1 ? "are" : "is"} empty.</b> Each row's remount builds and mounts
          ${driven.length > 1 ? "that stack alone" : "it"}; if it has already been pressed, the

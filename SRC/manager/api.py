@@ -41,6 +41,7 @@ from .diagnose import (diagnose_state, health_status, port_mappings,
                        network_addresses, service_endpoints, configuration_path)
 from .report import publish_status_report, publish_refresh_status, run_reported
 from .provenance import container_provenance
+from .readers import watchdog_active
 
 
 # ---------------------------------------------------------------------------
@@ -510,6 +511,10 @@ def snapshot(quiet=True, with_apps=True):
         # Pre-sliced for the client, so "which stacks are missing" has one
         # reading and it is this module.
         "dark_stacks": [row for row in stacks if row["dark"]],
+        # WHO REMOUNTS A DARK STACK. With the server watchdog running, the page's
+        # own countdown stands down: two engines on one dark stack each fired an
+        # `up`, and every `up` evicted what the other had just started.
+        "watchdog": watchdog_active(),
         # The third band half of the same list: dark_stacks is a stack with
         # nothing on the host, this is the container that IS on the host,
         # exited, carrying a restart policy that said it would not be. Flat and

@@ -264,6 +264,7 @@ def read_stacks(quiet=True):
     if exit_code != 0:
         return []
     stacks = []
+    seen = set()
     for line in output.strip().splitlines():
         if not line or line.startswith('@EVENT '):
             continue
@@ -271,6 +272,14 @@ def read_stacks(quiet=True):
         # parser here, which is also what lets a manager from this tree read an
         # older stacks.sh without the ninth column.
         f = (line.split('\t') + [''] * 9)[:9]
+        # ONE COMPOSE FILE UNDER TWO NAMES IS ONE STACK. stacks.sh walks
+        # APK:PODS/, where the compatibility symlinks (APK:docktor -> Docktor,
+        # Server:Broker:MQTT -> POD:databus/…) sit beside the folders they name,
+        # so a file arrived twice and the watchdog remounted it twice. First wins.
+        real = os.path.realpath(f[1])
+        if real in seen:
+            continue
+        seen.add(real)
         declared, present, running = (int(n) if n.isdigit() else 0 for n in f[4:7])
         absent = [name for name in f[7].split(',') if name]
         stopped = [name for name in f[8].split(',') if name]
@@ -278,7 +287,8 @@ def read_stacks(quiet=True):
                        "driven": f[3] == 'yes', "restorable": f[3] == 'yes',
                        "declared": declared, "present": present,
                        "running": running, "absent": absent, "stopped": stopped,
-                       "dark": bool(declared) and present == 0})
+                       "dark": bool(declared) and present == 0,
+                       "manager": os.path.basename(f[1]) == 'docker-compose.manager.yml'})
     return stacks
 
 
@@ -533,11 +543,27 @@ def run_container_tests(on_line_callback=None):
     return exit_code == 0
 
 
+WATCHDOG_ACTIVE = False
+
+
+def watchdog_active():
+    """True once start_watchdog has run in this process — the page reads it to
+    stand its own countdown down, so one engine remounts a dark stack, not two."""
+    return WATCHDOG_ACTIVE
+
+
 def start_watchdog(interval=30):
     """Periodically inspect declared stacks and auto-remount any down/empty stacks.
 
     Pushes for 100% green lights across all driven ecosystem stacks.
+    NOT THE MANAGER'S OWN STACK WHEN A TERMINAL MANAGER IS SERVING: that process
+    holds 127.0.0.1:8765, so a DockTor container can only wait for the port, and
+    remounting it every 30s is the loop that evicted the whole bench.
     """
+    global WATCHDOG_ACTIVE
+    WATCHDOG_ACTIVE = True
+    containerised = os.path.exists("/.dockerenv")
+
     def loop():
         time.sleep(15)
         while True:
@@ -545,6 +571,8 @@ def start_watchdog(interval=30):
                 if not is_any_script_running():
                     stack_list = read_stacks(quiet=True)
                     for s in stack_list:
+                        if s.get("manager") and not containerised:
+                            continue
                         if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
                             stack_name = s.get("stack")
                             if stack_name and not is_any_script_running():
