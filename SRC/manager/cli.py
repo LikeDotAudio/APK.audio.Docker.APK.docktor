@@ -76,7 +76,7 @@ CLI_ACTIONS_WITH_ARGS = {
         'phoenix.sh'),
 }
 
-USAGE = """Usage: python3 'Manager:docktor.py' <action> [args] [--no-kaboom]
+USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
 
   serve [--bind H] [--port N] [--open]
                        the HTTP API and its browser client. THIS IS THE
@@ -169,7 +169,7 @@ def run_cli_mode(argv=None):
     # WHO ASKED, for free-ports.sh to print beside every stop. setdefault: a
     # CLI run launched by something that already named itself keeps that name.
     os.environ.setdefault('APKAUDIO_ORDERED_BY',
-                          "the terminal: docktor.py " + " ".join(argv or ['status']))
+                          "the terminal: K8:runner.py " + " ".join(argv or ['status']))
 
     if action in ('rebuild', 'clean', 'up', 'remount', 'mount', 'start', 'rebuild-one', 'rebuild-container'):
         _open_browser_immediately()
@@ -206,7 +206,7 @@ def run_cli_mode(argv=None):
         sys.exit(0 if (gates_ok and tests_ok) else 1)
 
     if action == 'serve':
-        # THE DEFAULT VERB — a bare `docktor.py` inserts it.
+        # THE DEFAULT VERB — a bare `K8:runner.py` inserts it.
         # LOOPBACK UNLESS TOLD OTHERWISE, and serve.py header says why: this
         # API stops containers and rebuilds images with no authentication, so
         # the bind is the only control there is. --bind is for the container
@@ -264,7 +264,7 @@ def run_cli_mode(argv=None):
 
 
 # Every word above that reaches the dispatcher, so the entry script can tell a
-# CLI invocation from a bare `python3 …docktor.py`. Built from the tables rather
+# CLI invocation from a bare `python3 …K8:runner.py`. Built from the tables rather
 # than typed again: it WAS typed again in main(), and a verb added to the table
 # but not to that list opened a Tkinter window instead of running.
 KNOWN_ACTIONS = (

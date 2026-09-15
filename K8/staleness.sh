@@ -8,7 +8,7 @@
 # WHAT IS COMPARED IS THE DOCKERFILE COPY/ADD SOURCES, not the build context:
 # three stacks declare `context: ../..`, so a newest-mtime-under-context rule
 # would mark them stale on every edit anywhere in the repository.
-#     Dockerfile.manager  ->  manager/, docker scripts/, Manager:docktor.py,
+#     Dockerfile.manager  ->  manager/, docker scripts/, K8:runner.py,
 #                             brand.json, mqtt_broker_discovery.py
 #     APK:Yo/Dockerfile   ->  Cargo.toml, src/
 # AND ONLY THE STAGE THAT IS BUILT. Server:Discovery:NMOS/Docker/Dockerfile

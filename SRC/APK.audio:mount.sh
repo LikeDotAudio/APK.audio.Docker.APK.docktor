@@ -16,7 +16,7 @@ set -e
 
 MANAGEMENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS="$MANAGEMENT_DIR/docker scripts"
-MANAGER="$MANAGEMENT_DIR/../../Manager:docktor.py"
+MANAGER="$MANAGEMENT_DIR/../../K8:runner.py"
 
 case "${1:-up}" in
     up)

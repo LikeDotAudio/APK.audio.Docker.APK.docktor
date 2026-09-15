@@ -51,7 +51,7 @@ WORKDIR /app
 # in the second and none in the first.
 COPY ["APK:PODS/Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
 COPY ["APK:PODS/Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
-COPY ["APK:PODS/Manager:docktor.py", "/app/APK:DOCKERS/Manager:docktor.py"]
+COPY ["APK:PODS/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
 
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
 # DELIBERATELY HAS NO FALLBACK, so the token is not optional decoration here:
@@ -80,4 +80,4 @@ ENV APK_MANAGER_PORT=8765
 
 # `--open` is deliberately absent and there is no flag to suppress it: a
 # container has no browser to open and must not ask for one.
-CMD ["sh", "-c", "python3 -u '/app/APK:DOCKERS/Manager:docktor.py' serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]
+CMD ["sh", "-c", "python3 -u '/app/APK:DOCKERS/K8:runner.py' serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]

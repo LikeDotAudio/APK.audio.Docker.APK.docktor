@@ -92,7 +92,7 @@ def capture(command):
 
 
 def _ancestor_chain():
-    """The scripts above this one, nearest first: `up.sh <- docktor.py serve`.
+    """The scripts above this one, nearest first: `up.sh <- K8:runner.py serve`.
 
     READ FROM /proc, NOT PASSED: a stop that cannot say who asked for it is the
     question nobody can answer afterwards, and a hand-run `./up.sh` in a
@@ -110,7 +110,7 @@ def _ancestor_chain():
             break
         if not argv or pid <= 1:
             break
-        # ONE WORD PER LINK, TWO FOR A VERB: `up.sh`, `docktor.py serve`. A whole
+        # ONE WORD PER LINK, TWO FOR A VERB: `up.sh`, `K8:runner.py serve`. A whole
         # argv is an editor's forty flags, and the reader wants the script name.
         # SPLIT ON SPACES TOO: Electron rewrites its argv into one string.
         words = [os.path.basename(w) for a in argv[:3] for w in a.split()]

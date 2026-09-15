@@ -53,8 +53,8 @@ if [ -z "$QUERY" ]; then
         printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:DOCKERS/$subpath" "$repopath"
     done
 
-    echo -e "\n\033[33mUsage:\033[0m python3 Manager:docktor.py open <name> [--open]"
-    echo "Example: python3 Manager:docktor.py open mqtt"
+    echo -e "\n\033[33mUsage:\033[0m python3 'APK:PODS/K8:runner.py' open <name> [--open]"
+    echo "Example: python3 'APK:PODS/K8:runner.py' open mqtt"
     exit 0
 fi
 

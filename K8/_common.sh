@@ -82,7 +82,7 @@ log_step()  { echo -e "\n${BOLD}${BLUE}==> $1${OFF}"; }
 
 # announce NAME [json] — one stdout line the bus can lift:
 #     @EVENT PORT_EVICT_PROCESS {"port":8080,"pid":4412}
-# docktor.py republishes @EVENT lines to
+# K8:runner.py republishes @EVENT lines to
 # APK.audio/System/ContainerManager. JSON optional, one line, passed as-is.
 announce() {
     local name="$1"
