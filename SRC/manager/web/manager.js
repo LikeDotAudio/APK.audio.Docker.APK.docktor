@@ -1305,10 +1305,15 @@ function renderRadialArch() {
       ? `<div class="node-icon-wrapper"><span class="node-icon">${node.icon}</span></div>`
       : `<span class="node-icon">${node.icon}</span>`;
 
+    const runBtnHtml = isActive
+      ? `<button class="radial-run-cmd-btn" id="active-run-cmd-btn" data-run-node="${node.id}">⚡ RUN ${escapeHTML(node.label.toUpperCase())}</button>`
+      : "";
+
     return `
       <div class="radial-node${activeClass}" data-node-idx="${node.idx}" data-node="${node.id}" style="left: ${node.x.toFixed(2)}%; top: ${node.y.toFixed(2)}%;">
         ${iconInner}
         <span class="node-label">${escapeHTML(node.label)}</span>
+        ${runBtnHtml}
       </div>
     `;
   }).join("");
@@ -1332,9 +1337,44 @@ function renderRadialArch() {
     </div>
   `;
 
+  // Wire RUN Command button on the active bottom-right node
+  const runCmdBtn = $("#active-run-cmd-btn", host);
+  if (runCmdBtn) {
+    runCmdBtn.onclick = async (event) => {
+      event.stopPropagation();
+      const nodeId = runCmdBtn.dataset.runNode;
+      const targetNode = RADIAL_NODES.find((n) => n.id === nodeId);
+      const label = targetNode ? targetNode.label : nodeId;
+
+      post("/api/chat", { message: `⚡ RUN command triggered for active bottom-right node: ${label} (${nodeId}).` });
+
+      if (nodeId === "nmos") {
+        runAction("up", runCmdBtn);
+      } else if (nodeId === "service_cycle") {
+        runAction("rebuild-core", runCmdBtn);
+      } else if (nodeId === "pipeline") {
+        runAction("rebuild-all", runCmdBtn);
+      } else if (nodeId === "utilities") {
+        runAction("free-ports", runCmdBtn);
+      } else if (nodeId === "scanalyser") {
+        runAction("clear-dead", runCmdBtn);
+      } else if (nodeId === "system") {
+        runAction("verify", runCmdBtn);
+      } else if (nodeId === "chrome") {
+        loadWebPages();
+        applyView("ports");
+      } else if (nodeId === "big_picture") {
+        applyView("donuts");
+      } else {
+        runAction("up", runCmdBtn);
+      }
+    };
+  }
+
   // Clicking any node smoothly rotates it into the bottom-right active corner slot!
   $$(".radial-node", host).forEach((nodeEl) => {
-    nodeEl.onclick = () => {
+    nodeEl.onclick = (event) => {
+      if (event.target.closest("#active-run-cmd-btn")) return;
       const idx = parseInt(nodeEl.dataset.nodeIdx, 10);
       const clickedNode = calculatedNodes[idx];
 
