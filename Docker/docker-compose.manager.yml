@@ -1,5 +1,5 @@
 # DockTor, installed beside the stacks it manages.
-#     docker compose -f 'APK:DOCKERS/DockTor/Docker/docker-compose.manager.yml' up -d --build
+#     docker compose -f 'APK:PODS/Docktor/Docker/docker-compose.manager.yml' up -d --build
 #     open http://localhost:8765/
 # ONE SERVICE, AND THE ONLY ONE IN THIS REPOSITORY THAT HOLDS THE DOCKER SOCKET:
 # every other stack runs a workload, this one runs the tool that looks at them.

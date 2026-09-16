@@ -29,12 +29,6 @@ MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:PODS"
-elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:K8 PODS" ]; then
-    REPO_ROOT="$APKAUDIO_REPO"
-    DOCKERS_DIR="$REPO_ROOT/APK:K8 PODS"
-elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:DOCKERS" ]; then
-    REPO_ROOT="$APKAUDIO_REPO"
-    DOCKERS_DIR="$REPO_ROOT/APK:DOCKERS"
 else
     if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
@@ -42,6 +36,10 @@ else
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" && pwd)"
     else
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../.." && pwd)"
+    fi
+    # Invoked through a symlinked root name? Land on the real folder it names.
+    if [ -L "$DOCKERS_DIR" ]; then
+        DOCKERS_DIR="$(cd -P "$DOCKERS_DIR" && pwd)"
     fi
     REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 fi
@@ -384,7 +382,7 @@ for_each_stack() {
 # compose_for_stack <stack directory name> — fill STACK_COMPOSE with ONE
 # stack's compose command (up-stack.sh's lookup, behind the dashboard's
 # per-stack fix button; up.sh would rebuild the other eight instead).
-# The name is the directory under APK:DOCKERS/ — what stacks.sh prints — and is
+# The name is the directory under APK:PODS/ — what stacks.sh prints — and is
 # derived from the compose paths, so a renamed folder needs no edit here.
 # Arrays are copied whole, so COMPOSE_NODE keeps its hardware overlay.
 # Returns 1 with STACK_COMPOSE empty for an unknown name: callers must refuse

@@ -52,6 +52,20 @@ for container in "$@"; do
         continue
     fi
 
+    # THE MANAGER CANNOT REBUILD ITSELF FROM INSIDE: compose stops the container
+    # running this script between the stop and the start, and the bench is left
+    # with DockTor Exited (137) and a `<id>_DockTor` stuck in Created. Same rule
+    # as up-stack.sh. From a host terminal it is safe.
+    if [ -f /.dockerenv ] && { [ "$container" = "$MANAGER_CONTAINER" ] \
+        || [ "$(docker inspect --format '{{.Name}}' "$container" 2>/dev/null)" = "/$MANAGER_CONTAINER" ]; }; then
+        log_error "Refusing to rebuild $MANAGER_CONTAINER from inside $MANAGER_CONTAINER."
+        echo "  It would stop the container running this rebuild halfway through."
+        echo "  From a host terminal:  ./APK:PODS/Docktor/K8/manager.sh up"
+        announce CONTAINER_REBUILD_REFUSED "{\"container\":\"$container\",\"reason\":\"self\"}"
+        worst=3
+        continue
+    fi
+
     project="$(label_of "$container" com.docker.compose.project)"
     service="$(label_of "$container" com.docker.compose.service)"
     config_files="$(label_of "$container" com.docker.compose.project.config_files)"

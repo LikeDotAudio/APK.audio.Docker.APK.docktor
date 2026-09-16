@@ -6,7 +6,7 @@
 # ps.sh answers "what containers exist". This answers what ps.sh cannot: what
 # the repository DECLARED that is not here at all — a removed container leaves
 # no row in docker ps -a, so a vanished stack renders as nothing.
-# A STACK = a compose file under APK:DOCKERS/ with a top-level `name:`. That key
+# A STACK = a compose file under APK:PODS/ with a top-level `name:`. That key
 # is what docker groups by, and it separates a stack ROOT from an OVERLAY
 # (hardware/host/dev/macvlan declare no project and are a second -f).
 # DRIVEN = the manager verbs (up, down, rebuild-all, panic, panic-reboot,

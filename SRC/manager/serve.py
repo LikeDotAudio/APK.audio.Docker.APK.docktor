@@ -318,7 +318,7 @@ class ManagerHandler(BaseHTTPRequestHandler):
             key = urllib.parse.unquote(route[len("/api/action/"):])
             container = body.get("container")
             # THE THIRD SCOPE: a verb aimed at ONE STACK names the directory
-            # under APK:DOCKERS/, and `scope` tells api.run_action which table
+            # under APK:PODS/, and `scope` tells api.run_action which table
             # the name belongs to. `container` wins when a client sends both —
             # it is narrower, and a request naming both has contradicted itself.
             stack = None if container else body.get("stack")

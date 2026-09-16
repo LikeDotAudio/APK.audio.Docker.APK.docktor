@@ -1,12 +1,12 @@
 # Contract Bindings Specification — `APK:docktor`
 
-Part of the **APK.audio** system-wide contracts enforcer framework (`APK:DOCKERS/contracts`).
+Part of the **APK.audio** system-wide contracts enforcer framework (`APK:PODS/contracts`).
 
 ---
 
 ## 📜 Contract Binding Philosophy
 
-All messages, heartbeats, state announcements, and control commands in `APK:docktor` MUST conform strictly to the global contract rules defined in `APK:DOCKERS/contracts`.
+All messages, heartbeats, state announcements, and control commands in `APK:docktor` MUST conform strictly to the global contract rules defined in `APK:PODS/contracts`.
 
 ### 1. Mailbox Topic Structure
 - **`incoming/{leaf}`** (*Module -> Bus*): Reports item state, telemetry, discoveries, and test results.
@@ -25,9 +25,9 @@ APK.audio/System/Protocols/APK:docktor/outgoing/{command,enable,selftest_run}
 
 ## 🔌 Language Binding Integrations
 
-- **Rust**: Link `apkaudio-contracts` crate (`APK:DOCKERS/contracts/rust`)
-- **TypeScript / Node**: Import `@apkaudio/contracts` package (`APK:DOCKERS/contracts`)
-- **Python**: Import `apkaudio_contracts` module (`APK:DOCKERS/contracts/python`)
+- **Rust**: Link `apkaudio-contracts` crate (`APK:PODS/contracts/rust`)
+- **TypeScript / Node**: Import `@apkaudio/contracts` package (`APK:PODS/contracts`)
+- **Python**: Import `apkaudio_contracts` module (`APK:PODS/contracts/python`)
 
 ---
 

@@ -12,10 +12,10 @@ else can import it without a cycle.
 import os
 import json
 
-# FOUR levels up from this file is APK:DOCKERS/. The rungs are named rather
-# than counted:
-#   APK:DOCKERS/                          DOCKERS_DIRECTORY
-#     DockTor/                            MANAGEMENT_DIRECTORY
+# FOUR levels up from this file is APK:PODS/ (in the manager image it is the
+# in-image /app/APK:DOCKERS/). The rungs are named rather than counted:
+#   APK:PODS/                             DOCKERS_DIRECTORY
+#     Docktor/                            MANAGEMENT_DIRECTORY
 #       Docker/  docker-compose.manager.yml, Dockerfile.manager
 #       SRC/                              SOURCE_DIRECTORY
 #         docker scripts/                 every verb, one file each

@@ -2,7 +2,7 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🧹⚡ Delete old, rebuild fresh and mount — the named front door.
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:DeleteOldRebuildAndMount.sh
+#   ./APK:PODS/Docktor/SRC/APK.audio:DeleteOldRebuildAndMount.sh
 # A FORWARDER, NOT A COPY. The work is in `docker scripts/rebuild-all.sh`; this
 # file exists because the name is what is written down — in the docs, the manual
 # and the button — and a memorised path is worth keeping alive after the code

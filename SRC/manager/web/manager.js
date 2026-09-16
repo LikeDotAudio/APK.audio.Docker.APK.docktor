@@ -147,6 +147,10 @@ function isRecoveryLine(text, tone) {
 function isErrorLine(text, tone) {
   if (tone === "hot") return true;
   if (isBuildProgressLine(text)) return false;
+  // AN EVICTION IS AN ORDER BEING OBEYED, NOT A FAULT. Its 💥 put every stop
+  // free-ports.sh made into Errors as "⚠️ ERROR"; the Recovery lane carries it.
+  // PORT_EVICT_FAILED is the one that is an error, and FAIL still catches it.
+  if (/PORT_EVICT_(CONTAINER|PROCESS)|received command from/.test(text)) return false;
   return /FAIL|ERROR|Errno|Exception|Fatal|Crash|Refused|Panic|SOS/i.test(text)
          || text.includes("❌") || text.includes("⚠️") || text.includes("💥") || text.includes("🛑");
 }
@@ -565,8 +569,8 @@ function renderBenchHealth(snapshot) {
           clearInterval(state.autoRemountStoppedTimer);
           state.autoRemountStoppedTimer = null;
           const btn = $("#stopped-remount-now");
-          runAction("up", btn, true,
-                    "the Vigilant Auto-Remount countdown (exited containers) in the DockTor web UI");
+          remountStacks(stopped, btn,
+                        "the Vigilant Auto-Remount countdown (exited containers) in the DockTor web UI");
         }
       }, 1000);
     }
@@ -644,8 +648,8 @@ function renderBenchHealth(snapshot) {
         state.autoRemountStoppedTimer = null;
       }
       state.autoRemountStoppedCancelled = true;
-      runAction("up", stoppedNowBtn, true,
-                "the Remount Now button (exited containers) in the DockTor web UI");
+      remountStacks(stopped, stoppedNowBtn,
+                    "the Remount Now button (exited containers) in the DockTor web UI");
     };
   }
 
@@ -739,8 +743,8 @@ function renderDarkStacks(snapshot) {
           clearInterval(state.autoRemountDarkTimer);
           state.autoRemountDarkTimer = null;
           const btn = $("#dark-remount-now");
-          runAction("up", btn, true,
-                    "the Vigilant Auto-Remount countdown (empty stacks) in the DockTor web UI");
+          remountStacks(driven, btn,
+                        "the Vigilant Auto-Remount countdown (empty stacks) in the DockTor web UI");
         }
       }, 1000);
     }
@@ -767,7 +771,7 @@ function renderDarkStacks(snapshot) {
   host.innerHTML = [
     stranded.length ? `
       <p class="dark-lead stranded">🚧 <b>${stranded.length} stack${stranded.length > 1 ? "s" : ""} declared
-         under APK:DOCKERS/ ${stranded.length > 1 ? "have" : "has"} no containers at all, and nothing on
+         under APK:PODS/ ${stranded.length > 1 ? "have" : "has"} no containers at all, and nothing on
          this page will restart ${stranded.length > 1 ? "them" : "it"}.</b>
          A panic removes containers host-wide; the remount behind it drives three of the six
          compose files. Run the command to bring one back.</p>
@@ -837,8 +841,8 @@ function renderDarkStacks(snapshot) {
         state.autoRemountDarkTimer = null;
       }
       state.autoRemountDarkCancelled = true;
-      runAction("up", darkNowBtn, true,
-                "the Remount Now button (empty stacks) in the DockTor web UI");
+      remountStacks(driven, darkNowBtn,
+                    "the Remount Now button (empty stacks) in the DockTor web UI");
     };
   }
 
@@ -878,6 +882,13 @@ function renderDarkStacks(snapshot) {
 function renderStaleImages(snapshot) {
   const host = $("#stale-images");
   const stale = snapshot.action_running ? [] : (snapshot.stale_services || []);
+  // Only rows a rebuild from this page may touch arm the countdown; a stale
+  // manager alone is shown in the band below but schedules nothing.
+  const rebuildable = stale.filter((row) => !row.self);
+  if (stale.length && !rebuildable.length && state.autoRebuildTimer) {
+    clearInterval(state.autoRebuildTimer);
+    state.autoRebuildTimer = null;
+  }
 
   if (!stale.length) {
     if (state.autoRebuildTimer) {
@@ -905,8 +916,9 @@ function renderStaleImages(snapshot) {
     }
   }
 
-  if (!state.autoRebuildTimer && !state.autoRebuildCancelled && !snapshot.action_running) {
-    const staleNames = stale.map((row) => row.container || row.service).filter(Boolean);
+  if (!state.autoRebuildTimer && !state.autoRebuildCancelled && !snapshot.action_running
+      && rebuildable.length) {
+    const staleNames = rebuildable.map((row) => row.container || row.service).filter(Boolean);
     const announceKey = staleNames.join(",");
     if (state.lastAnnouncedStale !== announceKey) {
       state.lastAnnouncedStale = announceKey;
@@ -928,7 +940,11 @@ function renderStaleImages(snapshot) {
         clearInterval(state.autoRebuildTimer);
         state.autoRebuildTimer = null;
 
-        const targets = stale.map((row) => row.container || row.service).filter(Boolean);
+        // NEVER THE MANAGER ITSELF: rebuilding DockTor from inside DockTor kills
+      // this server halfway. rebuild.sh refuses it too; this keeps the
+      // countdown from asking every 30 seconds. Rebuild it from a host terminal.
+      const targets = stale.filter((row) => !row.self)
+                           .map((row) => row.container || row.service).filter(Boolean);
         const decisionMsg = `🤖 DockTor Decision: Auto-rebuild countdown expired. Executing TARGETED hot-swap rebuild for ${targets.length} stale container${targets.length > 1 ? "s" : ""}: ${targets.join(", ")} (preserving the rest of the bench).`;
         await post("/api/chat", { message: decisionMsg });
 
@@ -1006,7 +1022,11 @@ function renderStaleImages(snapshot) {
         state.autoRebuildTimer = null;
       }
       state.autoRebuildCancelled = true;
-      const targets = stale.map((row) => row.container || row.service).filter(Boolean);
+      // NEVER THE MANAGER ITSELF: rebuilding DockTor from inside DockTor kills
+      // this server halfway. rebuild.sh refuses it too; this keeps the
+      // countdown from asking every 30 seconds. Rebuild it from a host terminal.
+      const targets = stale.filter((row) => !row.self)
+                           .map((row) => row.container || row.service).filter(Boolean);
       await post("/api/chat", { message: `⚡ Rebuild Now clicked by user. Executing TARGETED hot-swap rebuild for ${targets.length} stale container${targets.length > 1 ? "s" : ""}: ${targets.join(", ")}.` });
 
       for (const containerName of targets) {
@@ -2147,7 +2167,32 @@ async function runContainerAction(key, name, button) {
   }
 }
 
-/* ONE STACK, AND THE NAME IS THE DIRECTORY UNDER APK:DOCKERS/. The bands hold
+/* A REMOUNT FOR SOME CONTAINERS IS AN up-stack PER STACK, NEVER THE BENCH `up`.
+ * `up` runs free-ports.sh across every driven file, and that STOPS each
+ * container publishing a port — so one exited Portal-Broker cost a running
+ * Storage-Broker, Broker-Mosquitto, NMOS-Dev and AES70-Dev their uptime, and
+ * the local broker refused the status publish in between. up-stack scopes the
+ * eviction to its own file. One at a time: the server refuses a second action
+ * while one runs, and each post returns only when its script has. */
+async function remountStacks(rows, button, origin) {
+  const stacks = [...new Set((rows || []).map((row) => row.stack).filter(Boolean))];
+  const row = state.actions.stack_actions?.["up-stack"];
+  if (!row || !stacks.length) return;
+  markRunning(button, true);
+  follow(true);
+  try {
+    for (const stack of stacks) {
+      await post(`/api/action/up-stack`, { stack, origin });
+    }
+  } finally {
+    markRunning(button, false);
+    state.rewind = true;
+    if (state.view === "ports") loadWebPages();
+    follow(false);
+  }
+}
+
+/* ONE STACK, AND THE NAME IS THE DIRECTORY UNDER APK:PODS/. The bands hold
  * it already, so nothing here maps a stack to a compose file — up-stack.sh does
  * that, through the same arrays the bench-wide verbs expand. */
 async function runStackAction(key, stack, button) {

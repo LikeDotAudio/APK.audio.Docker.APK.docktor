@@ -3,7 +3,7 @@
 # MIT Licence. Full text in LICENSE at the root.
 # 📄 The file that built a container. One path on stdout, or exit 1.
 #   ./config-path.sh Storage-Portal
-#   /…/APK:DOCKERS/Server:Storage:SQL database/Docker/docker-compose.yml
+#   /…/APK:PODS/Server:Storage:SQL database/Docker/docker-compose.yml
 # THE LABEL IS ASKED FIRST, THE NAME TABLE IS THE FALLBACK: compose stamps
 # com.docker.compose.project.config_files onto every container it creates, and
 # that is the file that ACTUALLY built this one — it survives a rename, it is

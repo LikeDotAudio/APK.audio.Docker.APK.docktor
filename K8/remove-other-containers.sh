@@ -6,7 +6,7 @@
 # The inverse of panic.sh: for reclaiming a bench that has collected other
 # projects stopped containers without touching the stack you are working on.
 # THE KEEP-SET IS READ FROM THE COMPOSE FILES, NEVER TYPED HERE: a container is
-# ours if any APK:DOCKERS/*/Docker/docker-compose.yml declares its
+# ours if any APK:PODS/*/Docker/docker-compose.yml declares its
 # container_name:, or if it carries a com.docker.compose.project label naming one
 # of the projects those files declare (apk-audio, and nmos).
 # ⚠️ A hand-written list of name substrings does not survive a rename. This

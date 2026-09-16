@@ -21,26 +21,26 @@ for arg in "$@"; do
 done
 
 declare -A REPO_MAP=(
-    ["mqtt"]="Server:Broker:MQTT|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/Server:Broker:MQTT"
-    ["apk-mqtt-broker"]="Server:Broker:MQTT|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/Server:Broker:MQTT"
-    ["sql"]="DATABASE:server:SQL|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/DATABASE:server:SQL"
-    ["apk-sql-database"]="DATABASE:server:SQL|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/DATABASE:server:SQL"
-    ["nmos"]="Server:Discovery:NMOS|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/Server:Discovery:NMOS"
-    ["apk-nmos-discovery"]="Server:Discovery:NMOS|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/Server:Discovery:NMOS"
-    ["ember"]="PROTOCOL:DEV:EMBER|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/PROTOCOL:DEV:EMBER"
-    ["apk-ember-server"]="PROTOCOL:DEV:EMBER|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/PROTOCOL:DEV:EMBER"
-    ["netbox"]="DATABASE:server:NETBOX|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/DATABASE:server:NETBOX"
-    ["apk-netbox-server"]="DATABASE:server:NETBOX|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/DATABASE:server:NETBOX"
-    ["docktor"]="APK:docktor|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:docktor"
-    ["apk-docktor"]="APK:docktor|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:docktor"
-    ["aes70"]="PROTOCOL:DEV:AES70|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/PROTOCOL:DEV:AES70"
-    ["apk-protocol-aes70"]="PROTOCOL:DEV:AES70|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/PROTOCOL:DEV:AES70"
-    ["baremetal"]="APK:BareMetal|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:BareMetal"
-    ["apk-baremetal"]="APK:BareMetal|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:BareMetal"
-    ["yo"]="APK:Yo|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:Yo"
-    ["apk-yo"]="APK:Yo|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:Yo"
-    ["webportal"]="APK:audio:WebPortal|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:audio:WebPortal"
-    ["apk-webportal"]="APK:audio:WebPortal|/home/anthony/Documents/GitProjects/APK.audio/APK:DOCKERS/APK:audio:WebPortal"
+    ["mqtt"]="Server:Broker:MQTT|$DOCKERS_DIR/Server:Broker:MQTT"
+    ["apk-mqtt-broker"]="Server:Broker:MQTT|$DOCKERS_DIR/Server:Broker:MQTT"
+    ["sql"]="DATABASE:server:SQL|$DOCKERS_DIR/DATABASE:server:SQL"
+    ["apk-sql-database"]="DATABASE:server:SQL|$DOCKERS_DIR/DATABASE:server:SQL"
+    ["nmos"]="Server:Discovery:NMOS|$DOCKERS_DIR/Server:Discovery:NMOS"
+    ["apk-nmos-discovery"]="Server:Discovery:NMOS|$DOCKERS_DIR/Server:Discovery:NMOS"
+    ["ember"]="PROTOCOL:DEV:EMBER|$DOCKERS_DIR/PROTOCOL:DEV:EMBER"
+    ["apk-ember-server"]="PROTOCOL:DEV:EMBER|$DOCKERS_DIR/PROTOCOL:DEV:EMBER"
+    ["netbox"]="DATABASE:server:NETBOX|$DOCKERS_DIR/DATABASE:server:NETBOX"
+    ["apk-netbox-server"]="DATABASE:server:NETBOX|$DOCKERS_DIR/DATABASE:server:NETBOX"
+    ["docktor"]="APK:docktor|$DOCKERS_DIR/APK:docktor"
+    ["apk-docktor"]="APK:docktor|$DOCKERS_DIR/APK:docktor"
+    ["aes70"]="PROTOCOL:DEV:AES70|$DOCKERS_DIR/PROTOCOL:DEV:AES70"
+    ["apk-protocol-aes70"]="PROTOCOL:DEV:AES70|$DOCKERS_DIR/PROTOCOL:DEV:AES70"
+    ["baremetal"]="APK:BareMetal|$DOCKERS_DIR/APK:BareMetal"
+    ["apk-baremetal"]="APK:BareMetal|$DOCKERS_DIR/APK:BareMetal"
+    ["yo"]="APK:Yo|$DOCKERS_DIR/APK:Yo"
+    ["apk-yo"]="APK:Yo|$DOCKERS_DIR/APK:Yo"
+    ["webportal"]="APK:audio:WebPortal|$DOCKERS_DIR/APK:audio:WebPortal"
+    ["apk-webportal"]="APK:audio:WebPortal|$DOCKERS_DIR/APK:audio:WebPortal"
 )
 
 if [ -z "$QUERY" ]; then
@@ -50,7 +50,7 @@ if [ -z "$QUERY" ]; then
     
     for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo webportal; do
         IFS="|" read -r subpath repopath <<< "${REPO_MAP[$key]}"
-        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:DOCKERS/$subpath" "$repopath"
+        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:PODS/$subpath" "$repopath"
     done
 
     echo -e "\n\033[33mUsage:\033[0m python3 'APK:PODS/K8:runner.py' open <name> [--open]"

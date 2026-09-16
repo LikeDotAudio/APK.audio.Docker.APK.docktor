@@ -294,7 +294,7 @@ CONTAINER_ACTIONS = {
     },
 }
 
-# Verbs that take a STACK NAME — the directory under APK:DOCKERS/, which is
+# Verbs that take a STACK NAME — the directory under APK:PODS/, which is
 # what stacks.sh prints and what every dark row already carries. A third table
 # for the CONTAINER_ACTIONS reason: different arity, scoped to one band row.
 # WHY UP-STACK EXISTS: the dark-stack band button used to be `up` — the whole
@@ -383,7 +383,7 @@ NAME_HINTS = ("apk", "apkaudio")
 
 
 def declared_projects():
-    """Every `name:` declared by a compose file under APK:DOCKERS/.
+    """Every `name:` declared by a compose file under APK:PODS/.
 
     <stack>/Docker/, one rung deeper than the <stack>/ this globbed before the
     split. An empty answer raises nothing anywhere: is_ours() falls through to
@@ -436,7 +436,7 @@ def snapshot(quiet=True, with_apps=True):
     repo_root = os.environ.get("APKAUDIO_REPO") or REPOSITORY_ROOT
     for s in stacks:
         stk = s["stack"]
-        abs_stack_path = os.path.join(repo_root, "APK:DOCKERS", stk)
+        abs_stack_path = os.path.join(repo_root, "APK:PODS", stk)
         file_uri = f"file://{abs_stack_path}"
         repo_info = {"name": stk, "path": file_uri}
         if s.get("compose_file") and os.path.exists(s["compose_file"]):
@@ -531,7 +531,13 @@ def snapshot(quiet=True, with_apps=True):
         # it also judges the image of a container that does not exist — and the
         # band this feeds says "up and healthy and running old code", of which
         # every word is false about an absent container.
-        "stale_services": [row for row in staleness.values()
+        # `self` MARKS THE MANAGER'S OWN ROW: it is still news, but no button on
+        # this page may rebuild it — a rebuild from inside kills the server
+        # halfway (Exited 137, a `<id>_DockTor` left in Created). The client
+        # shows it and leaves it out of every automatic or bulk rebuild.
+        "stale_services": [dict(row, self=row["stack"] in {s["stack"] for s in stacks
+                                                           if s.get("manager")})
+                           for row in staleness.values()
                            if row["stale"] == "yes"
                            and row["container"] in {c["name"] for c in cards}],
         # THE BOX, BESIDE THE PROCESS. `manager` below is who serves this page;

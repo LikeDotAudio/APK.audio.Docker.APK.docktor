@@ -268,7 +268,7 @@ def collect(resource):
     returns 55 at every limit from 100 down to 3, in 2, 7, 12 and 20 pages.
     That invariance -- the same total at four page sizes -- is the assertion
     this method rests on, and with no total published anywhere it is the only
-    proof available. `APK:DOCKERS/Server:Discovery:NMOS/SRC/paging_audit.py` re-runs
+    proof available. `APK:PODS/Server:Discovery:NMOS/SRC/paging_audit.py` re-runs
     it against a live registry and names the entries a page size missed.
 
     `paging.limit=100` is the API's own cap, asked for explicitly so the page

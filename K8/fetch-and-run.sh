@@ -3,7 +3,7 @@
 # MIT Licence. Full text in LICENSE at the root.
 # 🐙 Fetch Git repositories & run their Docker containers.
 # Usage:
-#   ./fetch-and-run.sh                                    auto-discover all Git sub-repos under APK:DOCKERS/
+#   ./fetch-and-run.sh                                    auto-discover all Git sub-repos under APK:PODS/
 #   ./fetch-and-run.sh <repo_url_or_path_1> [...]         fetch & run specific repo URLs or local directories
 #   ./fetch-and-run.sh --file repos.txt [--build]        read repos list from file
 

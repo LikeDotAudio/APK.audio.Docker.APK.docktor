@@ -10,7 +10,7 @@
 # measurement. No probe can emit "this is the delta capture, and without it the
 # bus keeps only the latest value of every topic and none of the history".
 # THE HAZARD IS DRIFT, AND --check IS THE ANSWER: it walks every compose file
-# under APK:DOCKERS/, takes every container_name:, and fails on an entry with no
+# under APK:PODS/, takes every container_name:, and fails on an entry with no
 # container or a container with no entry. No daemon needed, so
 # ./.apk.scripts/check.sh container-purpose runs it on any checkout.
 # It walks compose files rather than docker ps: the set that matters is what
@@ -354,7 +354,7 @@ CONTAINER_NAME = re.compile(r'^\s*container_name:\s*["\']?([^"\'\s#]+)', re.M)
 
 
 def declared_containers(root):
-    """Every `container_name:` any compose file under APK:DOCKERS/ spells out."""
+    """Every `container_name:` any compose file under APK:PODS/ spells out."""
     names = {}
     for base, directories, files in os.walk(root):
         directories[:] = [d for d in directories if not d.startswith('.')]
@@ -375,7 +375,7 @@ if MODE == "check":
         # A HARD FAILURE, NOT A SKIP: the manager image carries this folder
         # without the compose files, so a --check from inside the container
         # cannot see the set it is checking against.
-        sys.stderr.write("purpose.sh --check: no APK:DOCKERS directory at %r\n"
+        sys.stderr.write("purpose.sh --check: no APK:PODS directory at %r\n"
                          % DOCKERS_DIR)
         sys.exit(1)
 

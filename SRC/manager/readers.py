@@ -577,7 +577,8 @@ def start_watchdog(interval=30):
                             stack_name = s.get("stack")
                             if stack_name and not is_any_script_running():
                                 emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
-                                run_management_script('up-stack.sh', args=[stack_name], cancellable=True)
+                                run_management_script('up-stack.sh', args=[stack_name], cancellable=True,
+                                                      ordered_by=f"the DockTor watchdog ({stack_name} was down)")
                                 time.sleep(10)
             except Exception as err:
                 emit("WATCHDOG_ERROR", {"error": str(err)})

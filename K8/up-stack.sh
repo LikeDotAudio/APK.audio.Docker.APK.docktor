@@ -8,7 +8,7 @@
 # a fix PER STACK and had only the bench-wide verb behind it — the fix for
 # DockTor rebuilt the other eight and did not touch the manager
 # compose file at all, since for_each_stack does not drive it.
-# THE ARGUMENT IS THE DIRECTORY UNDER APK:DOCKERS/ (PROTOCOL:DEV:EMBER,
+# THE ARGUMENT IS THE DIRECTORY UNDER APK:PODS/ (PROTOCOL:DEV:EMBER,
 # DockTor), which is what stacks.sh prints. compose_for_stack turns it
 # into the same ARRAY the bench-wide verbs expand, so the node arrives with its
 # hardware overlay and the manager with its own file.
@@ -22,14 +22,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 STACK="${1:-}"
 if [ -z "$STACK" ]; then
-    log_error "Which stack? Name the directory under APK:DOCKERS/."
+    log_error "Which stack? Name the directory under APK:PODS/."
     echo "Usage: ./up-stack.sh 'PROTOCOL:DEV:EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi
 
 if ! compose_for_stack "$STACK"; then
-    log_error "No compose file under APK:DOCKERS/ is named by the stack '$STACK'."
+    log_error "No compose file under APK:PODS/ is named by the stack '$STACK'."
     echo "  ./stacks.sh prints every stack this repository declares, one per row,"
     echo "  and the first column is the name this verb takes."
     exit 2

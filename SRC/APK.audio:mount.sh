@@ -2,11 +2,11 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🚀 APK.audio master ecosystem mount — the named front door.
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:mount.sh            start everything
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:mount.sh watch      start, then live watch
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:mount.sh status     health of every stack
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:mount.sh rebuild    clean rebuild + mount
-#   ./APK:DOCKERS/DockTor/SRC/APK.audio:mount.sh down       stop everything
+#   ./APK:PODS/Docktor/SRC/APK.audio:mount.sh            start everything
+#   ./APK:PODS/Docktor/SRC/APK.audio:mount.sh watch      start, then live watch
+#   ./APK:PODS/Docktor/SRC/APK.audio:mount.sh status     health of every stack
+#   ./APK:PODS/Docktor/SRC/APK.audio:mount.sh rebuild    clean rebuild + mount
+#   ./APK:PODS/Docktor/SRC/APK.audio:mount.sh down       stop everything
 # THIS FILE IS A DISPATCHER AND NOTHING ELSE. Every verb it names is one file in
 # `docker scripts/` beside it, and the rules those files hold — the compose
 # arrays, the projects, the order, the port eviction, the gates — are stated once

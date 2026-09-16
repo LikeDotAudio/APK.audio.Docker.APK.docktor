@@ -1,5 +1,5 @@
 # 🐳 DockTor, as a container. The API and its client, nothing else.
-#     docker compose -f 'APK:DOCKERS/DockTor/Docker/docker-compose.manager.yml' up -d --build
+#     docker compose -f 'APK:PODS/Docktor/Docker/docker-compose.manager.yml' up -d --build
 #     open http://localhost:8765/
 # The manager used to be a Tkinter window, so it could only run where there was
 # a display — never on the headless host the containers run on. This is the same

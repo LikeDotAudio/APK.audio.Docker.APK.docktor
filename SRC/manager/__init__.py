@@ -9,7 +9,7 @@ under web/, no framework, no build step) · the bus (everything that happens is
 announced on APK.audio/System/ContainerManager as it happens) · running one
 script from the collection and reading what it prints.
 DOES NOT OWN, AND MUST NOT REACQUIRE: every docker verb lives in
-`APK:DOCKERS/DockTor/SRC/docker scripts/`, one executable file each, listed in
+`APK:PODS/Docktor/SRC/docker scripts/`, one executable file each, listed in
 that folder _common.sh header. No compose command, no docker ps format string,
 no port, no container name.
 

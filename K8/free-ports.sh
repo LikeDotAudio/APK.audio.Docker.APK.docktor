@@ -38,7 +38,7 @@ done
 # named variables, so clearing seven leaves one file and the parser untouched.
 if [ -n "$ONLY_STACK" ]; then
     if ! compose_for_stack "$ONLY_STACK"; then
-        log_error "No compose file under APK:DOCKERS/ is named by the stack '$ONLY_STACK'."
+        log_error "No compose file under APK:PODS/ is named by the stack '$ONLY_STACK'."
         exit 2
     fi
     BAREMETAL_COMPOSE_FILE="" MQTT_COMPOSE_FILE="" PORTAL_COMPOSE_FILE=""
@@ -112,8 +112,11 @@ def _ancestor_chain():
             break
         # ONE WORD PER LINK, TWO FOR A VERB: `up.sh`, `K8:runner.py serve`. A whole
         # argv is an editor's forty flags, and the reader wants the script name.
-        # SPLIT ON SPACES TOO: Electron rewrites its argv into one string.
-        words = [os.path.basename(w) for a in argv[:3] for w in a.split()]
+        # SPLIT ON SPACES ONLY FOR A ONE-STRING ARGV: Electron rewrites its argv
+        # into one string. A real argv keeps its elements whole, or the
+        # `docker scripts/` folder reads as a program called `docker`.
+        parts = argv[0].split() if len(argv) == 1 else argv[:3]
+        words = [os.path.basename(w) for w in parts]
         if words and words[0] in ('bash', 'sh', 'python3', 'python') and len(words) > 1:
             words = words[1:]
         words = [w for w in words if w and not w.startswith('-')][:2] or words[:1]
