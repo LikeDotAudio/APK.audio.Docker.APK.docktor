@@ -48,6 +48,11 @@ if [ $status -ne 0 ]; then
     exit $status
 fi
 
+# `up -d --build` IS A BUILD PATH. It rebuilds whatever Dockerfile changed and
+# leaves the superseded layers behind exactly as rebuild-all.sh does, so the
+# same sweep belongs here — after the mount, and never after a failed one.
+clean_build_cache "the mount"
+
 echo -e "\n${BOLD}${GREEN}✅ APK.audio Ecosystem Containers Active!${OFF}"
 
 # Open browser to DockTor Web UI immediately after DockTor container is up

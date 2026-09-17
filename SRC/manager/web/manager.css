@@ -511,7 +511,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * the [hidden] rule at the top of this file.
  * A SLICE COLOUR IS THE STACK AND ARRIVES INLINE: nothing here spells a hue.
  * This file supplies the greys, the geometry and the weight only. */
-.donuts, .ports {
+.donuts, .ports, .volumes {
   overflow: auto; padding: 10px; background: var(--ground); flex: 1;
 }
 /* THE PANE IS HALF A WINDOW AND THE TABLE HAS FIVE COLUMNS. Below this width
@@ -1029,3 +1029,87 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
   border-color: rgba(0, 0, 0, 0.35);
 }
 .cards .card.up .apps { border-top-color: rgba(0, 0, 0, 0.25); }
+
+
+/* ------------------------------------------------------- the volumes tab
+ * THE FOURTH READING, AND THE ONLY ONE WITH A TIME AXIS. Three blocks stacked
+ * down the pane, in the order the questions get asked: where does this tool
+ * keep its own state, what has the disk been doing, and which volume is it.
+ * The pane is half a window, so nothing here is a column layout — a graph
+ * beside a table at 600px is two things too narrow to read. */
+.vol-pointer {
+  background: var(--card); border: 1px solid var(--edge); border-left-width: 3px;
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+/* THE BORDER IS THE STATE, because this block is a POINTER and a pointer at
+ * nothing is the one thing worth seeing from across the room. */
+.vol-pointer.ok      { border-left-color: var(--tone-ok); }
+.vol-pointer.warn    { border-left-color: var(--tone-warm); }
+.vol-pointer.missing { border-left-color: var(--tone-hot); }
+.vol-pointer h3 {
+  margin: 0 0 8px; font: 700 12.5px var(--sans); color: var(--ink);
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.vol-pointer .tag {
+  font: 600 10px var(--sans); color: var(--dimmer); text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.vol-pointer .rows { display: grid; gap: 3px; }
+.vol-pointer .rows > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; }
+.vol-pointer .k { color: var(--dimmer); font-size: 11px; }
+.vol-pointer .v { font-size: 11.5px; color: var(--dim); overflow-wrap: anywhere; }
+.vol-pointer .v small { display: block; color: var(--dimmer); font-size: 10px; }
+.vol-pointer .mono { font-family: var(--mono); }
+.vol-pointer button { margin-top: 9px; }
+
+.vol-graph {
+  background: var(--card); border: 1px solid var(--edge); border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 12px;
+}
+.vol-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.vol-head h3 { margin: 0; font: 700 12.5px var(--sans); color: var(--ink); }
+.vol-head h3 small { display: block; font: 400 10.5px var(--sans); color: var(--dimmer); margin-top: 2px; }
+.vol-windows { margin-left: auto; display: flex; gap: 4px; }
+.vol-windows .on { color: var(--accent); border-color: var(--accent); }
+
+/* ONE AXIS, EVERY SERIES FROM THE SAME ZERO. The areas are faint on purpose:
+ * thirteen of them at any real opacity is a wash, and the LINE is the reading —
+ * the fill is only there to say which side of it is the volume. */
+.vol-chart { display: block; width: 100%; height: auto; }
+.vol-chart .grid { stroke: var(--edge); stroke-width: 1; }
+.vol-chart .axis { fill: var(--dimmer); font: 400 11px var(--mono); }
+.vol-chart .vol-area { fill-opacity: .1; stroke: none; }
+.vol-chart .vol-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+
+/* THE LEGEND IS THE CONTROL. It reuses .legend for the geometry and adds the
+ * two states a key does not have: `off` (something else is isolated, or this
+ * one was switched off) and `isolated` (this one is the only line drawn). */
+.vol-legend { margin-top: 8px; columns: 2; column-gap: 18px; }
+.vol-legend li { break-inside: avoid; }
+.vol-legend li.off { opacity: .38; }
+.vol-legend li.isolated { background: #22222a; outline: 1px solid var(--edge); }
+.vol-legend .share.up { color: var(--tone-warm); }
+.vol-legend .share.down { color: var(--tone-ok); }
+
+/* ------------------------------------------------------------ volume table */
+.vol-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 620px; }
+.vol-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; padding: 6px 8px; background: var(--panel);
+  border-bottom: 1px solid var(--edge); color: var(--dim);
+  font: 700 10.5px var(--sans); letter-spacing: .5px; text-transform: uppercase;
+}
+.vol-table td { padding: 5px 8px; border-bottom: 1px solid #1f1f27; vertical-align: top; }
+.vol-table tr:hover td { background: #1c1c23; }
+.vol-table .name { font: 600 11.5px var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+/* THE SIZE IS WHAT THIS TABLE IS SORTED BY and therefore what an eye runs down. */
+.vol-table .size { font: 700 12.5px var(--mono); color: var(--accent); white-space: nowrap; }
+.vol-table .size small { font: 400 9.5px var(--sans); color: var(--dimmer); margin-left: 3px; }
+.vol-table .role { font-size: 10.5px; color: var(--dimmer); text-transform: uppercase; letter-spacing: .4px; }
+.vol-table .where { font-size: 10.5px; color: var(--dimmer); overflow-wrap: anywhere; }
+.vol-table .down { color: var(--dimmer); }
+/* DockTor's own storage first among equals: it is the row a person came here to
+ * check, and it is otherwise a small volume near the bottom of a table sorted
+ * by size. */
+.vol-table tr.role-storage .name { color: var(--accent); }
+.vol-table tr.role-anonymous .name { color: var(--dimmer); }

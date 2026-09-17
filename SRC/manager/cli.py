@@ -59,6 +59,25 @@ CLI_ACTIONS_WITH_ARGS = {
     ('purpose', 'what', 'why'): ("📘 What this container is, and why the bench needs it...",
                                  'purpose.sh'),
     ('prune',): ("♻️  Reclaiming unused docker storage...", 'prune.sh'),
+    # WITH ARGS for `--fast`, which is the same reading without the sizes: the
+    # size walk is the expensive half and a terminal asking "which volumes
+    # exist" should not pay for it.
+    ('volumes', 'volume', 'storage-usage'): (
+        "🗄️  Every volume, the four docker totals and the disk under them...",
+        'volumes.sh'),
+    # The pointer the VOLUMES tab draws, and the one verb that CREATES storage:
+    # `--ensure` makes the folder and the named volume that binds it, a bare
+    # call only reports. See storage-volume.sh for why it never re-points one.
+    ('storage', 'storage-volume'): (
+        "📦 DockTor's own persistent storage — the folder that is a volume...",
+        'storage-volume.sh'),
+    # WITH ARGS for `--all`, which is a different act from the bare verb: the
+    # bare one drops what the last build superseded, `--all` drops the warm
+    # layers the next build would have reused. Every build path already ends
+    # with the bare one — see clean_build_cache in _common.sh — so this verb is
+    # for the sweep you ask for between builds.
+    ('clean-cache', 'clear-cache', 'build-cache'): (
+        "🧽 Cleaning the docker build cache...", 'clean-build-cache.sh'),
     # WITH ARGS because the sweep and the single kill are one verb: no name
     # takes every stopped container, a name takes that one, --force means a
     # running one. The behaviour is the script to decide.
@@ -99,6 +118,18 @@ USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
                        roster and the portal's served trees
   disk                 what docker is holding; read it before a rebuild
   prune [--all]        reclaim it (never volumes — see prune.sh)
+  volumes [--fast]     every docker volume with its size, the four totals
+                       (images / containers / volumes / cache) and the
+                       filesystem under them. `--fast` skips the size walk.
+  storage [--ensure]   where DockTor keeps its own state: a local folder that
+                       is also a named docker volume. `--ensure` creates both.
+                       The VOLUMES tab in the browser draws this pointer and
+                       graphs the series kept in it.
+  clean-cache [--all]  drop the BuildKit build cache. EVERY BUILD ALREADY DOES
+                       THIS on the way out (the dangling half); --all takes the
+                       warm layers too, so the next build starts from nothing.
+                       APKAUDIO_BUILD_CACHE_CLEAN=off|all changes what the
+                       automatic sweep after a build does.
   clear-dead [name…]   remove every container that is not running (or just
                        the named ones; --force for a running one, --dry-run)
   logs <container> [n] read a container's log

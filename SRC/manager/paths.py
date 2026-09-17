@@ -68,7 +68,13 @@ BAREMETAL_SRC_CANDIDATES = [
 ]
 BAREMETAL_ROOT = _find_first_existing_dir(BAREMETAL_SRC_CANDIDATES)
 
+# THE CONTRACTS MOVED UP TO THE CHECKOUT ROOT and this list did not follow, so
+# the open() below raised at IMPORT — not a missing accent, a package that
+# could not be imported at all, and with it the server, the CLI and every verb.
+# The root spelling is FIRST because that is where the tree keeps contracts now;
+# the two BareMetal spellings stay for a checkout that still carries its own.
 BRAND_TOKENS_CANDIDATES = [
+    os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
 ]

@@ -261,6 +261,16 @@ class ManagerHandler(BaseHTTPRequestHandler):
                 return self._json(api.resources(quiet=True))
             if route == "/api/endpoints":
                 return self._json(api.endpoints(quiet=True))
+            if route == "/api/volumes":
+                # A READ THAT ALSO WRITES ONE LINE, and it is still a read: the
+                # line goes into this manager own storage volume, nothing on
+                # the bench changes, and the alternative is a tab that can only
+                # draw a series somebody else remembered to collect.
+                return self._json(api.volumes(
+                    quiet=True,
+                    hours=float(params.get("hours", ["24"])[0]),
+                    fast=params.get("fast", ["0"])[0] == "1",
+                    with_history=params.get("history", ["1"])[0] != "0"))
             if route == "/api/log":
                 return self._json({"records": LOG.tail(int(params.get("n", ["400"])[0]))})
             if route == "/api/stream":
@@ -590,7 +600,8 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False):
     THE RESOURCE SAMPLER IS STARTED HERE — the once-a-minute beat that publishes
     a full stats sample belongs to whichever process is the long-running one.
     """
-    from .readers import start_resource_sampler, start_watchdog
+    from .readers import (start_resource_sampler, start_watchdog,
+                          start_volume_sampler)
 
     url = f"http://{'localhost' if bind in ('0.0.0.0', '127.0.0.1', '::') else bind}:{port}/"
     httpd = _bind_or_wait(bind, port, url, open_browser)
@@ -604,6 +615,11 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False):
                             "authentication and can stop and rebuild the bench — "
                             "put an authenticating proxy in front of it.")
     start_resource_sampler()
+    # THE STORAGE SERIES, and it is on the SERVER rather than in the browser
+    # for the reason the resource sampler is: a graph of what the disk did
+    # while somebody had the tab open is a graph of when the tab was open. Five
+    # minutes a point, written into DockTor own named volume.
+    start_volume_sampler()
     start_watchdog()
 
     if open_browser:

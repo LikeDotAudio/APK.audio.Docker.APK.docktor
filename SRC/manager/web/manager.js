@@ -40,6 +40,16 @@ const state = {
   hostCpus: 0,
   hostMemory: 0,
   endpoints: [],
+  // THE VOLUMES TAB, AND THE ONLY READING ON THIS PAGE THAT KEEPS STATE OF ITS
+  // OWN. `hidden` and `isolated` are what the legend does; they survive a
+  // repaint because a series you switched off must not come back every minute.
+  volumes: null,
+  volumesError: "",
+  volumesLoading: false,
+  volumeHours: 24,
+  volumeHidden: new Set(),
+  volumeIsolated: null,
+  volumeTimer: null,
   scanEvery: 0,
   scanTimer: null,
   scanPhase: null,  // the one-shot that walks the scan onto a pace-clock mark
@@ -1285,13 +1295,14 @@ function applyMeters(resources) {
  * and cannot be read for the two questions asked at a broken bench — WHO IS
  * EATING THE BOX (a comparison ACROSS cards, so it exists on none of them) and
  * WHAT IS ON 8080. */
-const VIEWS = ["cards", "donuts", "ports"];
+const VIEWS = ["cards", "donuts", "ports", "volumes"];
 
 function applyView(name) {
   state.view = VIEWS.includes(name) ? name : "cards";
   $("#cards").hidden  = state.view !== "cards";
   $("#donuts").hidden = state.view !== "donuts";
   $("#ports").hidden  = state.view !== "ports";
+  $("#volumes").hidden = state.view !== "volumes";
   // The detail level is a property of a CARD. Left on screen over a donut it
   // is a control with nothing to control, and the first thing tried when the
   // ring looks wrong.
@@ -1306,6 +1317,12 @@ function applyView(name) {
   // half is endpoints.sh — docker port plus an inspect per container — and is
   // far too expensive to put on a cadence. Re-read on arrival instead.
   if (state.view === "ports") loadWebPages();
+  // THE VOLUME READING IS NOT ON ANY CADENCE THIS PAGE ALREADY RUNS, and must
+  // not be: volumes.sh walks the volume tree. It is fetched on arrival and
+  // once a minute WHILE THE TAB IS OPEN — the series itself is sampled on the
+  // server every five minutes whether anybody is looking or not, so leaving
+  // this tab costs no history.
+  volumeCadence(state.view === "volumes");
 }
 
 function savedView() {
@@ -1315,6 +1332,7 @@ function savedView() {
 function renderViews() {
   if (state.view === "donuts") renderDonuts();
   if (state.view === "ports") renderPorts();
+  if (state.view === "volumes") renderVolumes();
 }
 
 /* ------------------------------------------------------ reading the numbers
@@ -1715,6 +1733,334 @@ function renderPorts() {
   $$("[data-copy]", host).forEach((button) => {
     button.onclick = () => navigator.clipboard.writeText(button.dataset.copy);
   });
+}
+
+/* ----------------------------------------------------------------- volumes */
+/* 🗄️ WHAT IS ON THE DISK, AND WHAT IT HAS BEEN DOING.
+ * THE ONE READING ON THIS PAGE THAT IS NOT OF THIS INSTANT, and that is the
+ * whole reason it exists: every other view draws a photograph, and the question
+ * that took this bench down on 2026-09-09 — the root filesystem filling, first
+ * reported by a database crash-looping — is not answerable from one. A volume
+ * at 157 MB is a fact. A volume that was 90 MB this morning is the news.
+ * THREE THINGS, TOP TO BOTTOM, and they are three different questions:
+ *   · THE POINTER — where DockTor keeps its own state: a local folder that is
+ *     also a named docker volume, so the series outlives the container that
+ *     wrote it and a person can open the file. Red until it exists.
+ *   · THE GRAPH — every series drawn ONE OVER TOP OF THE OTHER against one
+ *     byte axis, because the comparison IS the reading: images against cache
+ *     against the disk they share. Stacked areas would answer a different
+ *     question (what makes up the total) and make every individual line
+ *     unreadable, which is the one this tab is for.
+ *   · THE TABLE — every volume, biggest first, at the moment of the last read.
+ * THE LEGEND IS THE CONTROL AND NOT A KEY. Thirteen overlaid series is a
+ * thicket; clicking one ISOLATES it, clicking it again brings the rest back.
+ * Nothing is lost by isolating — the fetch is unchanged and the other series
+ * are one click away, which is not true of a filter that refetches.
+ * NO COLOUR IS SPELLED HERE. The hues come from /api/palette (group_hues), the
+ * same ring the stack swatches are drawn from. */
+
+const VOLUME_WINDOWS = [[1, "1h"], [6, "6h"], [24, "24h"], [168, "7d"], [720, "30d"]];
+const VOLUME_REFRESH_MS = 60000;
+/* TEN, AND THE TEN LARGEST. Eighteen volumes is eighteen lines nobody can
+ * follow, and the small ones are flat at the bottom of a byte axis anyway. The
+ * table below draws all of them. */
+const VOLUME_LINES = 10;
+
+/* The four numbers `docker system df` divides its total into, plus the disk
+ * itself. Keyed exactly as the history point writes them — readers.py builds
+ * that line, and these five keys are the contract between the two files. */
+const TOTAL_SERIES = [
+  { key: "disk_used", label: "💾 Disk used — the whole filesystem" },
+  { key: "images", label: "🧱 Images" },
+  { key: "containers", label: "📦 Containers — writable layers" },
+  { key: "volumes", label: "🗄️ Volumes — all of them" },
+  { key: "cache", label: "🧽 Build cache" },
+];
+
+function volumeHue(index) {
+  const hues = (state.palette && state.palette.group_hues) || [];
+  return hues.length ? hues[index % hues.length] : "#6f7480";
+}
+
+/* ONE CADENCE, OWNED BY THE TAB BEING OPEN. volumes.sh walks the volume tree
+ * and is far too expensive for the five-second beat; the SERIES is sampled on
+ * the server every five minutes whether or not anybody is looking, so closing
+ * this tab costs nothing but a repaint. */
+function volumeCadence(on) {
+  if (state.volumeTimer) { clearInterval(state.volumeTimer); state.volumeTimer = null; }
+  if (!on) return;
+  loadVolumes();
+  state.volumeTimer = setInterval(loadVolumes, VOLUME_REFRESH_MS);
+}
+
+async function loadVolumes() {
+  if (state.volumesLoading) return;
+  state.volumesLoading = true;
+  try {
+    state.volumes = await get(`api/volumes?hours=${encodeURIComponent(state.volumeHours)}`);
+    state.volumesError = "";
+  } catch (err) {
+    // THE LAST GOOD READING STAYS ON SCREEN. A daemon that has gone away is
+    // exactly when the previous numbers are worth reading, and a pane emptied
+    // into an error message throws them away.
+    state.volumesError = String((err && err.message) || err);
+  } finally {
+    state.volumesLoading = false;
+  }
+  if (state.view === "volumes") renderVolumes();
+}
+
+/* Every series the graph could draw, in one shape: {id, label, hue, values}
+ * where values is [[epochSeconds, bytes], …] oldest first. A per-volume series
+ * is only as long as that volume has existed — a volume created yesterday has
+ * no points before yesterday rather than a run of zeroes, which would draw as
+ * a volume that was empty and is not the same statement. */
+function volumeSeries() {
+  const points = (state.volumes && state.volumes.history && state.volumes.history.points) || [];
+  const latest = points.length ? points[points.length - 1] : null;
+  const series = TOTAL_SERIES.map((row, index) => ({
+    id: row.key,
+    label: row.label,
+    group: "total",
+    hue: volumeHue(index),
+    values: points.map((point) => [point.t, Number(point[row.key]) || 0]),
+  }));
+
+  const sizes = (latest && latest.vols) || {};
+  Object.entries(sizes)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, VOLUME_LINES)
+    .forEach(([name], index) => {
+      series.push({
+        id: `vol:${name}`,
+        label: `· ${name}`,
+        group: "volume",
+        hue: volumeHue(index + TOTAL_SERIES.length),
+        values: points
+          .filter((point) => point.vols && point.vols[name] !== undefined)
+          .map((point) => [point.t, Number(point.vols[name]) || 0]),
+      });
+    });
+  return series;
+}
+
+function volumeVisible(series) {
+  if (state.volumeIsolated) return series.filter((row) => row.id === state.volumeIsolated);
+  return series.filter((row) => !state.volumeHidden.has(row.id));
+}
+
+/* THE GRAPH. Plain SVG against one byte axis, areas at low opacity under
+ * lines, every series from the same zero — so two series at the same height
+ * are the same number of bytes, which is the only claim this drawing makes.
+ * A UNIFORM viewBox AND NOT A STRETCHED ONE: `preserveAspectRatio` is left at
+ * its default so the labels keep their proportions at any pane width. */
+function volumeChartSVG(series) {
+  const W = 1000, H = 330, L = 78, R = 16, T = 14, B = 28;
+  const drawn = series.filter((row) => row.values.length);
+  const all = drawn.flatMap((row) => row.values);
+  if (all.length < 2) return "";
+
+  const times = all.map((pair) => pair[0]);
+  const tMin = Math.min(...times), tMax = Math.max(...times);
+  const yMax = Math.max(...all.map((pair) => pair[1])) || 1;
+  const span = (tMax - tMin) || 1;
+  const x = (t) => L + ((t - tMin) / span) * (W - L - R);
+  const y = (value) => H - B - (value / yMax) * (H - T - B);
+
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+    const value = yMax * fraction;
+    return `<line class="grid" x1="${L}" y1="${y(value)}" x2="${W - R}" y2="${y(value)}"/>
+            <text class="axis" x="${L - 8}" y="${y(value) + 3.5}" text-anchor="end">${escapeHTML(humanBytes(value))}</text>`;
+  }).join("");
+
+  const ticks = [0, 0.5, 1].map((fraction) => {
+    const when = new Date((tMin + span * fraction) * 1000);
+    const anchor = fraction === 0 ? "start" : fraction === 1 ? "end" : "middle";
+    return `<text class="axis" x="${x(tMin + span * fraction)}" y="${H - 8}" text-anchor="${anchor}">
+              ${escapeHTML(when.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }))}
+            </text>`;
+  }).join("");
+
+  const bodies = drawn.map((row) => {
+    const line = row.values.map((pair) => `${x(pair[0]).toFixed(1)},${y(pair[1]).toFixed(1)}`).join(" ");
+    const first = row.values[0], last = row.values[row.values.length - 1];
+    const area = `M ${x(first[0]).toFixed(1)},${(H - B).toFixed(1)} L ${line.split(" ").join(" L ")} L ${x(last[0]).toFixed(1)},${(H - B).toFixed(1)} Z`;
+    return `<path class="vol-area" d="${area}" fill="${escapeAttr(row.hue)}"/>
+            <polyline class="vol-line" points="${line}" stroke="${escapeAttr(row.hue)}"/>`;
+  }).join("");
+
+  return `
+    <svg class="vol-chart" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="Storage over time — ${drawn.length} series drawn one over the other">
+      ${grid}${bodies}${ticks}
+    </svg>`;
+}
+
+/* WHAT A SERIES IS DOING, WHICH IS THE COLUMN A SIZE CANNOT BE: the last value
+ * and the change across the window. `+1.2 GiB` in this column is the sentence
+ * "this is what is consuming the disk", said by a number. */
+function volumeDelta(row) {
+  if (row.values.length < 2) return { now: row.values.length ? row.values[0][1] : 0, change: 0 };
+  return {
+    now: row.values[row.values.length - 1][1],
+    change: row.values[row.values.length - 1][1] - row.values[0][1],
+  };
+}
+
+function volumeLegendHTML(series) {
+  return series.map((row) => {
+    const { now, change } = volumeDelta(row);
+    const isolated = state.volumeIsolated === row.id;
+    const off = state.volumeIsolated ? !isolated : state.volumeHidden.has(row.id);
+    const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+    return `
+      <li class="${off ? "off" : ""}${isolated ? " isolated" : ""}" data-series="${escapeAttr(row.id)}"
+          title="${escapeAttr(isolated ? "Click to bring every series back" : "Click to isolate this series")}">
+        <span class="swatch" style="background: ${escapeAttr(row.hue)}"></span>
+        <span class="who">${escapeHTML(row.label)}</span>
+        <b>${row.values.length ? escapeHTML(humanBytes(now)) : "—"}</b>
+        <span class="share ${change > 0 ? "up" : change < 0 ? "down" : ""}">${
+          row.values.length < 2 ? "" : `${sign}${escapeHTML(humanBytes(Math.abs(change)))}`}</span>
+      </li>`;
+  }).join("");
+}
+
+/* THE POINTER. Three things that have to agree — a folder, a volume name and a
+ * path inside the manager container — and storage-volume.sh is where they are
+ * spelled; this draws its answer and, when the volume is not there, the one
+ * button that makes it. */
+function volumePointerHTML() {
+  const store = (state.volumes && state.volumes.storage) || {};
+  const exists = store.exists === "1";
+  const bound = store.bound === "1";
+  const folder = store.folder || "—";
+  const writing = store.writing_to || "—";
+  const history = (state.volumes && state.volumes.history) || {};
+  const action = (state.actions.actions || {})["storage-volume"];
+  const level = exists && bound ? "ok" : exists ? "warn" : "missing";
+
+  return `
+    <div class="vol-pointer ${level}">
+      <h3>📦 DockTor's persistent storage
+        <span class="tag">${exists ? (bound ? "named volume · bound to the folder" : "volume exists · pointing elsewhere")
+                                   : "not created yet"}</span></h3>
+      <div class="rows">
+        <div><span class="k">Named volume</span><span class="v mono">${escapeHTML(store.volume || "—")}</span></div>
+        <div><span class="k">Local folder</span><span class="v mono">${escapeHTML(folder)}</span></div>
+        <div><span class="k">In the container</span><span class="v mono">${escapeHTML(store.mount || "—")}</span></div>
+        <div><span class="k">Writing to</span><span class="v mono">${escapeHTML(writing)}</span></div>
+        <div><span class="k">Series file</span><span class="v mono">${escapeHTML(history.path || "—")}
+             <small>${history.total ? `${history.total} sample(s) in the last ${escapeHTML(String(state.volumeHours))}h` : "no samples yet"}</small></span></div>
+      </div>
+      ${store.device && store.device !== folder ? `
+        <p class="note">⚠️ The volume was created against <b>${escapeHTML(store.device)}</b> and not the folder
+           above. Nothing here re-points it — docker keeps the device a volume was made with, and the
+           samples under the old folder are the history. <code>docker volume rm ${escapeHTML(store.volume || "")}</code>
+           and press the button to make it again.</p>` : ""}
+      ${exists ? "" : `
+        <p class="note">The folder is where the graph above comes from. Until the named volume exists, the
+           manager writes into the folder directly — which works from a terminal and is lost the moment
+           this tool runs as a container, because a container has no such folder.</p>`}
+      ${action ? `<button class="btn plain small" id="make-storage">${escapeHTML(action.label)}</button>` : ""}
+    </div>`;
+}
+
+function volumeTableHTML() {
+  const rows = (state.volumes && state.volumes.volumes) || [];
+  if (!rows.length) return `<p class="empty">docker is holding no volumes at all.</p>`;
+  const body = rows.map((row) => `
+    <tr class="role-${escapeAttr(row.role)}">
+      <td class="name">${escapeHTML(row.name)}</td>
+      <td class="size">${row.size_bytes < 0
+          ? `<span class="down" title="docker system df -v skips bind-backed volumes, and this folder could not be walked">not measured</span>`
+          : escapeHTML(humanBytes(row.size_bytes))}
+          ${row.measured === "folder" ? `<small title="walked with du, because docker will not size a bind-backed volume">du</small>` : ""}</td>
+      <td>${row.links > 0 ? `${row.links} container(s)` : `<span class="down">nothing attached</span>`}</td>
+      <td>${escapeHTML(row.project || "—")}</td>
+      <td class="role">${escapeHTML(row.role)}</td>
+      <td class="where mono">${escapeHTML(row.device || row.mountpoint || "—")}</td>
+    </tr>`).join("");
+  return `
+    <table class="vol-table">
+      <thead><tr>
+        <th>Volume</th><th>Size</th><th>In use by</th><th>Project</th><th>Role</th><th>Where the bytes are</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function renderVolumes() {
+  const host = $("#volumes");
+  if (!state.volumes) {
+    host.innerHTML = state.volumesError
+      ? `<p class="empty">Could not read the volumes: ${escapeHTML(state.volumesError)}</p>`
+      : `<p class="empty">Reading volumes… (<code>docker system df -v</code> walks the volume tree)</p>`;
+    return;
+  }
+
+  const series = volumeSeries();
+  const shown = volumeVisible(series);
+  const chart = volumeChartSVG(shown);
+  const usage = state.volumes.usage || {};
+  const disk = state.volumes.disk || {};
+  const totals = state.volumes.totals || {};
+  const every = Math.round((state.volumes.sample_seconds || 300) / 60);
+
+  host.innerHTML = `
+    ${volumePointerHTML()}
+
+    <div class="vol-graph">
+      <div class="vol-head">
+        <h3>📈 Storage over time
+          <small>${escapeHTML(humanBytes(disk.used_bytes || 0))} of ${escapeHTML(humanBytes(disk.total_bytes || 0))}
+            used on ${escapeHTML(disk.data_root || "the docker root")} · one sample every ${every} min</small></h3>
+        <div class="vol-windows">${VOLUME_WINDOWS.map(([hours, label]) => `
+          <button class="btn plain micro ${state.volumeHours === hours ? "on" : ""}" data-hours="${hours}">${label}</button>`).join("")}</div>
+      </div>
+      ${chart || `<p class="empty">The series has fewer than two samples in this window. One is written
+         every ${every} minutes while this manager runs, and into
+         <code>${escapeHTML((state.volumes.history || {}).path || "the storage volume")}</code> — come back
+         in ${every} minutes, or widen the window.</p>`}
+      <ul class="legend vol-legend">${volumeLegendHTML(series)}</ul>
+      <p class="note">Every series is drawn from the same zero on one byte axis, one over top of the other —
+         so two lines at the same height are the same number of bytes. <b>Click a legend row to isolate it</b>;
+         click it again to bring the rest back. The right-hand number is the change across this window: that
+         is the one that answers "what is eating the disk", which a size cannot.</p>
+    </div>
+
+    <div class="vol-head">
+      <h3>🗄️ ${totals.volume_count || 0} volume(s)
+        <small>${escapeHTML(humanBytes(totals.measured_bytes || 0))} measured · ${totals.in_use || 0} attached to a
+          running container · images ${escapeHTML(humanBytes((usage.images || {}).size_bytes || 0))} ·
+          build cache ${escapeHTML(humanBytes((usage.cache || {}).size_bytes || 0))}</small></h3>
+    </div>
+    ${volumeTableHTML()}
+    ${state.volumesError ? `<p class="note">⚠️ The last refresh failed (${escapeHTML(state.volumesError)}); the
+       numbers above are the previous reading.</p>` : ""}`;
+
+  // ISOLATE ON CLICK, and the second click on the isolated row is the way back.
+  // A row that is merely hidden (no isolation in force) toggles itself, so the
+  // two gestures compose: isolate one, then bring back the ones you want.
+  $$("[data-series]", host).forEach((item) => {
+    item.onclick = () => {
+      const id = item.dataset.series;
+      if (state.volumeIsolated === id) state.volumeIsolated = null;
+      else if (state.volumeIsolated) state.volumeIsolated = id;
+      else if (state.volumeHidden.has(id)) state.volumeHidden.delete(id);
+      else state.volumeIsolated = id;
+      renderVolumes();
+    };
+  });
+
+  $$("[data-hours]", host).forEach((button) => {
+    button.onclick = () => {
+      state.volumeHours = Number(button.dataset.hours);
+      loadVolumes();
+    };
+  });
+
+  const make = $("#make-storage", host);
+  if (make) make.onclick = () => runAction("storage-volume", make).then(() => loadVolumes());
 }
 
 /* ------------------------------------------------------------- detail pane */
@@ -2442,7 +2788,14 @@ async function boot() {
 
   // Both halves of the port table: the scan re-reads what docker has bound,
   // and endpoints.sh re-reads what answers on it.
-  $("#refresh").onclick = () => { scan(); if (state.view === "ports") loadWebPages(); };
+  $("#refresh").onclick = () => {
+    scan();
+    if (state.view === "ports") loadWebPages();
+    // 🔄 MEANS THIS READING, WHICHEVER IT IS. The volume tab is the one view a
+    // scan does not touch — it has a script of its own — so a refresh pressed
+    // over it used to repaint the cards behind it and nothing else.
+    if (state.view === "volumes") loadVolumes();
+  };
   $("#live-resources").onclick = () => armMeters(!state.meters);
   $("#broadcast").onclick = () => post("/api/broadcast");
   $("#clear-log").onclick = () => post("/api/log/clear");

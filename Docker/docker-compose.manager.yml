@@ -68,6 +68,16 @@ services:
       - type: volume
         source: apk-audio-logs
         target: /logs
+      # DOCKTOR'S OWN STORAGE, and the reason the VOLUMES tab can draw a series
+      # at all: the sampler writes volume-history.jsonl in here every five
+      # minutes, and an image is not somewhere to keep it — the next rebuild
+      # would be the end of the history of what the disk has been doing.
+      # A NAMED VOLUME BOUND TO A FOLDER, not a bind: as a bind this would not
+      # appear in `docker volume ls` at all, and the tab whose subject is the
+      # volume table would be keeping its own state outside it.
+      - type: volume
+        source: docktor-storage
+        target: /storage
     environment:
       # ⚠️ LOOPBACK, AND NOW THE ONLY THING HOLDING THE LINE. This API stops
       #    containers, rebuilds images and force-kills the bench with no
@@ -143,3 +153,18 @@ volumes:
       type: none
       o: bind
       device: "${APKAUDIO_REPO}/APK:Documentation/LOGS"
+  # THE SAME CONSTRUCTION, ONE FOLDER ACROSS — and the colons in the path are
+  # fine HERE for the reason they are fine above: `device` is a string handed
+  # to the local driver, not a mount spec compose splits on. The folder is
+  # created by docker scripts/storage-volume.sh, which is also the one place
+  # this name and this path are spelled for everything that is not compose.
+  # ⚠️ AN EXISTING VOLUME IS NEVER RE-POINTED by editing this line: docker
+  #    keeps the device it was created with, so a moved folder means
+  #    `docker volume rm docktor-storage` and losing what is under the old one.
+  docktor-storage:
+    name: docktor-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: "${APKAUDIO_REPO}/APK:Documentation/STORAGE/DockTor"

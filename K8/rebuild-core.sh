@@ -32,4 +32,6 @@ status=$?
 announce COMPOSE_RESULT "{\"action\":\"build+up\",\"services\":\"$SERVICE\",\"exit_code\":$status}"
 [ $status -ne 0 ] && { log_error "Restart of '$SERVICE' failed (exit $status)."; exit $status; }
 
+clean_build_cache "the '$SERVICE' rebuild"
+
 echo -e "\n${BOLD}${GREEN}✅ '$SERVICE' rebuilt and running.${OFF}"

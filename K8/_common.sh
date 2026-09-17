@@ -13,8 +13,8 @@
 #               topics purpose page-titles
 #    GATES      test-gates (pre-build) verify (post-mount)
 #    MANAGER    manager
-#    CLEANUP    free-ports clear-logs prune remove-other-containers
-#               remove-dead-containers
+#    CLEANUP    free-ports clear-logs prune clean-build-cache
+#               remove-other-containers remove-dead-containers
 #    ☢️ NUKE     nuke -- the ONLY file here that deletes named volumes. Every
 #               other cleanup verb is built around never touching them.
 #    RAW        compose
@@ -69,6 +69,28 @@ EMBER_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml"
 # expansion of this path is quoted.
 LOGGER_COMPOSE_FILE="$DOCKERS_DIR/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml"
 LOG_VOLUME_NAME="apk-audio-logs"
+
+# ── DOCKTOR OWN PERSISTENT STORAGE. The same shape as the log volume above and
+# for the same reason: a NAMED VOLUME whose bytes are a LOCAL FOLDER in the
+# checkout, so `docker volume inspect` finds it by name and a person finds it
+# with `ls`. An anonymous volume would hold the history where only docker can
+# reach it, and a plain bind would not appear in the volume table this tool
+# draws — the point of the tab is that the program storage is one of the
+# volumes it is reporting on.
+# ⚠️ THE COLONS ARE FINE HERE and nowhere near a bind: `driver_opts.device` is
+#    a plain string to the local driver, which is why the log volume can name
+#    `APK:Documentation/LOGS`. A compose `volumes:` SHORT FORM naming this path
+#    would still split on the first colon — see the warning in
+#    docker-compose.manager.yml.
+# WHAT LIVES IN IT: volume-history.jsonl, the sample series the VOLUMES tab
+# graphs. A series is only worth drawing if it outlives the container that
+# wrote it, and /var/lib/docker is not somewhere a person can go and read it.
+STORAGE_VOLUME_NAME="docktor-storage"
+STORAGE_HOST_DIR="$REPO_ROOT/APK:Documentation/STORAGE/DockTor"
+# Where docker-compose.manager.yml mounts it INSIDE the manager container. The
+# scripts prefer this when it is a real mount, so the same code writes to the
+# same bytes from the host and from inside the container.
+STORAGE_MOUNT_DIR="/storage"
 
 GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
 BOLD="\033[1m"; OFF="\033[0m"
@@ -467,4 +489,37 @@ prepare_for_up() {
     else
         "$MANAGEMENT_SCRIPTS_DIR/free-ports.sh"
     fi
+}
+
+# clean_build_cache [what] — the sweep every build path ends with. `what` is
+# only the word that goes in the log line and the event.
+# ⚠️ IT RUNS AFTER A BUILD SUCCEEDS AND NOWHERE ELSE. After a FAILED build the
+#    cache is the half-finished work the next attempt resumes from, so throwing
+#    it away turns one broken build into two slow ones.
+# THE DEFAULT IS THE DANGLING HALF: the layers this build superseded go, the
+# layers the next build would reuse stay. Two knobs, both read here so no build
+# script spells them:
+#   APKAUDIO_BUILD_CACHE_CLEAN=off   leave the cache alone entirely
+#   APKAUDIO_BUILD_CACHE_CLEAN=all   every byte — slow next build, empty disk
+# NEVER NON-ZERO. A daemon that would not prune is not a reason to call a good
+# image bad, and this is called after the build has already been reported.
+clean_build_cache() {
+    local what="${1:-build}"
+    case "${APKAUDIO_BUILD_CACHE_CLEAN:-dangling}" in
+        off|no|0|keep)
+            log_warn "Build cache left in place (APKAUDIO_BUILD_CACHE_CLEAN=${APKAUDIO_BUILD_CACHE_CLEAN})."
+            return 0
+            ;;
+        all|-a|--all)
+            log_step "Cleaning the build cache after $what (ALL of it)..."
+            "$MANAGEMENT_SCRIPTS_DIR/clean-build-cache.sh" --all \
+                || log_warn "Build cache clean reported a problem; $what itself was fine."
+            ;;
+        *)
+            log_step "Cleaning the build cache after $what..."
+            "$MANAGEMENT_SCRIPTS_DIR/clean-build-cache.sh" \
+                || log_warn "Build cache clean reported a problem; $what itself was fine."
+            ;;
+    esac
+    return 0
 }

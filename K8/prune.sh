@@ -21,8 +21,11 @@ ALL=0
 log_step "Stopped containers"
 docker container prune -f
 
-log_step "Build cache"
-docker builder prune -f
+# THE CACHE SWEEP IS clean-build-cache.sh, not a second `docker builder prune`
+# here: every build path ends with that file too, and two spellings of the same
+# act drift — one of them would have kept saying "0B reclaimed" on a daemon
+# whose total line is worded the other way.
+"$MANAGEMENT_SCRIPTS_DIR/clean-build-cache.sh" || log_warn "Build cache sweep exited non-zero; carrying on."
 
 if [ $ALL -eq 1 ]; then
     log_step "Every unreferenced image (--all)"

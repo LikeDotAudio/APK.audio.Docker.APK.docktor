@@ -36,7 +36,9 @@ from .readers import (read_containers, read_container_apps, read_app_plane,
                       read_page_titles, sample_resources, inspect_container_json,
                       read_container_api, read_bus_topics, read_stacks,
                       read_container_purpose, read_stale_images, read_host,
-                      read_host_disk)
+                      read_host_disk, read_volumes, read_volume_history,
+                      record_volume_sample, storage_directory,
+                      VOLUME_SAMPLE_SECONDS)
 from .diagnose import (diagnose_state, health_status, port_mappings,
                        network_addresses, service_endpoints, configuration_path)
 from .report import publish_status_report, publish_refresh_status, run_reported
@@ -177,6 +179,44 @@ ACTIONS = {
         "confirm": "Reclaim unused docker storage? Named volumes are never touched.",
         "done": "✅ Storage reclaimed.",
         "failed": "❌ Prune exited {code}.",
+    },
+    # THE BUTTON FOR AN ACT EVERY BUILD ALREADY PERFORMS: clean_build_cache in
+    # _common.sh runs the same script after every successful build, so this row
+    # is the sweep between builds — and the only way to ask for `--all`, which
+    # is why it takes a confirm and the automatic one does not. NO IMAGE AND NO
+    # CONTAINER IS TOUCHED; the running bench does not notice.
+    "clean-cache": {
+        "label": "🧽 Clean Build Cache",
+        "script": "clean-build-cache.sh", "args": [],
+        "confirm": "Drop the docker build cache?\n\nOnly the cache — no image, "
+                   "no container and no volume is touched, and nothing running "
+                   "is interrupted. The next build re-does whatever layers this "
+                   "removes.",
+        "done": "✅ Build cache cleaned.",
+        "failed": "❌ Build cache clean exited {code}.",
+    },
+    "clean-cache-all": {
+        "label": "🧼 Clean Build Cache (everything)",
+        "script": "clean-build-cache.sh", "args": ["--all"],
+        "confirm": "Drop EVERY byte of build cache?\n\nThis takes the warm "
+                   "layers the next build would have reused as well, so the "
+                   "next rebuild is a cold one — minutes, not seconds, on the "
+                   "Rust images. Still no image, container or volume is "
+                   "touched.",
+        "done": "✅ Build cache emptied.",
+        "failed": "❌ Build cache clean exited {code}.",
+    },
+    # THE ONE VERB THAT CREATES STORAGE RATHER THAN RECLAIMING IT, and the
+    # button the VOLUMES tab points at when the pointer is red. It makes the
+    # folder and the named volume that binds it; it REPAIRS NOTHING, because
+    # re-pointing an existing volume means deleting it and the bytes under the
+    # old folder are the series this tab draws. NO CONFIRM: a directory and a
+    # volume record is the least destructive thing on this page.
+    "storage-volume": {
+        "label": "📦 Create DockTor Storage Volume",
+        "script": "storage-volume.sh", "args": ["--ensure"], "confirm": None,
+        "done": "✅ DockTor storage volume is in place.",
+        "failed": "❌ Storage volume setup exited {code} — read the output above.",
     },
     # ☢️ THE ONLY VERB IN THIS FILE THAT DELETES THE DATA. Every other cleanup
     # row is built around never touching a named volume — prune.sh says so in
@@ -765,6 +805,38 @@ def config_script(name, quiet=True):
 
 # ---------------------------------------------------------------------------
 # THE MANAGER OWN ROUTE TABLE, AS DATA.
+def volumes(quiet=True, hours=24, fast=False, with_history=True):
+    """WHAT IS ON THE DISK, AND WHAT IT HAS BEEN DOING — /api/volumes.
+
+    THREE ANSWERS IN ONE PAYLOAD because they are one question asked three
+    ways, and a tab that fetched them separately would draw a graph of one
+    moment against a table of another:
+      · `disk` + `usage` — the totals. What docker is holding, split four ways,
+        against the size of the filesystem holding it.
+      · `volumes` — every volume, biggest first, with the size docker will
+        admit to and how it was measured.
+      · `history` — the same numbers every five minutes, back as far as the
+        series goes. THE ONLY PART THAT ANSWERS "IS IT GROWING", which is the
+        question a size cannot be read for.
+    EVERY READ IS ALSO A SAMPLE, rate-limited: opening the tab on a bench whose
+    sampler has not run yet writes the first point rather than showing an empty
+    graph and an explanation.
+    """
+    reading = read_volumes(quiet=quiet, fast=fast)
+    if reading.get("ok"):
+        # A FIFTH of the sampler beat: enough that a person pressing refresh
+        # sees their own point land, far too little to bend the series.
+        record_volume_sample(reading, quiet=quiet, min_gap=VOLUME_SAMPLE_SECONDS / 5)
+    reading["history"] = (read_volume_history(hours=hours, quiet=quiet)
+                          if with_history else {"points": [], "path": "", "total": 0})
+    reading["sample_seconds"] = VOLUME_SAMPLE_SECONDS
+    # The pointer the tab draws even when docker is down: it is a folder and a
+    # volume NAME, and the folder half is true whether or not a daemon answers.
+    reading["storage"].setdefault("writing_to", storage_directory(quiet=quiet))
+    return reading
+
+
+# ---------------------------------------------------------------------------
 # Here and not in serve.py because this module owns the route table and serve.py
 # is the transport. The dispatcher reads these paths and check_manager_routes.py
 # fails the build when the two disagree — a route table nothing checks gets
@@ -793,6 +865,9 @@ ROUTES = (
      "what": "whether each stack's image was built after the files its "
              "Dockerfile COPYs were last written -- a container can be ok and stale at once"},
     {"method": "GET", "path": "/api/endpoints", "what": "every address the ecosystem answers on"},
+    {"method": "GET", "path": "/api/volumes",
+     "what": "every volume with its size, the four docker totals, the disk "
+             "under them and the sampled history of all of it (&hours=, &fast=1)"},
     {"method": "GET", "path": "/api/log", "what": "the execution log's tail (&n=)"},
     {"method": "GET", "path": "/api/stream", "what": "the execution log as Server-Sent Events"},
     {"method": "GET", "path": "/api/container/<name>",

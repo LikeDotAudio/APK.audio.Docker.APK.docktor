@@ -44,6 +44,7 @@ label_of() {
 ensure_log_storage
 
 worst=0
+built=0
 for container in "$@"; do
     if ! docker inspect "$container" >/dev/null 2>&1; then
         log_error "no such container: $container"
@@ -132,8 +133,14 @@ for container in "$@"; do
         continue
     fi
 
+    built=1
     log_info "$container rebuilt and running."
     announce CONTAINER_REBUILT "{\"container\":\"$container\",\"project\":\"$project\",\"service\":\"$service\"}"
 done
+
+# ONCE, AFTER THE LOOP, and only if something was actually built: a sweep
+# between two containers would throw away the base layers the second one is
+# about to reuse.
+[ $built -eq 1 ] && clean_build_cache "the container rebuild"
 
 exit $worst

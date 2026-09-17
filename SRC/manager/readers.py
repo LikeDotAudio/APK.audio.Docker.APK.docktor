@@ -589,3 +589,279 @@ def start_watchdog(interval=30):
     emit("WATCHDOG_STARTED", {"interval_seconds": interval})
     return thread
 
+
+
+# ---------------------------------------------------------------- volumes
+# 🗄️ THE THIRD THING THAT FILLS A DISK. The grid answers "is this container
+# up", the donuts answer "who is eating the CPU", and neither can be read for
+# the question that took this bench down on 2026-09-09: WHAT IS ON THE DISK AND
+# WHAT IS GROWING. A size is only half of that — a volume at 157 MB is a fact,
+# and a volume that was 90 MB this morning is the news — so these readings are
+# WRITTEN DOWN as they are taken and the tab draws the series, not the number.
+# WHERE THEY ARE WRITTEN IS THE POINT OF storage-volume.sh: a named docker
+# volume whose bytes are a local folder in the checkout, so the series survives
+# the container that wrote it and a person can open the file.
+VOLUME_SAMPLE_SECONDS = 300
+VOLUME_HISTORY_FILE = 'volume-history.jsonl'
+# A sample is ~200 bytes and one every five minutes is ~2 MB a year. The cap is
+# not about space; it is about a browser being handed a file it cannot draw.
+VOLUME_HISTORY_MAX_BYTES = 4 * 1024 * 1024
+VOLUME_HISTORY_KEEP_BYTES = 2 * 1024 * 1024
+
+_volume_lock = threading.Lock()
+_storage_dir_cache = {"path": None, "at": 0.0}
+# WHEN THE LAST POINT WENT DOWN, so a browser polling the tab cannot turn a
+# five-minute series into a five-second one. The sampler thread and a reader
+# both write through record_volume_sample(); only the sampler passes no gap.
+_last_sample_at = 0.0
+STORAGE_DIR_SECONDS = 60
+
+
+def storage_directory(quiet=True):
+    """The folder this manager writes its own persistent state into.
+
+    ASKED OF storage-volume.sh, NEVER DECIDED HERE. Inside the manager the
+    answer is the mount (/storage) and outside it is the folder in the
+    checkout; a second copy of that rule in Python is a second thing to get
+    wrong, and the one that would be wrong is this one — it cannot see whether
+    the volume is mounted without asking.
+    '' when the script will not answer. Every caller treats that as "no history
+    this run", which is what a bench with no docker has anyway.
+    """
+    with _volume_lock:
+        if (_storage_dir_cache["path"] is not None
+                and time.time() - _storage_dir_cache["at"] < STORAGE_DIR_SECONDS):
+            return _storage_dir_cache["path"]
+    exit_code, output = run_management_script('storage-volume.sh', ['--path'], quiet=quiet)
+    path = ''
+    if exit_code == 0:
+        for line in output.splitlines():
+            line = line.strip()
+            if line and not line.startswith('@EVENT '):
+                path = line
+                break
+    with _volume_lock:
+        _storage_dir_cache["path"] = path
+        _storage_dir_cache["at"] = time.time()
+    return path
+
+
+def _int(value, fallback=0):
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return fallback
+
+
+def read_volumes(quiet=True, fast=False):
+    """volumes.sh, as a dict. The whole reading the VOLUMES tab is drawn from.
+
+    FIELD ORDER IS THE CONTRACT and the slicing below PADS: a docker version
+    that stops printing a column costs a blank field, never a dashboard.
+    `size_bytes` of -1 means NOT MEASURED — `docker system df -v` skips every
+    bind-backed volume, which is exactly the two this repository cares most
+    about — and it is carried through as -1 rather than flattened to 0, because
+    a bind volume drawn as empty is a lie a graph tells convincingly.
+    """
+    args = ['--fast'] if fast else []
+    exit_code, output = run_management_script('volumes.sh', args, quiet=quiet)
+    reading = {"taken_at": time.time(), "ok": exit_code == 0,
+               "disk": {}, "usage": {}, "volumes": [], "storage": {}}
+    if exit_code != 0:
+        return reading
+
+    for line in output.splitlines():
+        if not line or line.startswith('@EVENT '):
+            continue
+        parts = line.rstrip('\n').split('\t')
+        parts += [''] * (10 - len(parts))
+        kind = parts[0]
+        if kind == 'disk':
+            reading["disk"] = {
+                "data_root": parts[1],
+                "total_bytes": _int(parts[2]),
+                "used_bytes": _int(parts[3]),
+                "available_bytes": _int(parts[4]),
+                "used_percent": _int(parts[5]),
+            }
+        elif kind == 'usage':
+            reading["usage"][parts[1]] = {
+                "count": _int(parts[2]),
+                "size_bytes": _int(parts[3]),
+                "reclaimable_bytes": _int(parts[4]),
+                "active": _int(parts[5]),
+            }
+        elif kind == 'volume':
+            reading["volumes"].append({
+                "name": parts[1],
+                "driver": parts[2],
+                "size_bytes": _int(parts[3], -1),
+                "links": _int(parts[4]),
+                "project": parts[5],
+                "role": parts[6] or 'other',
+                "mountpoint": parts[7],
+                "device": parts[8],
+                "measured": parts[9] or 'none',
+            })
+        elif kind == 'storage':
+            reading["storage"][parts[1]] = parts[2]
+
+    # BIGGEST FIRST, and an unmeasured volume last rather than first: -1 sorts
+    # below zero, so the two volumes docker would not size would have led a
+    # table whose whole job is "what is big".
+    reading["volumes"].sort(key=lambda row: (row["size_bytes"] < 0, -row["size_bytes"]))
+    measured = [row["size_bytes"] for row in reading["volumes"] if row["size_bytes"] >= 0]
+    reading["totals"] = {
+        "volume_count": len(reading["volumes"]),
+        "measured_count": len(measured),
+        "measured_bytes": sum(measured),
+        "in_use": sum(1 for row in reading["volumes"] if row["links"] > 0),
+    }
+    return reading
+
+
+def _history_path(quiet=True):
+    folder = storage_directory(quiet=quiet)
+    return os.path.join(folder, VOLUME_HISTORY_FILE) if folder else ''
+
+
+def record_volume_sample(reading, quiet=True, min_gap=0):
+    """Append one line to the series. Returns the path written, or ''.
+
+    `min_gap` REFUSES A POINT that would land within N seconds of the last one.
+    That is for the read path: the tab polls while somebody is looking at it,
+    and a series sampled at the rate a person opens a page is a series about
+    that person.
+
+    ONE LINE PER SAMPLE, JSON, APPENDED — not a rewritten document. A rewrite
+    loses every earlier sample the moment the disk this is measuring fills up,
+    which is the sample nobody can afford to lose.
+    THE PER-VOLUME SIZES ARE IN THE LINE, keyed by name, so the graph can
+    isolate one volume over a week; unmeasured volumes are left OUT of the map
+    rather than written as 0.
+    """
+    global _last_sample_at
+    path = _history_path(quiet=quiet)
+    if not path or not reading.get("ok"):
+        return ''
+    if min_gap and (time.time() - _last_sample_at) < min_gap:
+        return ''
+    usage = reading.get("usage", {})
+    disk = reading.get("disk", {})
+    point = {
+        "t": int(reading.get("taken_at") or time.time()),
+        "disk_used": disk.get("used_bytes", 0),
+        "disk_total": disk.get("total_bytes", 0),
+        "images": usage.get("images", {}).get("size_bytes", 0),
+        "containers": usage.get("containers", {}).get("size_bytes", 0),
+        "volumes": usage.get("volumes", {}).get("size_bytes", 0),
+        "cache": usage.get("cache", {}).get("size_bytes", 0),
+        "vols": {row["name"]: row["size_bytes"] for row in reading.get("volumes", [])
+                 if row.get("size_bytes", -1) >= 0},
+    }
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with _volume_lock:
+            with open(path, 'a', encoding='utf-8') as history:
+                history.write(json.dumps(point, separators=(',', ':')) + '\n')
+            _trim_history(path)
+    except OSError as err:
+        emit("VOLUME_HISTORY_WRITE_FAILED", {"path": path, "error": str(err)})
+        return ''
+    _last_sample_at = time.time()
+    return path
+
+
+def _trim_history(path):
+    """Keep the tail when the file grows past the cap. Called holding the lock.
+
+    A rotation and not a delete: the samples that go are the OLDEST, and the
+    first whole line after the cut is where reading resumes, so a half line is
+    never parsed.
+    """
+    try:
+        if os.path.getsize(path) <= VOLUME_HISTORY_MAX_BYTES:
+            return
+        with open(path, 'rb') as handle:
+            handle.seek(-VOLUME_HISTORY_KEEP_BYTES, os.SEEK_END)
+            handle.readline()                      # drop the partial first line
+            tail = handle.read()
+        with open(path, 'wb') as handle:
+            handle.write(tail)
+        emit("VOLUME_HISTORY_TRIMMED", {"path": path, "kept_bytes": len(tail)})
+    except OSError:
+        pass
+
+
+def read_volume_history(hours=24, limit=1500, quiet=True):
+    """The series back, newest last: {"points": [...], "path": str, "kept": n}.
+
+    READS THE TAIL OF THE FILE, not the file: a year of samples is megabytes
+    and a browser drawing 100 000 points draws a smear. `limit` is the number
+    of points RETURNED and the thinning is by stride rather than by truncation
+    — a graph of the last 200 samples of a week is a graph of Sunday.
+    """
+    path = _history_path(quiet=quiet)
+    result = {"path": path, "points": [], "hours": hours, "total": 0}
+    if not path or not os.path.exists(path):
+        return result
+    cutoff = time.time() - hours * 3600
+    points = []
+    try:
+        with open(path, encoding='utf-8') as history:
+            for line in history:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    point = json.loads(line)
+                except ValueError:
+                    continue
+                if point.get("t", 0) >= cutoff:
+                    points.append(point)
+    except OSError as err:
+        emit("VOLUME_HISTORY_READ_FAILED", {"path": path, "error": str(err)})
+        return result
+
+    result["total"] = len(points)
+    if len(points) > limit:
+        # KEEP THE LAST POINT WHATEVER THE STRIDE: it is the only one that can
+        # be compared with the number printed beside the graph, and a series
+        # ending one stride short of now reads as a sampler that has stopped.
+        stride = len(points) // limit + 1
+        thinned = points[::stride]
+        if thinned and thinned[-1] is not points[-1]:
+            thinned.append(points[-1])
+        points = thinned
+    result["points"] = points
+    return result
+
+
+def start_volume_sampler(interval=VOLUME_SAMPLE_SECONDS):
+    """Write one storage sample every five minutes, for as long as this runs.
+
+    MINUTES AND NOT SECONDS: `docker system df -v` walks the volume tree, and
+    the whole value of this series is that it is long rather than dense — the
+    question is what grew this week.
+    IT SKIPS A BEAT WHILE A SCRIPT IS RUNNING, for the reason the watchdog does:
+    a rebuild is already asking the daemon for everything it has, and a sample
+    taken mid-build measures a half-written image tree.
+    """
+    def loop():
+        # The first sample is taken at once rather than after the interval: a
+        # graph that is empty for five minutes after a restart reads as broken.
+        while True:
+            try:
+                if not is_any_script_running():
+                    reading = read_volumes(quiet=True)
+                    if reading.get("ok"):
+                        record_volume_sample(reading, quiet=True)
+            except Exception as err:                       # pragma: no cover
+                emit("VOLUME_SAMPLER_ERROR", {"error": str(err)})
+            time.sleep(interval)
+
+    thread = threading.Thread(target=loop, daemon=True, name="volume-sampler")
+    thread.start()
+    emit("VOLUME_SAMPLER_STARTED", {"interval_seconds": interval,
+                                    "history": _history_path(quiet=True)})
+    return thread

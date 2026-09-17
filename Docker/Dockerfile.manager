@@ -49,8 +49,14 @@ WORKDIR /app
 # The two halves of the tool, and two COPYs because they are two things: the
 # package is what is imported, the scripts are what is RUN. Every docker verb is
 # in the second and none in the first.
-COPY ["APK:PODS/Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
-COPY ["APK:PODS/Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
+# ⚠️ THE SOURCE HALF IS A REAL PATH IN THE CHECKOUT AND THE TARGET HALF IS NOT.
+#    The folder on disk is `APK:PODS/APK:Docktor`; these two lines said
+#    `APK:PODS/Docktor` and the build failed on a context path that has never
+#    existed, while the in-image spellings below (APK:DOCKERS, APK:docktor) are
+#    fine BECAUSE nothing outside the image resolves them — the runner puts
+#    that directory on sys.path by walking, not by name.
+COPY ["APK:PODS/APK:Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
+COPY ["APK:PODS/APK:Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
 COPY ["APK:PODS/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
 
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
@@ -63,6 +69,14 @@ COPY ["contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/contracts/t
 COPY ["APK:PODS/POD:APK/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
 
 RUN chmod +x "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts/"*.sh
+
+# WHERE THE STORAGE VOLUME LANDS. An empty directory in the image, because a
+# mount needs somewhere to be mounted: compose binds the named volume
+# `docktor-storage` here, and storage-volume.sh writes the sample series into
+# whichever of this path and the checkout folder is real.
+# ⚠️ ANYTHING WRITTEN HERE AT BUILD TIME IS HIDDEN by that mount, and lost on
+#    the next rebuild besides. The directory is the whole contribution.
+RUN mkdir -p /storage
 
 EXPOSE 8765
 

@@ -71,6 +71,13 @@ if [ $status -ne 0 ]; then
     exit $status
 fi
 
+# AFTER THE MOUNT, not after step 4: pruning between the build and the up would
+# hold the bench down for the length of the sweep, and the cache is no smaller
+# for having been dropped a minute earlier. This is the build that leaves the
+# most behind — --no-cache writes a full layer set for every project and
+# reclaims nothing on its own.
+clean_build_cache "the clean rebuild"
+
 echo -e "\n${BOLD}${GREEN}✅ APK.audio Ecosystem Successfully Rebuilt & Mounted!${OFF}\n"
 
 # Open browser to DockTor Web UI immediately after DockTor stack is up

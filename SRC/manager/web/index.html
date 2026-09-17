@@ -42,6 +42,13 @@
         <button data-action="clear-dead"></button>
         <button data-action="free-ports"></button>
         <button data-action="prune"></button>
+        <!-- The cache sweep by hand. Every build already ends with the same
+             script (clean_build_cache in _common.sh); these two are for the
+             disk between builds, and the second is the only way to ask for the
+             warm layers as well. They are ABOVE the line because neither
+             touches an image, a container or a volume. -->
+        <button data-action="clean-cache"></button>
+        <button data-action="clean-cache-all"></button>
         <!-- BELOW THE LINE, AND IT IS THE ONLY THING DOWN THERE. Everything
              above this rule is reversible by a remount; ☢️ NUKE EVERYTHING
              deletes the named volumes, which is the DATA, and nothing in this
@@ -130,6 +137,14 @@
         <label><input type="radio" name="view" value="cards" checked><span>Cards</span></label>
         <label><input type="radio" name="view" value="donuts"><span>Donuts — CPU / RAM</span></label>
         <label><input type="radio" name="view" value="ports"><span>Ports</span></label>
+        <!-- THE FOURTH READING, AND THE ONLY ONE THAT IS NOT OF THIS INSTANT.
+             Cards, donuts and ports all draw the snapshot the cadences already
+             fetched; VOLUMES draws /api/volumes AND the series behind it, which
+             is the only question on this page a photograph cannot answer: a
+             volume at 157 MB is a fact, a volume that was 90 MB this morning is
+             the news. It is in this group rather than a pane of its own because
+             it is still "what is the bench doing", read in the same ground. -->
+        <label><input type="radio" name="view" value="volumes"><span>Volumes — storage</span></label>
       </div>
       <!-- NO `clear-dead` BUTTON HERE ANY MORE: it was the one destructive verb
            outside 🛑 Stop & Clean, in a pane head that otherwise only holds
@@ -182,6 +197,13 @@
          bound port with no endpoint row is a number with no name, and a
          host-networked node (8100) exists only in the second. -->
     <div class="ports" id="ports" hidden></div>
+
+    <!-- 🗄️ STORAGE: the pointer, the graph and the table. Drawn by
+         renderVolumes() from /api/volumes, which is volumes.sh — one script,
+         one reading, so the graph and the table below it are the same moment.
+         The window buttons and the isolating legend are built there too: a
+         legend row per series is a loop, not markup. -->
+    <div class="volumes" id="volumes" hidden></div>
 
     </div><!-- /.pane-body -->
   </section>

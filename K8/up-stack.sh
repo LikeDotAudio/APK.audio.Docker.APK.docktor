@@ -95,5 +95,7 @@ if [ $status -ne 0 ]; then
     exit $status
 fi
 
+clean_build_cache "the $STACK mount"
+
 echo -e "\n${BOLD}${GREEN}✅ $STACK is mounted.${OFF}"
 exit 0
