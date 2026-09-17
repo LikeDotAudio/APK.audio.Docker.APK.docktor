@@ -63,10 +63,11 @@ if [ "$DRY_RUN" = "1" ]; then
     echo ""
     log_step "3/3. Rehearsal: Stack images and services that rebuild-all.sh would build (--no-cache)"
 
-    order=(logger core mqtt portal nmos aes70 ember netbox node)
+    order=(logger sqlcluster core mqtt portal nmos aes70 ember netbox node)
     for stack in "${order[@]}"; do
         case "$stack" in
             logger) compose=("${COMPOSE_LOGGER[@]}");;
+            sqlcluster) compose=("${COMPOSE_SQLCLUSTER[@]}");;
             core)   compose=("${COMPOSE_CORE[@]}");;
             mqtt)   compose=("${COMPOSE_MQTT[@]}");;
             portal) compose=("${COMPOSE_PORTAL[@]}");;

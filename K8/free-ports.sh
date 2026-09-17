@@ -43,14 +43,14 @@ if [ -n "$ONLY_STACK" ]; then
     fi
     BAREMETAL_COMPOSE_FILE="" MQTT_COMPOSE_FILE="" PORTAL_COMPOSE_FILE=""
     NMOS_COMPOSE_FILE="" AES70_COMPOSE_FILE="" NETBOX_COMPOSE_FILE=""
-    EMBER_COMPOSE_FILE="" LOGGER_COMPOSE_FILE=""
+    EMBER_COMPOSE_FILE="" LOGGER_COMPOSE_FILE="" SQLCLUSTER_COMPOSE_FILE=""
     COMPOSE_FILE="$STACK_COMPOSE_FILE"
     log_info "Scoped to $ONLY_STACK -- only the ports that file publishes."
 fi
 
 # Python because three of the four steps are: bind a probe socket, read
 # /proc/<pid>/cmdline, and expand ${PORT:-8080} the way compose does.
-# ⚠️ ALL EIGHT DRIVEN FILES. A port declared by a stack missing from this list is
+# ⚠️ ALL TEN DRIVEN FILES. A port declared by a stack missing from this list is
 #    a port nothing frees and an up that fails on "address already in use" with
 #    no account of who holds it. One name per driven array in _common.sh — add
 #    the ninth here on the same commit.
@@ -63,6 +63,7 @@ AES70_COMPOSE_FILE="$AES70_COMPOSE_FILE" \
 NETBOX_COMPOSE_FILE="$NETBOX_COMPOSE_FILE" \
 EMBER_COMPOSE_FILE="$EMBER_COMPOSE_FILE" \
 LOGGER_COMPOSE_FILE="$LOGGER_COMPOSE_FILE" \
+SQLCLUSTER_COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE" \
 python3 - "${ARGS[@]}" <<'PY'
 import os
 import re
@@ -356,7 +357,8 @@ def published_host_ports():
                          os.environ.get('AES70_COMPOSE_FILE', ''),
                          os.environ.get('NETBOX_COMPOSE_FILE', ''),
                          os.environ.get('EMBER_COMPOSE_FILE', ''),
-                         os.environ.get('LOGGER_COMPOSE_FILE', '')):
+                         os.environ.get('LOGGER_COMPOSE_FILE', ''),
+                         os.environ.get('SQLCLUSTER_COMPOSE_FILE', '')):
         if not compose_file or not os.path.exists(compose_file):
             continue
         try:

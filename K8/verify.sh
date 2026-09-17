@@ -53,6 +53,7 @@ validate_stack "APK:audio:WebPortal"   "${COMPOSE_PORTAL[@]}"
 validate_stack "Server:Discovery:NMOS" "${COMPOSE_NMOS[@]}"
 validate_stack "PROTOCOL:DEV:AES70"    "${COMPOSE_AES70[@]}"
 validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"
+validate_stack "DATABASE:cluster:SQL"  "${COMPOSE_SQLCLUSTER[@]}"
 # PROTOCOL:DEV:EMBER can fail config on the ENVIRONMENT rather than the file: it
 # interpolates ${APKAUDIO_REPO:?}. _common.sh exports it, so a failure here
 # means the export went away, not that the YAML is wrong.
@@ -135,7 +136,7 @@ fi
 running="$(docker ps --format '{{.Names}}' 2>/dev/null | paste -sd, -)"
 note "Running Docker containers: ${running:-None}"
 found=()
-for expected in Storage-Broker Storage-MariaDB Storage-Portal Node-BareMetal; do
+for expected in Storage-Broker SQL-Proxy SQL-Node-1 SQL-Node-2 SQL-Node-3 Storage-Portal Node-BareMetal; do
     case "${running,,}" in *"${expected,,}"*) found+=("$expected");; esac
 done
 if [ ${#found[@]} -gt 0 ]; then

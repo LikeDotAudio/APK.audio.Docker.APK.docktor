@@ -266,6 +266,18 @@ def netbox():
 NOT_HTTP = {
     "Storage-Broker":  "MQTT, not HTTP — this container's handles are topics, "
                        "and they are in the BUS section beside this one.",
+    "SQL-Proxy":       "The MySQL wire protocol, not HTTP — ProxySQL in front of "
+                       "the three Galera nodes; its handles are schemas and "
+                       "tables, reached with the mysql:// URI above.",
+    "SQL-Node-1":      "A Galera node — MySQL wire protocol, nothing published. "
+                       "Clients go through SQL-Proxy, never to a node.",
+    "SQL-Node-2":      "A Galera node — MySQL wire protocol, nothing published. "
+                       "Clients go through SQL-Proxy, never to a node.",
+    "SQL-Node-3":      "A Galera node — MySQL wire protocol, nothing published. "
+                       "Clients go through SQL-Proxy, never to a node.",
+    "SQL-Backup":      "No network surface: a nightly mariadb-backup to "
+                       "/srv/apk-audio/sql-backups, and the shell for "
+                       "cluster-status.sh and restore-verify.sh.",
     "Storage-MariaDB": "The MySQL wire protocol, not HTTP — its handles are "
                        "schemas and tables, reached with the mysql:// URI above.",
     "Storage-PHP":     "FastCGI on 9000, and nothing published — it is reached "

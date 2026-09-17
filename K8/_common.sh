@@ -94,6 +94,12 @@ COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:database/DATABASE:server:SQL/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/DATABASE:server:SQL/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/Server:Storage:SQL database/Docker/docker-compose.yml")"
+# THE REDUNDANT SQL SERVER — three Galera nodes behind SQL-Proxy. Every client
+# of the database (Broker-SqlCapture, Storage-PHP) reaches it as sql-proxy:3306,
+# so it mounts BEFORE core and mqtt. See APK:Documentation/🔍Audits/Cosmos DB.md.
+SQLCLUSTER_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:database/DATABASE:cluster:SQL/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/DATABASE:cluster:SQL/Docker/docker-compose.yml")"
 BAREMETAL_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:APK/APK:BareMetal/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml")"
@@ -211,6 +217,7 @@ fi
 #    volumes. Do not drop one.
 # ⚠️ `--remove-orphans` under a shared project deletes the other files'
 #    containers. rebuild-all.sh and panic.sh omit it deliberately.
+COMPOSE_SQLCLUSTER=("${COMPOSE_BASE[@]}" -f "$SQLCLUSTER_COMPOSE_FILE")
 COMPOSE_CORE=("${COMPOSE_BASE[@]}" -f "$COMPOSE_FILE")
 COMPOSE_NODE=("${COMPOSE_BASE[@]}" -f "$BAREMETAL_COMPOSE_FILE")
 COMPOSE_MQTT=("${COMPOSE_BASE[@]}" -f "$MQTT_COMPOSE_FILE")
@@ -357,8 +364,10 @@ node_hardware_report() {
 #          apk-audio-logs volume `external: true`, and compose refuses an
 #          external volume that does not exist yet. (The manager file declares
 #          it non-external so the manager can always start; see that file.)
+#   sqlcluster next — the SQL cluster; core's PHP tier and mqtt's sql-capture
+#          both open sessions against sql-proxy, so it is up before either
 #   core   next  — publishes 1883, the broker everyone else names
-#   mqtt   next  — its sql-capture opens a session against core's MariaDB
+#   mqtt   next  — its sql-capture opens a session against sql-proxy
 #   portal next  — its orchestrator agents connect to a broker at boot
 #   nmos   next  — independent; ordered only for a stable log
 #   aes70  next  — independent
@@ -541,9 +550,9 @@ for_each_stack() {
     # manager is what brings the logger back, so it must be able to start on a
     # bench where that volume does not exist yet.
     if [ "$direction" = "reverse" ]; then
-        order=(node netbox ember aes70 nmos portal mqtt core logger docktor)
+        order=(node netbox ember aes70 nmos portal mqtt core sqlcluster logger docktor)
     else
-        order=(docktor logger core mqtt portal nmos aes70 ember netbox node)
+        order=(docktor logger sqlcluster core mqtt portal nmos aes70 ember netbox node)
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
@@ -568,6 +577,7 @@ for_each_stack() {
         case "$stack" in
             docktor|manager) compose=("${COMPOSE_MANAGER[@]}");;
             logger) compose=("${COMPOSE_LOGGER[@]}");;
+            sqlcluster) compose=("${COMPOSE_SQLCLUSTER[@]}");;
             core)   compose=("${COMPOSE_CORE[@]}");;
             mqtt)   compose=("${COMPOSE_MQTT[@]}");;
             portal) compose=("${COMPOSE_PORTAL[@]}");;

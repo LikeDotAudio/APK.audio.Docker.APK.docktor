@@ -40,12 +40,14 @@ RUNNING_NAMES="$(docker ps --format '{{.Names}}' 2>/dev/null)" || RUNNING_NAMES=
 # THE DRIVEN SET IS NOT TYPED HERE — these are the same variables the verbs
 # expand, so a stack added to for_each_stack becomes driven here with no edit.
 # ⚠️ A compose file added to _common.sh but NOT listed here reports as undriven,
-#    the exact inversion of the fault this tool catches. Ten files below: the
-#    nine stacks (LOGGER STORAGE included) plus the manager.
+#    the exact inversion of the fault this tool catches. Eleven files below:
+#    the ten stacks (LOGGER STORAGE and the SQL cluster included) plus the
+#    manager.
 DOCKERS="$DOCKERS_DIR" \
 PRESENT="$PRESENT_NAMES" \
 RUNNING="$RUNNING_NAMES" \
 DRIVEN="$COMPOSE_FILE
+$SQLCLUSTER_COMPOSE_FILE
 $BAREMETAL_COMPOSE_FILE
 $MQTT_COMPOSE_FILE
 $PORTAL_COMPOSE_FILE

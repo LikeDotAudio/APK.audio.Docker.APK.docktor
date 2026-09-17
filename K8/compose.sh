@@ -19,6 +19,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 TARGET="${1:-}"; shift || true
 
 case "$TARGET" in
+    sqlcluster) "${COMPOSE_SQLCLUSTER[@]}" "$@";;
     core)      "${COMPOSE_CORE[@]}" "$@";;
     node)      "${COMPOSE_NODE[@]}" "$@";;
     mqtt)      "${COMPOSE_MQTT[@]}" "$@";;
@@ -30,7 +31,7 @@ case "$TARGET" in
     logger)    "${COMPOSE_LOGGER[@]}" "$@";;
     both|all)  for_each_stack forward "$@";;
     *)
-        log_error "usage: compose.sh {logger|core|mqtt|portal|nmos|aes70|ember|netbox|node|both} <compose args...>"
+        log_error "usage: compose.sh {logger|sqlcluster|core|mqtt|portal|nmos|aes70|ember|netbox|node|both} <compose args...>"
         exit 2
         ;;
 esac
