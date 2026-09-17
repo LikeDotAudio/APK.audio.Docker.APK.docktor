@@ -1201,11 +1201,17 @@ function updateTelemetryBar(snapshot) {
       if (!isNaN(val)) totalCpu += val;
     }
   }
-  let cpuPct = totalCpu;
-  if (snapshot.host.cpus && totalCpu > 100) {
-    cpuPct = totalCpu / snapshot.host.cpus;
+  // Every docker cpu_percent is a share of ONE core (see readers.py), so the sum
+  // is in core-percent: 1200% is a twelve-core box flat out. Divide by the core
+  // count ALWAYS — dividing only above 100% drew 80% of one core as 80% of the
+  // machine — and print the machine share, with the busy cores beside it.
+  const cpus = snapshot.host.cpus || 0;
+  const cpuPct = cpus ? totalCpu / cpus : totalCpu;
+  if (cpuEl) {
+    cpuEl.textContent = cpus
+      ? `${cpuPct.toFixed(1)}% (${(totalCpu / 100).toFixed(1)} of ${cpus} cores busy)`
+      : `${totalCpu.toFixed(1)}% of one core (core count unknown)`;
   }
-  if (cpuEl) cpuEl.textContent = `${totalCpu.toFixed(1)}% (${snapshot.host.cpus || "?"} cores)`;
   updateTelemetryPill("pill-cpu", "fill-cpu", cpuPct);
 
   // RAM
