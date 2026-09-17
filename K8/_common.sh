@@ -55,6 +55,13 @@ elif _docktor_has_pods "$_docktor_parent" \
      && [ ! -d "$_docktor_parent/POD:APK" ]; then
     DOCKERS_DIR="$_docktor_parent"
     REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
+# DockTor filed INSIDE one of the pods (SUPPORT.pod/Docker.Backend.DockTor):
+# its parent is a pod, and the estate is one rung further up. `*.pod` only —
+# an APK:PODS checkout keeps the walk below, unchanged.
+elif compgen -G "$_docktor_parent/../*.pod" >/dev/null \
+     && [ "$(basename "$_docktor_parent")" != "${_docktor_parent%.pod}" ]; then
+    DOCKERS_DIR="$(cd "$_docktor_parent/.." && pwd)"
+    REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 else
     if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"

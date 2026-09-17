@@ -34,6 +34,10 @@ DOCKERS_DIRECTORY = os.path.dirname(MANAGEMENT_DIRECTORY)
 # lives at /app/docktor, where the walk above lands on /app.
 if os.path.isdir(os.environ.get('DOCKTOR_DOCKERS_DIR') or ''):
     DOCKERS_DIRECTORY = os.path.abspath(os.environ['DOCKTOR_DOCKERS_DIR'])
+# DockTor filed INSIDE a pod (SUPPORT.pod/Docker.Backend.DockTor): the parent
+# is the pod, and the estate holding every pod is one rung further up.
+elif DOCKERS_DIRECTORY.endswith('.pod'):
+    DOCKERS_DIRECTORY = os.path.dirname(DOCKERS_DIRECTORY)
 REPOSITORY_ROOT = os.path.abspath(os.path.join(DOCKERS_DIRECTORY, '..'))
 
 # `pods` or `apk` — the same test _common.sh makes. In a `pods` estate the
@@ -45,7 +49,8 @@ ESTATE_LAYOUT = ('pods' if not _glob.glob(os.path.join(DOCKERS_DIRECTORY, 'POD:*
                  and _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*.pod')) else 'apk')
 if ESTATE_LAYOUT == 'pods' and not os.environ.get('DOCKTOR_IGNORE_COMPOSE'):
     os.environ['DOCKTOR_IGNORE_COMPOSE'] = os.pathsep.join(
-        _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*', 'Docker', 'docker-compose.manager.yml')))
+        _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*', 'Docker', 'docker-compose.manager.yml'))
+        + _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*', '*', 'Docker', 'docker-compose.manager.yml')))
 
 # The backend scripts for K8 / Kubernetes container management live in `Docktor/K8`.
 K8_SCRIPTS_DIRECTORY = os.path.join(MANAGEMENT_DIRECTORY, 'K8')
