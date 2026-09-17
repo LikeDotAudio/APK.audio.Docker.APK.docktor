@@ -33,9 +33,9 @@ const state = {
   meters: false,
   density: "high",
   view: "cards",
-  // PODS SWITCHED OFF in the card grid, by name. Survives a repaint and a
-  // reload; a pod that no longer exists just stops matching anything.
-  hiddenPods: new Set(),
+  // PODS SOLOED in the card grid, by name. Empty means every pod shows. Survives
+  // a repaint and a reload; a pod that no longer exists just stops matching.
+  soloPods: new Set(),
   // THE LAST SNAPSHOT AND STATS SAMPLE, HELD RATHER THAN RE-ASKED FOR. The
   // donut and the port table are second readings of what the cadences already
   // fetched; re-fetching per switch would be a third cadence on the box.
@@ -1298,9 +1298,7 @@ function renderGrid(snapshot) {
    * a card selects the pod, which opens its verbs — remount, rebuild, stop.
    * Nothing is hidden behind a hover: the header is always the name, the
    * count, and how many of them are running.
-   * WIDTH IS SPENT PER POD rather than across the pane, so a one-container pod
-   * is one card wide and does not leave four columns of nothing beside it —
-   * see .lasso in the stylesheet. */
+   * EACH POD IS A THIRD OF THE PANE — see .lasso in the stylesheet. */
   const lassoHtml = groups.map((group) => {
     const hue = group.hue || "";
     const groupName = group.label;
@@ -1325,8 +1323,8 @@ function renderGrid(snapshot) {
     const stack = group.stack || "";
     return `
       <section class="lasso${group.ours ? " ours" : ""}${selected ? " selected" : ""}${problems.length ? " has-issues" : ""}"
-               style="--group: ${escapeAttr(hue || "#6f7480")}; --n: ${Math.max(1, total)}"
-               data-lasso="${escapeAttr(groupName)}" data-stack="${escapeAttr(stack)}"${state.hiddenPods.has(groupName) ? " hidden" : ""}>
+               style="--group: ${escapeAttr(hue || "#6f7480")}"
+               data-lasso="${escapeAttr(groupName)}" data-stack="${escapeAttr(stack)}"${podMuted(groupName) ? " hidden" : ""}>
         <header class="lasso-head">
           <span class="group-pill">${escapeHTML(groupName)}</span>
           ${stack ? `<span class="lasso-stack" title="The directory under APK:PODS/ that the buttons on this pod act on">${escapeHTML(stack)}</span>` : ""}
@@ -1413,44 +1411,61 @@ function renderGrid(snapshot) {
   if (state.rewind) rewindPane();
 }
 
-/* ONE TOGGLE PER POD, redrawn with the grid so a new pod shows up on the next
- * scan. Toggling flips `hidden` on the lassos already drawn — no repaint. */
+/* ONE SOLO PER POD, redrawn with the grid so a new pod shows up on the next
+ * scan. A click solos that pod alone and a second click on the only soloed
+ * pod lets it go; Ctrl, Cmd or Shift adds or drops a pod from the solo set.
+ * Soloing flips `hidden` on the lassos already drawn — no repaint. */
+function podMuted(name) {
+  return state.soloPods.size > 0 && !state.soloPods.has(name);
+}
+
 function renderPodFilter(groups, issues = new Map()) {
   const bar = $("#pod-filter");
   if (!bar) return;
-  const names = groups.map((g) => g.label);
   bar.innerHTML = `<span class="pod-filter-lead">🫛 Pods</span>` + groups.map((g) => `
       <label style="--group: ${escapeAttr(g.hue || "#6f7480")}"
-             title="Show or hide ${escapeAttr(g.label)}">
-        <input type="checkbox" value="${escapeAttr(g.label)}"${state.hiddenPods.has(g.label) ? "" : " checked"}>
+             title="Solo ${escapeAttr(g.label)} — Ctrl/Shift-click to solo several">
+        <input type="checkbox" value="${escapeAttr(g.label)}"${podMuted(g.label) ? "" : " checked"}>
         <span>${issues.has(g.label) ? "⚠ " : ""}${escapeHTML(g.label)} <small>${g.containers.length}</small></span>
       </label>`).join("") + `
-    <button class="btn small plain" data-pods="all">Show all</button>
-    <button class="btn small plain" data-pods="none">Hide all</button>`;
-  $$("input[type=checkbox]", bar).forEach((box) => {
-    box.onchange = () => {
-      if (box.checked) state.hiddenPods.delete(box.value);
-      else state.hiddenPods.add(box.value);
+    <button class="btn small plain" data-pods="all">Show all</button>`;
+  // ON THE LABEL, AND ALWAYS preventDefault: a mouse click lands on the label
+  // and would forward a second click to the box, and a keyboard Space lands on
+  // the box and bubbles here. Cancelling both leaves exactly one handler run,
+  // and applyPodFilter owns every box's `checked`.
+  $$("label", bar).forEach((label) => {
+    label.onclick = (event) => {
+      event.preventDefault();
+      const name = $("input", label).value;
+      const solo = state.soloPods;
+      if (event.ctrlKey || event.metaKey || event.shiftKey) {
+        if (solo.has(name)) solo.delete(name);
+        else solo.add(name);
+      } else if (solo.size === 1 && solo.has(name)) {
+        solo.clear();
+      } else {
+        solo.clear();
+        solo.add(name);
+      }
       applyPodFilter();
     };
   });
-  $$("[data-pods]", bar).forEach((button) => {
-    button.onclick = () => {
-      const show = button.dataset.pods === "all";
-      names.forEach((name) => (show ? state.hiddenPods.delete(name) : state.hiddenPods.add(name)));
-      $$("input[type=checkbox]", bar).forEach((box) => { box.checked = show; });
-      applyPodFilter();
-    };
-  });
+  $("[data-pods=all]", bar).onclick = () => {
+    state.soloPods.clear();
+    applyPodFilter();
+  };
   bar.hidden = state.view !== "cards" || !groups.length;
 }
 
 function applyPodFilter() {
   $$("[data-lasso]", $("#cards")).forEach((lasso) => {
-    lasso.hidden = state.hiddenPods.has(lasso.dataset.lasso);
+    lasso.hidden = podMuted(lasso.dataset.lasso);
+  });
+  $$("#pod-filter input[type=checkbox]").forEach((box) => {
+    box.checked = !podMuted(box.value);
   });
   try {
-    localStorage.setItem("apk.manager.hiddenpods", JSON.stringify([...state.hiddenPods]));
+    localStorage.setItem("apk.manager.solopods", JSON.stringify([...state.soloPods]));
   } catch { /* no store */ }
 }
 
@@ -3226,8 +3241,8 @@ async function boot() {
   armScan(15);
 
   try {
-    const pods = JSON.parse(localStorage.getItem("apk.manager.hiddenpods") || "[]");
-    if (Array.isArray(pods)) state.hiddenPods = new Set(pods.filter((p) => typeof p === "string"));
+    const pods = JSON.parse(localStorage.getItem("apk.manager.solopods") || "[]");
+    if (Array.isArray(pods)) state.soloPods = new Set(pods.filter((p) => typeof p === "string"));
   } catch { /* no store, or not ours */ }
 
   const density = $("#density");

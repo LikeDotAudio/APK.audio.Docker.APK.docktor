@@ -471,6 +471,8 @@ PORT_WAIT_QUIET_EVERY = 12
 # The third answer _defer_to_incumbent can give, beside the two exit codes:
 # "this process is the one that has to own this socket, so wait for it".
 WAIT_FOR_PORT = "wait"
+# The fourth: "the incumbent was killed, so try the bind again".
+RETRY_BIND = "retry"
 
 
 def _describe(health):
@@ -500,12 +502,13 @@ def _describe(health):
 #    present" and the remount log said it succeeded. Both were true: compose
 #    created the container every time and it stood down every time, because a
 #    terminal manager held 127.0.0.1:8765.
-def _defer_to_incumbent(bind, port, url, open_browser, err):
+def _defer_to_incumbent(bind, port, url, open_browser, err, takeover=True):
     """The port was taken. Decide whether that satisfied the request.
 
     Returns the exit code — 0 when a manager already answers and this process
     was free to stand down, 1 when a non-manager holds the port — or
-    WAIT_FOR_PORT when this is the containerised manager, which must not exit.
+    WAIT_FOR_PORT when this is the containerised manager, which must not exit,
+    or RETRY_BIND when a terminal incumbent was killed so this one can serve.
     """
     health = probe_manager(bind, port)
     incumbent = _describe(health) if health else "something that is not a DockTor"
@@ -542,6 +545,16 @@ def _defer_to_incumbent(bind, port, url, open_browser, err):
     # checkout", which is a real question on a machine with two.
     root = health.get("repository_root") or "?"
 
+    # A TERMINAL LAUNCH REPLACES THE INCUMBENT rather than bowing to it. The
+    # person who typed the launcher has just edited the checkout, and either
+    # incumbent is serving older code: the container's package is COPYed into
+    # its image, and a terminal manager imported its modules when it started.
+    # --defer is the old polite answer.
+    if takeover:
+        outcome = _take_over(health, url)
+        if outcome is not None:
+            return outcome
+
     emit("MANAGER_ALREADY_SERVING", {"bind": bind, "port": port, "url": url,
                                      "repository_root": root,
                                      "incumbent": health.get("instance"),
@@ -563,7 +576,43 @@ def _defer_to_incumbent(bind, port, url, open_browser, err):
     return 0
 
 
-def _bind_or_wait(bind, port, url, open_browser):
+def _take_over(health, url):
+    """Replace a manager that holds the port. None when it cannot be replaced.
+
+    A CONTAINER IS REMOUNTED, NOT KILLED: its pid is 1 in a namespace this
+    process cannot signal, and `restart: unless-stopped` would bring it back
+    on the old image anyway. manager.sh up rebuilds the image from this
+    checkout and recreates the container, and raises the page once it answers.
+    Returns that script's exit code — this process does not serve.
+    A TERMINAL MANAGER ON THIS HOST IS KILLED through kill-pid.sh, which reads
+    what it is before it signals, and this process then takes the socket.
+    Returns RETRY_BIND. Only a pid on THIS hostname: a pid from a manager on
+    another machine names an unrelated process here.
+    """
+    from .runner import run_management_script
+
+    instance = health.get("instance")
+    if not isinstance(instance, dict):
+        return None
+    stream = lambda line: print(line, end="", flush=True)
+
+    if instance.get("containerised"):
+        emit("MANAGER_TAKEOVER", {"url": url, "incumbent": instance, "how": "remount"})
+        print(f"🐳 A containerised manager holds {url} — remounting it from this checkout.")
+        status, _ = run_management_script("manager.sh", ["up"], on_line_callback=stream)
+        return status
+
+    pid = instance.get("pid")
+    if isinstance(pid, int) and pid > 1 and pid != os.getpid() \
+            and instance.get("hostname") == socket.gethostname():
+        emit("MANAGER_TAKEOVER", {"url": url, "incumbent": instance, "how": "kill"})
+        print(f"🔪 A terminal manager (pid {pid}) holds {url} — replacing it.")
+        status, _ = run_management_script("kill-pid.sh", [str(pid)], on_line_callback=stream)
+        return RETRY_BIND if status == 0 else None
+    return None
+
+
+def _bind_or_wait(bind, port, url, open_browser, takeover=True):
     """Bind the socket, waiting out a port another manager holds.
 
     Returns a bound ManagerServer, or an exit code when this process is allowed
@@ -579,7 +628,13 @@ def _bind_or_wait(bind, port, url, open_browser):
             if err.errno != errno.EADDRINUSE:
                 raise
             if attempt == 0:
-                outcome = _defer_to_incumbent(bind, port, url, open_browser, err)
+                outcome = _defer_to_incumbent(bind, port, url, open_browser, err, takeover)
+                if outcome is RETRY_BIND:
+                    # ONCE: a second holder after a kill is somebody else, and
+                    # killing managers in a loop is not a takeover.
+                    takeover = False
+                    time.sleep(0.5)
+                    continue
                 if outcome is not WAIT_FOR_PORT:
                     return outcome
             elif attempt % PORT_WAIT_QUIET_EVERY == 0:
@@ -591,7 +646,7 @@ def _bind_or_wait(bind, port, url, open_browser):
             time.sleep(PORT_WAIT_SECONDS)
 
 
-def serve(bind="127.0.0.1", port=8765, open_browser=False):
+def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     """Run the manager API and its client until interrupted.
 
     A TAKEN PORT IS NOT AUTOMATICALLY A FAULT, and what it is depends on who
@@ -604,7 +659,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False):
                           start_volume_sampler)
 
     url = f"http://{'localhost' if bind in ('0.0.0.0', '127.0.0.1', '::') else bind}:{port}/"
-    httpd = _bind_or_wait(bind, port, url, open_browser)
+    httpd = _bind_or_wait(bind, port, url, open_browser, takeover)
     if isinstance(httpd, int):
         return httpd
     emit("MANAGER_SERVING", {"bind": bind, "port": port, "url": url,

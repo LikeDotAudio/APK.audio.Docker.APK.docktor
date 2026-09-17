@@ -97,15 +97,17 @@ CLI_ACTIONS_WITH_ARGS = {
 
 USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
 
-  serve [--bind H] [--port N] [--open]
+  serve [--bind H] [--port N] [--open] [--defer]
                        the HTTP API and its browser client. THIS IS THE
                        DEFAULT: a bare invocation runs it on
                        http://127.0.0.1:8765/. The bind is loopback because
                        this API stops containers and has no authentication;
                        the two are a pair. `--open` raises the client in a
-                       browser; when the port is ALREADY held by a manager
-                       there is nothing else to do, so a run from a terminal
-                       with a display opens it without being asked.
+                       browser. When the port is ALREADY held by a manager,
+                       a terminal launch replaces it: a container is rebuilt
+                       and remounted from this checkout (manager.sh up), a
+                       terminal manager on this host is killed and this one
+                       serves. `--defer` leaves the incumbent alone.
   status | ps          health of both stacks and the node
   watch                the above on a 3s loop, publishing a resource sample
   up | down            mount / unmount the ecosystem
@@ -273,12 +275,14 @@ def run_cli_mode(argv=None):
         # the bind is the only control there is. --bind is for the container
         # case, where compose publishes the port on 127.0.0.1.
         from .serve import serve
-        bind, port, open_browser = '127.0.0.1', 8765, False
+        bind, port, open_browser, takeover = '127.0.0.1', 8765, False, True
         remaining = list(rest)
         while remaining:
             word = remaining.pop(0)
             if word in ('--open', '--browser'):
                 open_browser = True
+            elif word == '--defer':
+                takeover = False
             elif word == '--bind' and remaining:
                 bind = remaining.pop(0)
             elif word == '--port' and remaining:
@@ -289,7 +293,8 @@ def run_cli_mode(argv=None):
                 print(f"Unknown option for serve: {word}\n")
                 print(USAGE)
                 sys.exit(1)
-        sys.exit(serve(bind=bind, port=port, open_browser=open_browser))
+        sys.exit(serve(bind=bind, port=port, open_browser=open_browser,
+                       takeover=takeover))
 
     if action in ('resources', 'stats'):
         rows = sample_resources()
