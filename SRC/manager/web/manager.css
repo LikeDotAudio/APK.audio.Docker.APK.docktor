@@ -265,6 +265,8 @@ body {
 .lasso-issues { display: grid; gap: 6px; margin: 0 0 8px; cursor: default; }
 .lasso-issues .dark-stack { margin: 0; }
 .detail .lasso-issues { margin: 8px 0 0; }
+.pod-issue { margin-bottom: 8px; }
+.pod-issue .lasso-head { margin-bottom: 4px; }
 .pod-runtime { width: 100%; border-collapse: collapse; font-size: 11px; }
 .pod-runtime th { text-align: left; color: var(--dim); font-weight: 600; padding: 3px 6px; border-bottom: 1px solid var(--edge); }
 .pod-runtime td { padding: 3px 6px; border-bottom: 1px solid var(--edge); color: var(--ink); vertical-align: top; }
@@ -279,6 +281,26 @@ body {
  * NO COLOUR LITERAL FOR A STATE: --tone-hot and --tone-warm arrive at boot and
  * mean here what they mean on a card. */
 .dark-stacks { padding: 8px 8px 0; background: var(--ground); }
+/* On the right the three bands are ONE scrollport above the detail: three
+ * scrollbars stacked in half a pane was three things to drag. The detail keeps
+ * a floor, so a long issue list cannot squeeze the inspector to nothing, and
+ * the wrapper goes when every band in it is hidden. */
+.bench-bands {
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  border-bottom: 1px solid var(--edge); background: var(--ground);
+}
+.bench-bands:not(:has(> :not([hidden]))) { display: none; }
+.detail-pane > .detail { min-height: 35%; }
+/* THE POD ISSUES IN AS MANY COLUMNS AS FIT — three at a normal pane width, one
+ * on a narrow one. min(…, 100%) keeps a single column from overflowing. */
+#pod-issues {
+  display: grid; gap: 8px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  padding-bottom: 8px;
+}
+#pod-issues .pod-issue { margin: 0; min-width: 0; }
+/* A compose command in a third of a pane: wrap it rather than scroll it. */
+#pod-issues .dark-stack code { white-space: pre-wrap; word-break: break-all; overflow-x: visible; }
 /* The reason, once, above the rows it applies to. */
 .dark-lead {
   margin: 0 0 5px; font: 11px/1.45 var(--sans); color: var(--dim);
@@ -505,11 +527,14 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   border-width: 1px;
   border-left-width: 4px;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
   min-height: unset;
 }
 .cards.density-low .card .head {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -525,18 +550,15 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   margin: 0;
   font-size: 11.5px;
 }
-.cards.density-low .card .status .status-text { display: inline-block; font-size: 11px; }
-.cards.density-low .card .status .status-emoji { font-size: 1.1em; }
+/* NAME AND STATE EMOJI, NOTHING ELSE: the emoji sits first on the one row
+ * and the sentence beside it goes, as the comment in cardHTML() promises. */
+.cards.density-low .card .status { order: -1; }
+.cards.density-low .card .status .status-emoji { font-size: 1.3em; }
 .cards.density-low .card .dot { display: inline-block; }
 .cards.density-low .card .kill { top: 4px; right: 4px; font-size: 12px; }
 
-.cards.density-low .card .card-num-badges {
-  display: flex;
-  gap: 4px;
-  flex-wrap: nowrap;
-  margin-top: 2px;
-}
-
+.cards.density-low .card .status .status-text,
+.cards.density-low .card .card-num-badges,
 .cards.density-low .card .stale-row,
 .cards.density-low .card .stale-fix,
 .cards.density-low .card .meters,
@@ -1199,7 +1221,6 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
 @media (max-width: 1100px) { .cards:has(> .lasso) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px)  { .cards:has(> .lasso) { grid-template-columns: 1fr; } }
 .cards > .lasso { margin: 0; box-sizing: border-box; min-width: 0; }
-.cards > .lasso.has-issues { grid-column: 1 / -1; }
 .lasso .group.group-all,
 .cards.density-low .lasso .group {
   grid-template-columns: repeat(auto-fill, minmax(min(var(--card-w), 100%), 1fr));

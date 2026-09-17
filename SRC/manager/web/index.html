@@ -31,6 +31,10 @@
         <button data-action="up"></button>
         <button data-action="rebuild-all"></button>
         <button data-action="rebuild-core"></button>
+        <div class="sep"></div>
+        <!-- OPT-IN, OFF BY DEFAULT: the page's 30s auto-remount / auto-rebuild
+             countdowns. See setAutoTimers(). -->
+        <button id="auto-timers">⏱ Auto-Remount / Auto-Rebuild countdowns: OFF</button>
       </div>
     </div>
 
@@ -186,14 +190,6 @@
          read. -->
     <div class="pane-body" id="grid-body">
 
-    <div class="dark-stacks" id="bench-health" hidden></div>
-
-    <!-- THE ONLY THING ON THIS PAGE THAT DRAWS AN ABSENCE. Every card is a
-         container that exists, so a stack whose containers were all removed
-         renders as nothing — which reads like a stack this repository never
-         had. Filled from `dark_stacks`, hidden when there are none. -->
-    <div class="dark-stacks" id="dark-stacks" hidden></div>
-
     <div class="cards" id="cards">
       <p class="empty">Reading docker…</p>
     </div>
@@ -227,6 +223,19 @@
       <button class="btn plain small" id="copy-inspect" disabled>📋 Copy Inspect</button>
       <button class="btn blue small" id="view-script" disabled>📄 View Configuration Script / Dockerfile</button>
     </div>
+    <!-- THE WHOLE-BENCH BANDS LIVE ON THE RIGHT: the disk warning and both
+         remount countdowns are about the box, not about any card, and over the
+         grid they pushed the pods a screen down. The per-stack rows stay in
+         their pod's lasso (darkRowHTML). -->
+    <div class="bench-bands">
+    <div class="dark-stacks" id="bench-health" hidden></div>
+    <!-- THE ONLY THING ON THIS PAGE THAT DRAWS AN ABSENCE. Filled from
+         `dark_stacks`, hidden when there are none. -->
+    <div class="dark-stacks" id="dark-stacks" hidden></div>
+    <!-- THE PER-POD ROWS — missing stacks, exited and stale containers — grouped
+         by pod. Filled by renderPodIssues(). -->
+    <div class="dark-stacks" id="pod-issues" hidden></div>
+    </div><!-- /.bench-bands -->
     <div class="launchers" id="launchers" hidden></div>
     <div class="detail" id="detail">
       <p class="empty">Click any container on the left to inspect its build state,

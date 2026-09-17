@@ -33,6 +33,11 @@ const state = {
   meters: false,
   density: "high",
   view: "cards",
+  // THE PAGE'S OWN AUTO-REMOUNT AND AUTO-REBUILD COUNTDOWNS, OFF UNLESS ASKED
+  // FOR. Armed by default they remounted a whole stack every 30s behind a
+  // container that exits for a reason no remount fixes, evicting its healthy
+  // neighbours each time. The bands still draw, with their Now buttons.
+  autoTimers: false,
   // PODS SOLOED in the card grid, by name. Empty means every pod shows. Survives
   // a repaint and a reload; a pod that no longer exists just stops matching.
   soloPods: new Set(),
@@ -593,7 +598,7 @@ function renderBenchHealth(snapshot) {
       state.autoRemountStoppedTimer = null;
     }
     state.autoRemountStoppedKey = null;
-    state.autoRemountStoppedCancelled = false;
+    state.autoRemountStoppedCancelled = !state.autoTimers;
     state.autoRemountStoppedSeconds = 30;
     host.hidden = true;
     host.innerHTML = "";
@@ -607,7 +612,7 @@ function renderBenchHealth(snapshot) {
     if (state.autoRemountStoppedKey !== currentKey) {
       state.autoRemountStoppedKey = currentKey;
       state.autoRemountStoppedSeconds = 30;
-      state.autoRemountStoppedCancelled = false;
+      state.autoRemountStoppedCancelled = !state.autoTimers;
       if (state.autoRemountStoppedTimer) {
         clearInterval(state.autoRemountStoppedTimer);
         state.autoRemountStoppedTimer = null;
@@ -671,7 +676,7 @@ function renderBenchHealth(snapshot) {
             <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
               ${!state.autoRemountStoppedCancelled ? 
                 `DockTor detected <b>${stopped.length} exited container${stopped.length > 1 ? "s" : ""}</b>. Automatic remount will execute when timer expires.` :
-                `Automatic remount has been paused by user. Click <b>Remount Now</b> to execute remount.`
+                `${state.autoTimers ? "Automatic remount has been paused by user." : "Auto countdowns are off (⚡ Rebuild &amp; Remount menu)."} Click <b>Remount Now</b> to execute remount.`
               }
             </p>
           </div>
@@ -680,7 +685,7 @@ function renderBenchHealth(snapshot) {
             ${!state.autoRemountStoppedCancelled ? `
               <button id="stopped-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
             ` : `
-              <button id="stopped-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+              ${state.autoTimers ? `<button id="stopped-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>` : ""}
             `}
           </div>
         </div>
@@ -754,7 +759,7 @@ function renderDarkStacks(snapshot) {
       state.autoRemountDarkTimer = null;
     }
     state.autoRemountDarkKey = null;
-    state.autoRemountDarkCancelled = false;
+    state.autoRemountDarkCancelled = !state.autoTimers;
     state.autoRemountDarkSeconds = 30;
     host.hidden = true;
     host.innerHTML = "";
@@ -768,7 +773,7 @@ function renderDarkStacks(snapshot) {
     if (state.autoRemountDarkKey !== currentKey) {
       state.autoRemountDarkKey = currentKey;
       state.autoRemountDarkSeconds = 30;
-      state.autoRemountDarkCancelled = false;
+      state.autoRemountDarkCancelled = !state.autoTimers;
       if (state.autoRemountDarkTimer) {
         clearInterval(state.autoRemountDarkTimer);
         state.autoRemountDarkTimer = null;
@@ -832,7 +837,7 @@ function renderDarkStacks(snapshot) {
             <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
               ${!state.autoRemountDarkCancelled ? 
                 `DockTor detected <b>${driven.length} empty stack${driven.length > 1 ? "s" : ""}</b>. Automatic remount will execute when timer expires.` :
-                `Automatic remount has been paused by user. Click <b>Remount Now</b> to execute remount.`
+                `${state.autoTimers ? "Automatic remount has been paused by user." : "Auto countdowns are off (⚡ Rebuild &amp; Remount menu)."} Click <b>Remount Now</b> to execute remount.`
               }
             </p>
           </div>
@@ -841,7 +846,7 @@ function renderDarkStacks(snapshot) {
             ${!state.autoRemountDarkCancelled ? `
               <button id="dark-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
             ` : `
-              <button id="dark-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+              ${state.autoTimers ? `<button id="dark-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>` : ""}
             `}
           </div>
         </div>
@@ -976,6 +981,27 @@ function podIssues(snapshot) {
  * SUPPRESSED MID-ACTION for the reason the driven dark rows are: a rebuild in
  * flight makes this change under the reader, and a warning that fires on the
  * happy path is learnt as noise. */
+/* ⏱ THE OPT-IN, a toggle in the ⚡ Rebuild & Remount menu. Remembered per
+ * browser. Turning it off stops any countdown already running; turning it on
+ * arms them on the next paint from the snapshot already in hand. */
+function setAutoTimers(on) {
+  state.autoTimers = !!on;
+  try { localStorage.setItem("apk.manager.autoTimers", on ? "1" : "0"); } catch { /* no store */ }
+  for (const k of ["autoRemountStopped", "autoRemountDark", "autoRebuild"]) {
+    clearInterval(state[`${k}Timer`]);
+    state[`${k}Timer`] = null;
+    state[`${k}Cancelled`] = !on;
+    state[`${k}Seconds`] = 30;
+  }
+  const toggle = $("#auto-timers");
+  if (toggle) toggle.textContent = `⏱ Auto-Remount / Auto-Rebuild countdowns: ${on ? "ON" : "OFF"}`;
+  if (state.snapshot) {
+    renderBenchHealth(state.snapshot);
+    renderDarkStacks(state.snapshot);
+    renderStaleImages(state.snapshot);
+  }
+}
+
 function renderStaleImages(snapshot) {
   const host = $("#stale-images");
   const stale = snapshot.action_running ? [] : (snapshot.stale_services || []);
@@ -993,7 +1019,7 @@ function renderStaleImages(snapshot) {
       state.autoRebuildTimer = null;
     }
     state.autoRebuildKey = null;
-    state.autoRebuildCancelled = false;
+    state.autoRebuildCancelled = !state.autoTimers;
     state.autoRebuildSeconds = 30;
     host.hidden = true;
     host.innerHTML = "";
@@ -1006,7 +1032,7 @@ function renderStaleImages(snapshot) {
   if (state.autoRebuildKey !== currentKey) {
     state.autoRebuildKey = currentKey;
     state.autoRebuildSeconds = 30;
-    state.autoRebuildCancelled = false;
+    state.autoRebuildCancelled = !state.autoTimers;
     if (state.autoRebuildTimer) {
       clearInterval(state.autoRebuildTimer);
       state.autoRebuildTimer = null;
@@ -1077,7 +1103,7 @@ function renderStaleImages(snapshot) {
           <p style="margin: 4px 0 0 0; font-size: 0.9em; opacity: 0.95;">
             ${!state.autoRebuildCancelled ? 
               `DockTor detected <b>${stale.length} stale container${stale.length > 1 ? "s" : ""}</b> running older code. Targeted rebuild &amp; hot-swap will execute when timer expires.` :
-              `Automatic rebuild has been paused by user. Click <b>Rebuild Now</b> to execute rebuild.`
+              `${state.autoTimers ? "Automatic rebuild has been paused by user." : "Auto countdowns are off (⚡ Rebuild &amp; Remount menu)."} Click <b>Rebuild Now</b> to execute rebuild.`
             }
           </p>
         </div>
@@ -1086,7 +1112,7 @@ function renderStaleImages(snapshot) {
           ${!state.autoRebuildCancelled ? `
             <button id="stale-cancel-timer" class="btn small dark" style="white-space: nowrap;">⏸ Cancel Countdown</button>
           ` : `
-            <button id="stale-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>
+            ${state.autoTimers ? `<button id="stale-resume-timer" class="btn small dark" style="white-space: nowrap;">▶ Resume Countdown</button>` : ""}
           `}
         </div>
       </div>
@@ -1269,6 +1295,7 @@ function renderGrid(snapshot) {
   renderStaleImages(snapshot);
   const host = $("#cards");
   const issues = podIssues(snapshot);
+  renderPodIssues(issues);
   const known = new Set((snapshot.groups || []).map((g) => g.label));
   // A POD WITH NO CARDS BUT SOMETHING TO SAY — a dark stack, mostly. First, so
   // an absence is not scrolled past on the way to forty green cards.
@@ -1299,7 +1326,10 @@ function renderGrid(snapshot) {
    * Nothing is hidden behind a hover: the header is always the name, the
    * count, and how many of them are running.
    * EACH POD IS A THIRD OF THE PANE — see .lasso in the stylesheet. */
-  const lassoHtml = groups.map((group) => {
+  // THE ISSUE ROWS ARE DRAWN ON THE RIGHT (renderPodIssues), so a pod that has
+  // nothing BUT issues has nothing to draw here. It stays in `groups` for the
+  // pod filter, whose ⚠ pill is how it is still found from this side.
+  const lassoHtml = groups.filter((group) => group.containers.length).map((group) => {
     const hue = group.hue || "";
     const groupName = group.label;
     const cards = group.containers.map((c) => {
@@ -1330,7 +1360,6 @@ function renderGrid(snapshot) {
           ${stack ? `<span class="lasso-stack" title="The directory under APK:PODS/ that the buttons on this pod act on">${escapeHTML(stack)}</span>` : ""}
           <span class="lasso-count">${total ? `${live} of ${total} running` : "no containers"}</span>
         </header>
-        ${problems.length ? `<div class="lasso-issues">${problems.join("")}</div>` : ""}
         ${cards ? `<div class="group group-all">${cards}</div>` : ""}
       </section>`;
   }).join("");
@@ -1409,6 +1438,25 @@ function renderGrid(snapshot) {
   // that verb, and it is read from the top: a list still parked where the
   // reader left it looks like the list that was there before.
   if (state.rewind) rewindPane();
+}
+
+/* THE PER-POD ISSUE ROWS, ON THE RIGHT with the bench-wide bands. In the grid
+ * they took the top of the pane and pushed every card a screen down; here they
+ * sit beside the cards instead of over them, still grouped under their pod's
+ * name. The ⚠ pod pill and the lasso border still say which pod has one. */
+function renderPodIssues(issues) {
+  const host = $("#pod-issues");
+  host.innerHTML = [...issues.entries()].map(([label, rows]) => `
+    <div class="pod-issue">
+      <div class="lasso-head"><span class="group-pill">${escapeHTML(label)}</span></div>
+      <div class="lasso-issues">${rows.join("")}</div>
+    </div>`).join("");
+  host.hidden = !issues.size;
+  $$("[data-cverb]", host).forEach((button) => {
+    const row = state.actions && state.actions.container_actions[button.dataset.cverb];
+    button.textContent = row ? row.label : button.dataset.cverb;
+    button.onclick = () => runContainerAction(button.dataset.cverb, button.dataset.container, button);
+  });
 }
 
 /* ONE SOLO PER POD, redrawn with the grid so a new pod shows up on the next
@@ -3064,6 +3112,10 @@ function escapeAttr(text) {
 }
 
 function wireMenus() {
+  let savedAuto = null;
+  try { savedAuto = localStorage.getItem("apk.manager.autoTimers"); } catch { /* no store */ }
+  setAutoTimers(savedAuto === "1");
+  $("#auto-timers").onclick = () => setAutoTimers(!state.autoTimers);
   $$("[data-menu]").forEach((menu) => {
     const opener = $("[data-menu-open]", menu);
     const items = $(".menu-items", menu);
