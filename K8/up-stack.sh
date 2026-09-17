@@ -83,6 +83,11 @@ fi
 
 # Every stack mounts the external log volume; LOGGER STORAGE owns it.
 [ "$STACK_COMPOSE_FILE" = "$LOGGER_COMPOSE_FILE" ] || ensure_log_storage
+# A `pods` estate's stacks share networks declared `external: true` that no
+# stack creates; mounting one stack on a fresh host must not wait on up.sh.
+if [ "$ESTATE_LAYOUT" = "pods" ]; then
+    ensure_external_networks "$STACK_COMPOSE_FILE"
+fi
 
 log_step "Starting $STACK..."
 announce COMPOSE_RUN "{\"action\":\"up-stack\",\"stack\":\"$STACK\"}"

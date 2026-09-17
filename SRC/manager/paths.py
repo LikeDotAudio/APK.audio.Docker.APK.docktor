@@ -30,7 +30,22 @@ MANAGER_PACKAGE = os.path.dirname(os.path.abspath(__file__))
 SOURCE_DIRECTORY = os.path.dirname(MANAGER_PACKAGE)
 MANAGEMENT_DIRECTORY = os.path.dirname(SOURCE_DIRECTORY)
 DOCKERS_DIRECTORY = os.path.dirname(MANAGEMENT_DIRECTORY)
+# DOCKTOR_DOCKERS_DIR wins when it names a real folder — the standalone image
+# lives at /app/docktor, where the walk above lands on /app.
+if os.path.isdir(os.environ.get('DOCKTOR_DOCKERS_DIR') or ''):
+    DOCKERS_DIRECTORY = os.path.abspath(os.environ['DOCKTOR_DOCKERS_DIR'])
 REPOSITORY_ROOT = os.path.abspath(os.path.join(DOCKERS_DIRECTORY, '..'))
+
+# `pods` or `apk` — the same test _common.sh makes. In a `pods` estate the
+# APK.audio manager file (docker-compose.manager.yml, project `apk-audio`) is
+# not a stack: nothing drives it, and counting it made every apk-audio
+# container on a shared host read as ours. The readers skip what this names.
+import glob as _glob
+ESTATE_LAYOUT = ('pods' if not _glob.glob(os.path.join(DOCKERS_DIRECTORY, 'POD:*'))
+                 and _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*.pod')) else 'apk')
+if ESTATE_LAYOUT == 'pods' and not os.environ.get('DOCKTOR_IGNORE_COMPOSE'):
+    os.environ['DOCKTOR_IGNORE_COMPOSE'] = os.pathsep.join(
+        _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*', 'Docker', 'docker-compose.manager.yml')))
 
 # The backend scripts for K8 / Kubernetes container management live in `Docktor/K8`.
 K8_SCRIPTS_DIRECTORY = os.path.join(MANAGEMENT_DIRECTORY, 'K8')
@@ -78,7 +93,20 @@ BRAND_TOKENS_CANDIDATES = [
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
 ]
+# DOCKTOR_BRAND_TOKENS names the file outright, ahead of every spelling above.
+if os.environ.get('DOCKTOR_BRAND_TOKENS'):
+    BRAND_TOKENS_CANDIDATES.insert(0, os.environ['DOCKTOR_BRAND_TOKENS'])
 BRAND_TOKENS = _find_first_existing_file(BRAND_TOKENS_CANDIDATES)
 
-with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
-    ACCENT = json.load(_tokens)['accent']['hex']
+# AN ESTATE THAT IS NOT APK.audio HAS NO brand.json AT ALL, and raising here
+# took the whole package down with it. It still does not go wrong in silence:
+# the fallback accent is said on stderr, once, at import, naming every path.
+DEFAULT_ACCENT = '#3b82f6'
+try:
+    with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
+        ACCENT = json.load(_tokens)['accent']['hex']
+except (OSError, ValueError, KeyError, TypeError) as _error:
+    import sys
+    sys.stderr.write('DockTor: no brand accent (%s); using %s. Looked in: %s\n'
+                     % (_error, DEFAULT_ACCENT, ', '.join(BRAND_TOKENS_CANDIDATES)))
+    ACCENT = DEFAULT_ACCENT

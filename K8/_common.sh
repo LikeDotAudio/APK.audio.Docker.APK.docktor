@@ -31,9 +31,30 @@ MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # APKAUDIO_REPO wins when set and valid; otherwise walk up. Dockerfile.manager
 # COPYs this folder to /app, so inside the manager the walk lands outside the
 # checkout (no compose files, no build context).
-if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
+# DOCKTOR_DOCKERS_DIR names the stacks folder outright, for an estate laid out
+# any other way. It is checked FIRST because it is the only answer a person gave.
+# ⚠️ AN ESTATE IS NOT ALWAYS APK:PODS. A checkout that links DockTor beside
+#    `<name>.pod/` folders (OneThing.Dockers/APPLICATION.pod/…) has neither
+#    POD:APK nor APK:PODS, and the old fallback walked one rung too far — to the
+#    checkout root, where every glob came back holding DockTor alone.
+_docktor_parent="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
+_docktor_has_pods() {
+    local candidate
+    for candidate in "$1"/POD:* "$1"/*.pod; do
+        [ -d "$candidate" ] && return 0
+    done
+    return 1
+}
+if [ -n "${DOCKTOR_DOCKERS_DIR:-}" ] && [ -d "$DOCKTOR_DOCKERS_DIR" ]; then
+    DOCKERS_DIR="$(cd "$DOCKTOR_DOCKERS_DIR" && pwd -P)"
+    REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
+elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:PODS"
+elif _docktor_has_pods "$_docktor_parent" \
+     && [ ! -d "$_docktor_parent/POD:APK" ]; then
+    DOCKERS_DIR="$_docktor_parent"
+    REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 else
     if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
@@ -53,6 +74,21 @@ fi
 # docker-compose.manager.yml interpolate ${APKAUDIO_REPO} and Ember spells it
 # `:?` — unset is a hard refusal at interpolation.
 export APKAUDIO_REPO="$REPO_ROOT"
+
+# ── ESTATE_LAYOUT: `apk` (POD:*/<stack>/Docker/, the named arrays below) or
+# `pods` (<name>.pod/<stack>/DOCKER/, no named arrays at all). In `pods` the
+# stacks are DISCOVERED — see discovered_stacks() — because none of the ten
+# names this file spells exists there, and a walk over missing files is ten
+# compose errors that start nothing.
+ESTATE_LAYOUT=apk
+if ! compgen -G "$DOCKERS_DIR/POD:*" >/dev/null && compgen -G "$DOCKERS_DIR/*.pod" >/dev/null; then
+    ESTATE_LAYOUT=pods
+    # Exported so a container started from here (docker-compose.standalone.yml)
+    # resolves the same folder: inside it, the walk from /app finds nothing.
+    export DOCKTOR_DOCKERS_DIR="$DOCKERS_DIR"
+fi
+unset -f _docktor_has_pods
+unset _docktor_parent
 
 # ── Compose files: <pod>/<stack>/Docker/<file>. The only place any of it is
 # spelled. ⚠️ A wrong path does not raise — compose warns and carries on, so
@@ -84,7 +120,7 @@ first_existing() {
 stack_dir() {
     local want="$1" candidate
     [ -d "$DOCKERS_DIR/$want" ] && { printf '%s' "$DOCKERS_DIR/$want"; return 0; }
-    for candidate in "$DOCKERS_DIR"/POD:*/"$want"; do
+    for candidate in "$DOCKERS_DIR"/POD:*/"$want" "$DOCKERS_DIR"/*.pod/"$want"; do
         [ -d "$candidate" ] && { printf '%s' "$candidate"; return 0; }
     done
     printf '%s' "$DOCKERS_DIR/$want"
@@ -433,6 +469,26 @@ unset _candidate
 # wanted rather than an empty `-f`.
 [ -z "${MANAGER_COMPOSE_FILE:-}" ] \
     && MANAGER_COMPOSE_FILE="$DOCKERS_DIR/APK:Docktor/Docker/docker-compose.manager.yml"
+# A `pods` estate builds DockTor from this repository alone, under its own name
+# and port. See docker-compose.standalone.yml.
+# ⚠️ INSIDE THE CONTAINER there is no Docker/ beside K8/ (the image copies
+#    K8, SRC and bin only), so the bound checkout is searched too. Missing it
+#    there is not cosmetic: MANAGER_CONTAINER falls back to `DockTor` — another
+#    estate's manager — and panic.sh would spare that one and kill this one.
+if [ "$ESTATE_LAYOUT" = "pods" ]; then
+    for _candidate in "$MANAGEMENT_SCRIPTS_DIR/../Docker/docker-compose.standalone.yml" \
+                      "$DOCKERS_DIR"/*/Docker/docker-compose.standalone.yml \
+                      "$DOCKERS_DIR"/*.pod/*/Docker/docker-compose.standalone.yml; do
+        if [ -f "$_candidate" ]; then
+            MANAGER_COMPOSE_FILE="$(cd "$(dirname "$_candidate")" && pwd)/$(basename "$_candidate")"
+            break
+        fi
+    done
+    unset _candidate
+    # The APK.audio manager file sits beside it and declares `apk-audio`; in this
+    # layout nothing drives it, so the readers are told to look past it.
+    export DOCKTOR_IGNORE_COMPOSE="$(dirname "$MANAGER_COMPOSE_FILE")/docker-compose.manager.yml"
+fi
 
 manager_compose_value() {
     [ -f "$MANAGER_COMPOSE_FILE" ] || return 0
@@ -547,6 +603,10 @@ export APKAUDIO_GID="${APKAUDIO_GID:-$(id -g)}"
 # note above. Returns the LAST NON-ZERO exit code, not the last one — a down
 # that failed on the node and passed on the core is a failed down.
 for_each_stack() {
+    if [ "$ESTATE_LAYOUT" = "pods" ]; then
+        _for_each_discovered_stack "$@"
+        return $?
+    fi
     local direction="$1"; shift
     local worst=0 status
     local -a order
@@ -618,6 +678,149 @@ for_each_stack() {
     return $worst
 }
 
+# discovered_stacks — every stack root in a `pods` estate, one per line as
+# `<stack>\t<compose file>`, in mount order: pods in DOCKTOR_POD_ORDER (space
+# separated, `.pod` optional), else in the estate's own `pods.order` file (one
+# pod per line, `#` comments), then any pod neither names, alphabetically;
+# stacks alphabetically inside a pod. The file is the estate's to keep — the
+# order is a fact about its stacks, not about this tool. DockTor's own file is left out — for_each_stack puts it first.
+# A compose file with no top-level `name:` is an overlay, not a stack root.
+discovered_stacks() {
+    DOCKERS="$DOCKERS_DIR" MANAGER="$MANAGER_COMPOSE_FILE" ORDER="${DOCKTOR_POD_ORDER:-}" \
+    python3 - <<'PY'
+import glob, os, re
+dockers = os.environ["DOCKERS"]
+manager = os.path.realpath(os.environ.get("MANAGER") or "")
+words = os.environ.get("ORDER", "").split()
+if not words:
+    try:
+        with open(os.path.join(dockers, "pods.order"), encoding="utf-8") as handle:
+            words = [line.split("#", 1)[0].strip() for line in handle]
+    except OSError:
+        pass
+order = [w if w.endswith(".pod") else w + ".pod" for w in words if w]
+pods = sorted((os.path.basename(p) for p in glob.glob(os.path.join(dockers, "*.pod"))),
+              key=lambda n: (order.index(n) if n in order else len(order), n.lower()))
+project = re.compile(r'^name:', re.M)
+for pod in pods:
+    for folder in sorted(glob.glob(os.path.join(dockers, pod, "*")), key=str.lower):
+        for sub in ("DOCKER", "Docker"):
+            path = os.path.join(folder, sub, "docker-compose.yml")
+            if not os.path.isfile(path) or os.path.realpath(path) == manager:
+                continue
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                if project.search(handle.read()):
+                    print("%s\t%s" % (os.path.basename(folder), path))
+            break
+PY
+}
+
+# ensure_external_networks <compose file>... — create every network a file
+# declares `external: true` that this host does not have yet. Compose refuses
+# to start a stack on a missing external network and will not create one, so
+# on a fresh machine NOTHING mounts until somebody runs `docker network create`
+# by hand. Only for `up`-shaped verbs; never removes anything.
+ensure_external_networks() {
+    local network
+    python3 - "$@" <<'PY' | sort -u | while IFS= read -r network; do
+import re, sys
+for path in sys.argv[1:]:
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        continue
+    inside, key, name, external = False, None, None, False
+    def flush():
+        if key and external:
+            print(name or key)
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            if inside:
+                flush()
+            inside, key, name, external = line.startswith("networks:"), None, None, False
+            continue
+        if not inside:
+            continue
+        match = re.match(r'^  ([^\s#][^:]*):\s*$', line)
+        if match:
+            flush()
+            key, name, external = match.group(1).strip(), None, False
+            continue
+        match = re.match(r'^\s{4,}external:\s*(\S+)', line)
+        if match:
+            external = match.group(1).strip("\"'").lower() == "true"
+            continue
+        match = re.match(r'^\s{4,}name:\s*["\']?([^"\'\s#]+)', line)
+        if match:
+            name = match.group(1)
+    if inside:
+        flush()
+PY
+        [ -n "$network" ] || continue
+        docker network inspect "$network" >/dev/null 2>&1 && continue
+        log_warn "External network '$network' is missing -- creating it."
+        docker network create "$network" >/dev/null \
+            || log_error "Could not create network '$network'; compose will say what that stops."
+    done
+    return 0
+}
+
+# _for_each_discovered_stack — for_each_stack for a `pods` estate. Same
+# contract: `reverse` tears down, the worst exit code wins, DockTor is first up
+# and last down, APKAUDIO_SKIP_STACKS is honoured.
+_for_each_discovered_stack() {
+    local direction="$1"; shift
+    local worst=0 status stack file
+    local -a names=() files=() order=()
+    while IFS=$'\t' read -r stack file; do
+        [ -n "$file" ] || continue
+        names+=("$stack"); files+=("$file")
+    done < <(discovered_stacks)
+
+    if [ "$1" = "up" ]; then
+        ensure_external_networks "${files[@]}"
+    fi
+
+    local i
+    if [ "$direction" = "reverse" ]; then
+        for (( i=${#names[@]}-1; i>=0; i-- )); do order+=("$i"); done
+        order+=(docktor)
+    else
+        order=(docktor)
+        for (( i=0; i<${#names[@]}; i++ )); do order+=("$i"); done
+    fi
+
+    for i in "${order[@]}"; do
+        if [ "$i" = "docktor" ]; then
+            stack=docktor
+            if [ -f "/.dockerenv" ]; then
+                log_warn "Skipping '$stack' (running inside manager container)"
+                continue
+            fi
+        else
+            stack="${names[$i]}"
+        fi
+        if [[ " ${APKAUDIO_SKIP_STACKS:-} " == *" $stack "* ]]; then
+            log_warn "Skipping '$stack' (APKAUDIO_SKIP_STACKS)"
+            continue
+        fi
+        echo -e "\n── ${stack} ──"
+        if [ "$i" = "docktor" ]; then
+            "${COMPOSE_MANAGER[@]}" "$@"
+        else
+            "${COMPOSE_BASE[@]}" -f "${files[$i]}" "$@"
+        fi
+        status=$?
+        [ $status -ne 0 ] && worst=$status
+        if [ $status -eq 0 ] && [ "$1" = "up" ] && [ "$i" = "docktor" ]; then
+            open_manager_site
+        fi
+    done
+    return $worst
+}
+
 # compose_for_stack <stack directory name> — fill STACK_COMPOSE with ONE
 # stack's compose command (up-stack.sh's lookup, behind the dashboard's
 # per-stack fix button; up.sh would rebuild the other eight instead).
@@ -660,8 +863,13 @@ compose_for_stack() {
     # Only the stack's own docker-compose.yml: an overlay (*.host.yml) is a choice
     # the caller makes, not something a name implies.
     local found
+    # `DOCKER/` and `*.pod` too: an estate that spells the compose folder in
+    # capitals and its pods as `<name>.pod` is the same shape with other words.
     for found in "$DOCKERS_DIR"/POD:*/"$want"/Docker/docker-compose.yml \
-                 "$DOCKERS_DIR"/"$want"/Docker/docker-compose.yml; do
+                 "$DOCKERS_DIR"/"$want"/Docker/docker-compose.yml \
+                 "$DOCKERS_DIR"/*.pod/"$want"/DOCKER/docker-compose.yml \
+                 "$DOCKERS_DIR"/*.pod/"$want"/Docker/docker-compose.yml \
+                 "$DOCKERS_DIR"/"$want"/DOCKER/docker-compose.yml; do
         [ -f "$found" ] || continue
         STACK_COMPOSE=("${COMPOSE_BASE[@]}" -f "$found")
         STACK_COMPOSE_FILE="$found"
@@ -715,6 +923,8 @@ synch_skills() {
 # mount on a fresh bench would otherwise fail on "external volume
 # apk-audio-logs not found". Never exits; a failure is said and left to compose.
 ensure_log_storage() {
+    # No LOGGER STORAGE in this estate (a `pods` layout): nothing to bring up.
+    [ -f "$LOGGER_COMPOSE_FILE" ] || return 0
     if docker volume inspect "$LOG_VOLUME_NAME" >/dev/null 2>&1; then
         return 0
     fi

@@ -417,8 +417,14 @@ def iso(stamp):
 rows = []
 # <stack>/Docker/<file>. A glob that matches nothing is not an error in Python,
 # so a wrong rung reads as a repository that declares no stacks.
-for path in sorted(glob.glob(os.path.join(dockers, "*", "Docker",
-                                          "docker-compose*.yml"))):
+# ONE RUNG OR TWO, `Docker` OR `DOCKER`: stacks under a pod sit one rung down.
+for path in sorted({p for rungs in (("*",), ("*", "*"))
+                    for folder in ("Docker", "DOCKER")
+                    for p in glob.glob(os.path.join(dockers, *rungs, folder,
+                                                    "docker-compose*.yml"))}):
+    if os.path.realpath(path) in {os.path.realpath(p) for p in
+            (os.environ.get("DOCKTOR_IGNORE_COMPOSE") or "").split(os.pathsep) if p}:
+        continue
     try:
         with open(path, encoding="utf-8", errors="replace") as handle:
             text = handle.read()

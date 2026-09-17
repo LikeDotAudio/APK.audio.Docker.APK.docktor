@@ -1,0 +1,29 @@
+# Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+# MIT Licence. Full text in LICENSE at the root.
+# DockTor built from THIS REPOSITORY ALONE — for an estate that is not APK.audio.
+#     docker compose -f Docker/docker-compose.standalone.yml up -d --build
+# Dockerfile.manager builds from the APK.audio checkout root and COPYs the
+# runner, the brand tokens and the broker-discovery module out of sibling
+# folders; none of them exist beside a DockTor linked into another repository.
+# The context here is the DockTor folder, so everything COPYed is ours.
+# Without those files: the accent falls back (paths.py says so on stderr) and
+# broker discovery degrades to loopback, as it already does inside an except.
+FROM docker:27-cli
+
+RUN apk add --no-cache python3 py3-pip bash curl coreutils docker-cli-compose \
+        mosquitto-clients
+RUN pip3 install --no-cache-dir --break-system-packages paho-mqtt || \
+    echo "paho-mqtt unavailable — bus events will print and not publish"
+
+WORKDIR /app/docktor
+COPY ["SRC/manager", "/app/docktor/SRC/manager"]
+COPY ["K8", "/app/docktor/K8"]
+COPY ["bin", "/app/docktor/bin"]
+RUN chmod +x /app/docktor/K8/*.sh /app/docktor/bin/docktor \
+    && ln -s ../K8 "/app/docktor/SRC/docker scripts" \
+    && mkdir -p /storage
+
+ENV APK_MANAGER_BIND=127.0.0.1
+ENV APK_MANAGER_PORT=18765
+EXPOSE 18765
+CMD ["sh", "-c", "python3 -u /app/docktor/bin/docktor serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]

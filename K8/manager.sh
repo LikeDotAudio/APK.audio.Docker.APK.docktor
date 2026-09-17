@@ -35,8 +35,12 @@ case "${1:-up}" in
         # there — the failure lands later, on a container that will not start,
         # naming a device instead of a missing folder. --ensure is idempotent
         # and does nothing on the second run.
-        "$MANAGEMENT_SCRIPTS_DIR/storage-volume.sh" --ensure \
-            || log_warn "Storage volume not ready; compose will name what it could not mount."
+        # The storage volume lives under APK:Documentation; a `pods` estate's
+        # standalone compose file declares none.
+        if [ "$ESTATE_LAYOUT" != "pods" ]; then
+            "$MANAGEMENT_SCRIPTS_DIR/storage-volume.sh" --ensure \
+                || log_warn "Storage volume not ready; compose will name what it could not mount."
+        fi
 
         # --build every time: the package is COPYed into the image rather than
         # bound, so a manager started without a build runs last week code

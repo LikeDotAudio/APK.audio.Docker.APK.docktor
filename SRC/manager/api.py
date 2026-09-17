@@ -512,8 +512,14 @@ def declared_projects():
     and the cards silently reorder.
     """
     projects = set()
-    for path in glob.glob(os.path.join(DOCKERS_DIRECTORY, "*", "Docker",
-                                       "docker-compose*.yml")):
+    paths = [p for rungs in (("*",), ("*", "*")) for folder in ("Docker", "DOCKER")
+             for p in glob.glob(os.path.join(DOCKERS_DIRECTORY, *rungs, folder,
+                                             "docker-compose*.yml"))]
+    ignored = {os.path.realpath(p) for p in
+               (os.environ.get("DOCKTOR_IGNORE_COMPOSE") or "").split(os.pathsep) if p}
+    for path in paths:
+        if os.path.realpath(path) in ignored:
+            continue
         try:
             with open(path, encoding="utf-8") as handle:
                 for line in handle:
@@ -578,7 +584,9 @@ def snapshot(quiet=True, with_apps=True):
     repo_root = os.environ.get("APKAUDIO_REPO") or REPOSITORY_ROOT
     for s in stacks:
         stk = s["stack"]
-        abs_stack_path = os.path.join(repo_root, "APK:PODS", stk)
+        abs_stack_path = (os.path.dirname(os.path.dirname(s["compose_file"]))
+                          if s.get("compose_file")
+                          else os.path.join(repo_root, "APK:PODS", stk))
         file_uri = f"file://{abs_stack_path}"
         repo_info = {"name": stk, "path": file_uri}
         if s.get("compose_file") and os.path.exists(s["compose_file"]):

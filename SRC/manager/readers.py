@@ -29,7 +29,7 @@ RESOURCE_SAMPLE_SECONDS = 60
 # NOT A COMPOSE PATH: it globs for the files, so a renamed or added stack needs
 # no edit. The hint list survives as a fallback for `docker run` containers,
 # which declare their name nowhere a file can be read.
-_COMPOSE_GLOB_DEPTH = 3
+_COMPOSE_GLOB_DEPTH = 4  # <pod>/<stack>/Docker/ is three rungs down
 _CONTAINER_NAME = re.compile(r'^\s*container_name:\s*["\']?([^"\'\s#]+)', re.M)
 _OURS_HINTS = ('apk', 'apkaudio', 'baremetal', 'spog', 'orchestrator')
 _declared_names = None

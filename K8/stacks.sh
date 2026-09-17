@@ -56,7 +56,8 @@ $NETBOX_COMPOSE_FILE
 $AES70_COMPOSE_FILE
 $EMBER_COMPOSE_FILE
 $LOGGER_COMPOSE_FILE
-$MANAGER_COMPOSE_FILE" \
+$MANAGER_COMPOSE_FILE
+$([ "$ESTATE_LAYOUT" = "pods" ] && discovered_stacks | cut -f2)" \
 MODE="$MODE" \
 python3 - <<'PY'
 import os
@@ -180,11 +181,14 @@ stacks = []
 #    declares no stacks. `seen` is what keeps a file found by both patterns —
 #    or through a compatibility symlink — from being counted twice.
 seen_paths = set()
-patterns = (os.path.join(dockers, "*", "Docker", "docker-compose*.yml"),
-            os.path.join(dockers, "*", "*", "Docker", "docker-compose*.yml"))
+patterns = tuple(os.path.join(dockers, *rungs, folder, "docker-compose*.yml")
+                 for rungs in (("*",), ("*", "*"))
+                 for folder in ("Docker", "DOCKER"))
+ignored = {os.path.realpath(p) for p in
+           (os.environ.get("DOCKTOR_IGNORE_COMPOSE") or "").split(os.pathsep) if p}
 for path in sorted({p for pattern in patterns for p in glob.glob(pattern)}):
     real_path = os.path.realpath(path)
-    if real_path in seen_paths:
+    if real_path in seen_paths or real_path in ignored:
         continue
     seen_paths.add(real_path)
     try:

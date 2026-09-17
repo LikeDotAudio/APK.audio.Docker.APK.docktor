@@ -63,6 +63,11 @@ else
 fi
 
 [ "$STACK_COMPOSE_FILE" = "$LOGGER_COMPOSE_FILE" ] || ensure_log_storage
+# A `pods` estate's stacks share networks declared `external: true` that no
+# stack creates; mounting one stack on a fresh host must not wait on up.sh.
+if [ "$ESTATE_LAYOUT" = "pods" ]; then
+    ensure_external_networks "$STACK_COMPOSE_FILE"
+fi
 
 log_step "Building $STACK from scratch (no cache)..."
 announce COMPOSE_RUN "{\"action\":\"build --no-cache\",\"stack\":\"$STACK\"}"

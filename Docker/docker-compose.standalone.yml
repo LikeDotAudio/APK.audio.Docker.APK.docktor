@@ -1,0 +1,47 @@
+# Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+# MIT Licence. Full text in LICENSE at the root.
+# DockTor for an estate that is NOT APK.audio: `<name>.pod/<stack>/DOCKER/`
+# folders, no APK:PODS, no LOGGER STORAGE. _common.sh picks this file instead
+# of docker-compose.manager.yml when ESTATE_LAYOUT is `pods`, and manager.sh
+# exports the two variables it needs:
+#     APKAUDIO_REPO         the checkout root, bound at its own host path
+#     DOCKTOR_DOCKERS_DIR   the folder holding the pods
+# ⚠️ ITS OWN NAME AND PORT: `docktor` on 18765, so it can run on a host that
+#    also runs APK.audio's `DockTor` on 8765 without either evicting the other.
+name: docktor
+
+services:
+  manager:
+    build:
+      context: ".."                  # this repository, and nothing beside it
+      dockerfile: "Docker/Dockerfile.standalone"
+    image: docktor-standalone:local
+    container_name: docktor
+    restart: unless-stopped
+    # Host network for the same reason as docker-compose.manager.yml: every
+    # probe addresses `localhost`, and that must mean the host.
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: "${APKAUDIO_REPO:?set APKAUDIO_REPO to the checkout root, or start this with K8/manager.sh up}"
+        target: "${APKAUDIO_REPO}"
+        bind:
+          propagation: rprivate
+    environment:
+      APK_MANAGER_BIND: 127.0.0.1
+      APK_MANAGER_PORT: 18765
+      APKAUDIO_REPO: "${APKAUDIO_REPO}"
+      DOCKTOR_DOCKERS_DIR: "${DOCKTOR_DOCKERS_DIR:?set DOCKTOR_DOCKERS_DIR to the folder holding the pods, or start this with K8/manager.sh up}"
+      APKAUDIO_UID: "${APKAUDIO_UID:-1000}"
+      APKAUDIO_GID: "${APKAUDIO_GID:-1000}"
+      MQTT_HOST: "${MQTT_HOST:-127.0.0.1}"
+      MQTT_PORT: "${MQTT_PORT:-1883}"
+    working_dir: "${APKAUDIO_REPO}"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:18765/api/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

@@ -26,8 +26,17 @@ DRY_RUN=0
 
 # */Docker/, one rung down. THIS IS THE ONE READER OF THE COMPOSE FILES THAT
 # SAYS SO WHEN IT FINDS NONE — the guard below is why.
-compose_files=("$DOCKERS_DIR"/*/Docker/docker-compose.yml)
-if [ ! -e "${compose_files[0]}" ]; then
+# ...and under a pod, and spelled DOCKER: a keep-set read from DockTor's own
+# file alone would sweep every stack that lives one rung further down.
+compose_files=()
+for _compose in "$DOCKERS_DIR"/*/Docker/docker-compose.yml \
+                "$DOCKERS_DIR"/*/DOCKER/docker-compose.yml \
+                "$DOCKERS_DIR"/*/*/Docker/docker-compose.yml \
+                "$DOCKERS_DIR"/*/*/DOCKER/docker-compose.yml; do
+    [ -f "$_compose" ] && compose_files+=("$_compose")
+done
+unset _compose
+if [ "${#compose_files[@]}" -eq 0 ]; then
     log_error "No */Docker/docker-compose.yml under $DOCKERS_DIR."
     echo "  Refusing to sweep: with nothing parsed the keep-set is empty, and every"
     echo "  container on this host would read as a stranger."
