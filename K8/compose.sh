@@ -6,6 +6,7 @@
 #   ./compose.sh core ps            ./compose.sh nmos ps
 #   ./compose.sh ember logs -f      ./compose.sh node exec baremetal bash
 #   ./compose.sh netbox exec netbox-postgres psql -U netbox
+#   COMPOSE_PROFILES=discovery,l2 ./compose.sh plugins up -d
 # The verbs beside this file have a policy attached (an order, a gate, an
 # eviction). This one has none — that is its job.
 # It still resolves the compose command and every project file from _common.sh,
@@ -24,6 +25,7 @@ case "$TARGET" in
     node)      "${COMPOSE_NODE[@]}" "$@";;
     mqtt)      "${COMPOSE_MQTT[@]}" "$@";;
     portal)    "${COMPOSE_PORTAL[@]}" "$@";;
+    plugins)   "${COMPOSE_PLUGINS[@]}" "$@";;
     nmos)      "${COMPOSE_NMOS[@]}" "$@";;
     aes70)     "${COMPOSE_AES70[@]}" "$@";;
     netbox)    "${COMPOSE_NETBOX[@]}" "$@";;
@@ -31,7 +33,7 @@ case "$TARGET" in
     logger)    "${COMPOSE_LOGGER[@]}" "$@";;
     both|all)  for_each_stack forward "$@";;
     *)
-        log_error "usage: compose.sh {logger|sqlcluster|core|mqtt|portal|nmos|aes70|ember|netbox|node|both} <compose args...>"
+        log_error "usage: compose.sh {logger|sqlcluster|core|mqtt|portal|plugins|nmos|aes70|ember|netbox|node|both} <compose args...>"
         exit 2
         ;;
 esac

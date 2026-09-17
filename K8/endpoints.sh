@@ -198,10 +198,10 @@ emit_endpoint Broker-Mosquitto 9001/tcp 9002 copy \
     "MQTT over WebSockets (Server:Broker:MQTT)" "ws://{host}:{port}"
 
 emit_endpoint Portal-Broker 1883/tcp 1885 copy \
-    "MQTT broker (WebPortal)" "mqtt://{host}:{port}"
+    "MQTT broker (Portal-Broker)" "mqtt://{host}:{port}"
 
 emit_endpoint Portal-Broker 9001/tcp 9003 copy \
-    "MQTT over WebSockets (WebPortal)" "ws://{host}:{port}"
+    "MQTT over WebSockets (Portal-Broker)" "ws://{host}:{port}"
 
 # --- the NMOS bench, from 'Server:Discovery:NMOS/docker-compose.yml' ------
 # WHICH ROWS EXIST AND WHY NOT ALL OF THEM. That stack is the specification

@@ -133,21 +133,21 @@ PURPOSE = {
         "fails silently and calmly -- the name resolves, the healthcheck is green, and "
         "`observed 0` is indistinguishable from a quiet bench."),
 
-    # --- APK:audio:WebPortal ---------------------------------------------------
+    # --- the portal: DATABUS:Broker:MQTT/Docker/docker-compose.portal-broker.yml -
     "Portal-Broker": (
         "The portal stack's broker, on 1885/9003",
         "The third mosquitto. It mounts the CONTAINER variant of the broker config -- "
         "the one that binds every interface with anonymous access -- which is why both "
         "of its published ports carry a 127.0.0.1 prefix. Services in its own stack "
         "reach it as `broker:1883` on the compose network.",
-        "The WebPortal stack is a broker and a heartbeat, and this is the broker half: "
+        "The portal stack is a broker and the web tier it includes, and this is the broker half: "
         "it is what the heartbeat beside it publishes to when this stack is brought up "
         "on its own."),
 
     "Portal-Heartbeat": (
         "The metronome of the bench",
-        "The Missions Heartbeat timer, running as its own container from the portal "
-        "image with no ports at all -- it only ever speaks to the broker. Which tiers it "
+        "The Missions Heartbeat timer, running as its own container (APK:clock:Heartbeat) "
+        "with no ports at all -- it only ever speaks to the broker. Which tiers it "
         "actually beats is decided by the retained switches under .../Heartbeat/Enable/, "
         "written by the Missions panel, so it is started once and then left alone.",
         "It is a separate service rather than a thread inside the orchestrator because "

@@ -50,8 +50,11 @@ declare -A REPO_MAP=(
     ["yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
     ["apk-yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
     ["logger"]="DATABASE:volume:Log STORAGE|$(stack_dir 'DATABASE:volume:Log STORAGE')"
-    ["webportal"]="APK:audio:WebPortal|$(stack_dir 'APK:audio:WebPortal')"
-    ["apk-webportal"]="APK:audio:WebPortal|$(stack_dir 'APK:audio:WebPortal')"
+    # The WebPortal repository is APK:web:Static now; both old keys still open it.
+    ["static"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
+    ["webportal"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
+    ["apk-webportal"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
+    ["plugins"]="APK:plugins:Build|$(stack_dir 'APK:plugins:Build')"
 )
 
 if [ -z "$QUERY" ]; then
@@ -59,7 +62,7 @@ if [ -z "$QUERY" ]; then
     printf "%-22s %-36s %-45s\n" "KEY / NAME" "SUBMODULE PATH" "STANDALONE GIT REPO PATH"
     printf "%-22s %-36s %-45s\n" "----------------------" "------------------------------------" "---------------------------------------------"
     
-    for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo logger webportal; do
+    for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo logger static plugins; do
         IFS="|" read -r subpath repopath <<< "${REPO_MAP[$key]}"
         printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:PODS/$subpath" "$repopath"
     done

@@ -118,9 +118,21 @@ BAREMETAL_ROOT="$(first_existing \
 MQTT_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml")"
+# THE PORTAL STACK'S ROOT FILE IS THE BUS POD'S NOW. APK:audio:WebPortal became
+# APK:web:Static (content only, its own container), and the file that declared
+# Portal-Broker and `include:`d the four web stacks moved to the broker stack as
+# docker-compose.portal-broker.yml. Same project, same containers.
 PORTAL_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.portal-broker.yml" \
     "$DOCKERS_DIR/POD:APK/APK:audio:WebPortal/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml")"
+# EVERY PLUGIN CONTAINER, by node role: APK:plugins:Build `include:`s each
+# APK:plugin:* stack at the pod root. NOT in for_each_stack: nothing starts
+# without COMPOSE_PROFILES naming a role, and the build is the whole plugin
+# workspace — a verb that mounts "everything" should not also compile that.
+# Reached by `compose.sh plugins …` and validated by verify.sh.
+PLUGINS_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:APK/APK:plugins:Build/Docker/docker-compose.yml")"
 NMOS_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:protocols/PROTOCOL:discovery:NMOS/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml")"
@@ -208,8 +220,8 @@ else
     exit 1
 fi
 
-# ONE PROJECT FOR OURS (`apk-audio`): core, BareMetal, broker, WebPortal and
-# the manager. nmos/aes70/netbox/ember keep their own — third-party source we
+# ONE PROJECT FOR OURS (`apk-audio`): core, BareMetal, broker, the portal
+# (web stacks), the plugins and the manager. nmos/aes70/netbox/ember keep their own — third-party source we
 # drive but do not ship. Arrays stay separate because the stacks want opposite
 # networking (bridge vs network_mode: host for multicast).
 # ⚠️ Every named volume carries an explicit `name:`; a shared project would
@@ -222,6 +234,7 @@ COMPOSE_CORE=("${COMPOSE_BASE[@]}" -f "$COMPOSE_FILE")
 COMPOSE_NODE=("${COMPOSE_BASE[@]}" -f "$BAREMETAL_COMPOSE_FILE")
 COMPOSE_MQTT=("${COMPOSE_BASE[@]}" -f "$MQTT_COMPOSE_FILE")
 COMPOSE_PORTAL=("${COMPOSE_BASE[@]}" -f "$PORTAL_COMPOSE_FILE")
+COMPOSE_PLUGINS=("${COMPOSE_BASE[@]}" -f "$PLUGINS_COMPOSE_FILE")
 COMPOSE_NMOS=("${COMPOSE_BASE[@]}" -f "$NMOS_COMPOSE_FILE")
 
 # NMOS conformance harness (nmos-testing + the facade that depends on it) is

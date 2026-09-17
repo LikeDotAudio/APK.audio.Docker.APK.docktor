@@ -49,7 +49,9 @@ validate_stack "Node-BareMetal" "${COMPOSE_NODE[@]}"
 # runs is one it must be able to parse. The two-line version of this list is how
 # APK:audio:WebPortal carried a bind mount the daemon refuses.
 validate_stack "Server:Broker:MQTT"    "${COMPOSE_MQTT[@]}"
-validate_stack "APK:audio:WebPortal"   "${COMPOSE_PORTAL[@]}"
+validate_stack "Portal (DATABUS:Broker:MQTT portal-broker)" "${COMPOSE_PORTAL[@]}"
+# Not driven by for_each_stack, and still a file `compose.sh plugins` runs.
+validate_stack "APK:plugins:Build"     "${COMPOSE_PLUGINS[@]}"
 validate_stack "Server:Discovery:NMOS" "${COMPOSE_NMOS[@]}"
 validate_stack "PROTOCOL:DEV:AES70"    "${COMPOSE_AES70[@]}"
 validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"
