@@ -270,8 +270,8 @@ def read_stacks(quiet=True):
             continue
         # NINE, padded, in stacks.sh header order. Same tolerance as every
         # parser here, which is also what lets a manager from this tree read an
-        # older stacks.sh without the ninth column.
-        f = (line.split('\t') + [''] * 9)[:9]
+        # older stacks.sh without the ninth column. TEN since `idle`.
+        f = (line.split('\t') + [''] * 10)[:10]
         # ONE COMPOSE FILE UNDER TWO NAMES IS ONE STACK. stacks.sh walks
         # APK:PODS/, where the compatibility symlinks (APK:docktor -> Docktor,
         # Server:Broker:MQTT -> POD:databus/…) sit beside the folders they name,
@@ -283,10 +283,15 @@ def read_stacks(quiet=True):
         declared, present, running = (int(n) if n.isdigit() else 0 for n in f[4:7])
         absent = [name for name in f[7].split(',') if name]
         stopped = [name for name in f[8].split(',') if name]
+        # name:role|role — declared under a plugin role this node does not run.
+        idle = [{"container": item.split(':', 1)[0],
+                 "roles": item.split(':', 1)[1].split('|') if ':' in item else []}
+                for item in f[9].split(',') if item]
         stacks.append({"stack": f[0], "compose_file": f[1], "project": f[2],
                        "driven": f[3] == 'yes', "restorable": f[3] == 'yes',
                        "declared": declared, "present": present,
                        "running": running, "absent": absent, "stopped": stopped,
+                       "idle": idle,
                        "dark": bool(declared) and present == 0,
                        "manager": os.path.basename(f[1]) == 'docker-compose.manager.yml'})
     return stacks
@@ -748,17 +753,19 @@ def record_volume_sample(reading, quiet=True, min_gap=0):
         return ''
     usage = reading.get("usage", {})
     disk = reading.get("disk", {})
-    point = {
-        "t": int(reading.get("taken_at") or time.time()),
-        "disk_used": disk.get("used_bytes", 0),
-        "disk_total": disk.get("total_bytes", 0),
-        "images": usage.get("images", {}).get("size_bytes", 0),
-        "containers": usage.get("containers", {}).get("size_bytes", 0),
-        "volumes": usage.get("volumes", {}).get("size_bytes", 0),
-        "cache": usage.get("cache", {}).get("size_bytes", 0),
-        "vols": {row["name"]: row["size_bytes"] for row in reading.get("volumes", [])
-                 if row.get("size_bytes", -1) >= 0},
-    }
+    # A READING NOT TAKEN IS LEFT OUT, NEVER WRITTEN AS 0. A manager inside a
+    # container cannot see the host's docker root, so volumes.sh prints no disk
+    # row there; a 0 in the line drew a 470 GiB disk falling to nothing every
+    # sample, and a graph cannot tell that apart from a disk that was wiped.
+    point = {"t": int(reading.get("taken_at") or time.time())}
+    if disk.get("total_bytes"):
+        point["disk_used"] = disk.get("used_bytes", 0)
+        point["disk_total"] = disk["total_bytes"]
+    for kind in ("images", "containers", "volumes", "cache"):
+        if kind in usage:
+            point[kind] = usage[kind].get("size_bytes", 0)
+    point["vols"] = {row["name"]: row["size_bytes"] for row in reading.get("volumes", [])
+                     if row.get("size_bytes", -1) >= 0}
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with _volume_lock:
@@ -864,4 +871,164 @@ def start_volume_sampler(interval=VOLUME_SAMPLE_SECONDS):
     thread.start()
     emit("VOLUME_SAMPLER_STARTED", {"interval_seconds": interval,
                                     "history": _history_path(quiet=True)})
+    return thread
+
+
+# ---------------------------------------------------------------- cost meter
+# 💲 WHAT THE BENCH HAS COST, in CPU. A price per CPU-minute goes in, and every
+# CPU-nanosecond any container burns from then on is charged at the price in
+# force when it was burned — changing the price never reprices the past.
+# THE COUNTER, NOT THE RATE: cpu-usage.sh reads each container's cumulative CPU
+# time, and the ledger adds up DELTAS between readings, so nothing between two
+# samples is missed the way summing `docker stats` percentages would miss it.
+# A COUNTER THAT GOES DOWN IS A RESTART (same name, new id, or the same id reset):
+# the new value is what it burned since, never a negative charge.
+# UP-TIME rides alongside: container-seconds up, so "idle but running" is also
+# visible. A gap longer than two beats (the manager itself was down) is not
+# counted as up, because nothing here saw it.
+# KEPT IN THE MANAGER'S OWN STORAGE (/storage), one JSON document rewritten
+# atomically, so it survives a restart, a rebuild and a closed tab.
+COST_SAMPLE_SECONDS = 30
+COST_FILE = "cost-meter.json"
+_cost_lock = threading.Lock()
+
+
+def _cost_path(quiet=True):
+    folder = storage_directory(quiet=quiet)
+    return os.path.join(folder, COST_FILE) if folder else ''
+
+
+def _cost_blank():
+    return {"price_per_cpu_minute": 0.0, "currency": "$", "since": time.time(),
+            "cpu_ns": 0, "up_seconds": 0.0, "cost": 0.0,
+            "containers": {}, "last": {}, "last_sample_at": 0.0}
+
+
+def read_cost_ledger(quiet=True):
+    path = _cost_path(quiet=quiet)
+    ledger = _cost_blank()
+    if path and os.path.exists(path):
+        try:
+            with open(path, encoding='utf-8') as handle:
+                ledger.update(json.load(handle))
+        except (OSError, ValueError) as err:
+            emit("COST_LEDGER_READ_FAILED", {"path": path, "error": str(err)})
+    return ledger
+
+
+def _write_cost_ledger(ledger, quiet=True):
+    path = _cost_path(quiet=quiet)
+    if not path:
+        return ''
+    temporary = path + ".tmp"
+    try:
+        with open(temporary, 'w', encoding='utf-8') as handle:
+            json.dump(ledger, handle)
+        os.replace(temporary, path)
+    except OSError as err:
+        emit("COST_LEDGER_WRITE_FAILED", {"path": path, "error": str(err)})
+        return ''
+    return path
+
+
+def sample_cost(quiet=True):
+    """Read every counter once and charge the deltas. Returns the ledger."""
+    exit_code, output = run_management_script('cpu-usage.sh', quiet=quiet)
+    if exit_code != 0:
+        return None
+    now = time.time()
+    rows = []
+    for line in output.splitlines():
+        if not line or line.startswith('@EVENT '):
+            continue
+        parts = (line.split('\t') + [''] * 4)[:4]
+        rows.append((parts[0], parts[1], _int(parts[2]), _int(parts[3])))
+
+    with _cost_lock:
+        ledger = read_cost_ledger(quiet=quiet)
+        previous_at = float(ledger.get("last_sample_at") or 0)
+        elapsed = now - previous_at if previous_at else 0.0
+        counted_gap = 0.0 < elapsed <= 2 * COST_SAMPLE_SECONDS
+        price = float(ledger.get("price_per_cpu_minute") or 0)
+        last = ledger.get("last") or {}
+        seen = {}
+        for name, ident, started, usage in rows:
+            before = last.get(name)
+            if before and before.get("id") == ident and usage >= before.get("cpu_ns", 0):
+                delta = usage - before["cpu_ns"]
+            elif previous_at and started >= previous_at:
+                # Started (or restarted) since the last reading: all of it is new.
+                delta = usage
+            else:
+                # First sight of a container that was already running when the
+                # meter started watching: a baseline, not a charge.
+                delta = 0
+            seen[name] = {"id": ident, "cpu_ns": usage}
+            if delta <= 0 and not counted_gap:
+                continue
+            row = ledger["containers"].setdefault(name, {"cpu_ns": 0, "up_seconds": 0.0, "cost": 0.0})
+            charge = (delta / 60e9) * price
+            row["cpu_ns"] += delta
+            row["cost"] += charge
+            ledger["cpu_ns"] += delta
+            ledger["cost"] += charge
+            if counted_gap:
+                row["up_seconds"] += elapsed
+                ledger["up_seconds"] += elapsed
+        ledger["last"] = seen
+        ledger["last_sample_at"] = now
+        _write_cost_ledger(ledger, quiet=quiet)
+    return ledger
+
+
+def cost_summary(ledger):
+    """The ledger as the page reads it: no per-id bookkeeping, minutes not ns."""
+    containers = {name: {"cpu_minutes": row["cpu_ns"] / 60e9,
+                         "up_minutes": row["up_seconds"] / 60.0,
+                         "cost": row["cost"]}
+                  for name, row in (ledger.get("containers") or {}).items()}
+    return {"price_per_cpu_minute": ledger.get("price_per_cpu_minute", 0.0),
+            "currency": ledger.get("currency", "$"),
+            "since": ledger.get("since"),
+            "cpu_minutes": ledger.get("cpu_ns", 0) / 60e9,
+            "up_minutes": ledger.get("up_seconds", 0.0) / 60.0,
+            "cost": ledger.get("cost", 0.0),
+            "last_sample_at": ledger.get("last_sample_at"),
+            "sample_seconds": COST_SAMPLE_SECONDS,
+            "containers": containers}
+
+
+def set_cost_price(price=None, currency=None, reset=False, quiet=True):
+    """Change the price (from now on), or zero the totals and start again."""
+    with _cost_lock:
+        ledger = read_cost_ledger(quiet=quiet)
+        if reset:
+            keep_price, keep_currency = ledger["price_per_cpu_minute"], ledger["currency"]
+            baseline, baseline_at = ledger.get("last", {}), ledger.get("last_sample_at", 0.0)
+            ledger = _cost_blank()
+            ledger.update({"price_per_cpu_minute": keep_price, "currency": keep_currency,
+                           "last": baseline, "last_sample_at": baseline_at})
+        if price is not None:
+            ledger["price_per_cpu_minute"] = max(0.0, float(price))
+        if currency:
+            ledger["currency"] = str(currency)[:4]
+        _write_cost_ledger(ledger, quiet=quiet)
+    emit("COST_METER_SET", {"price_per_cpu_minute": ledger["price_per_cpu_minute"],
+                            "reset": bool(reset)})
+    return ledger
+
+
+def start_cost_sampler(interval=COST_SAMPLE_SECONDS):
+    """Charge the CPU deltas every thirty seconds, for as long as this runs."""
+    def loop():
+        while True:
+            try:
+                sample_cost(quiet=True)
+            except Exception as err:                       # pragma: no cover
+                emit("COST_SAMPLER_ERROR", {"error": str(err)})
+            time.sleep(interval)
+
+    thread = threading.Thread(target=loop, daemon=True, name="cost-sampler")
+    thread.start()
+    emit("COST_SAMPLER_STARTED", {"interval_seconds": interval, "ledger": _cost_path(quiet=True)})
     return thread

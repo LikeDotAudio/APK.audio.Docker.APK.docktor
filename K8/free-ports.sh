@@ -64,6 +64,7 @@ NETBOX_COMPOSE_FILE="$NETBOX_COMPOSE_FILE" \
 EMBER_COMPOSE_FILE="$EMBER_COMPOSE_FILE" \
 LOGGER_COMPOSE_FILE="$LOGGER_COMPOSE_FILE" \
 SQLCLUSTER_COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE" \
+ONLY_STACK_FILE="${ONLY_STACK:+$STACK_COMPOSE_FILE}" \
 python3 - "${ARGS[@]}" <<'PY'
 import os
 import re
@@ -267,18 +268,47 @@ def containers_publishing(port):
     ours to collide with -- the container side is inside its own namespace and
     colliding with it is not a thing that can happen."""
     found = []
+    own = os.path.realpath(ONLY_STACK_FILE) if ONLY_STACK_FILE else ''
     for line in (capture(['docker', 'ps', '--format',
-                          '{{.ID}}\t{{.Names}}\t{{.Ports}}']) or '').splitlines():
+                          '{{.ID}}\t{{.Names}}\t{{.Ports}}\t'
+                          '{{.Label "com.docker.compose.project.config_files"}}']) or '').splitlines():
         parts = line.split('\t')
-        if len(parts) != 3:
+        if len(parts) != 4:
             continue
-        identifier, name, mappings = parts
+        identifier, name, mappings, config_files = parts
+        # THE STACK BEING MOUNTED IS NOT IN ITS OWN WAY. A per-stack remount
+        # stopped its own healthy broker to "free" 1884, which dropped the
+        # capture agent, which exited, which made the watchdog remount the
+        # stack again — every thirty seconds. compose up keeps or recreates
+        # its own containers; only a stranger on the port is evicted.
+        if own and any(os.path.realpath(f) == own for f in config_files.split(',') if f):
+            continue
         for mapping in mappings.split(','):
             host_side = mapping.split('->')[0]
             if '->' in mapping and _host_side_covers(host_side, port):
                 found.append((identifier, name))
                 break
     return found
+
+
+ONLY_STACK_FILE = os.environ.get('ONLY_STACK_FILE', '')
+
+
+def held_by_own_stack(port):
+    """Is every container on this port one the scoped stack's compose file made?"""
+    if not ONLY_STACK_FILE:
+        return False
+    own = os.path.realpath(ONLY_STACK_FILE)
+    holders = 0
+    for line in (capture(['docker', 'ps', '--format',
+                          '{{.Ports}}\t{{.Label "com.docker.compose.project.config_files"}}']) or '').splitlines():
+        mappings, _, config_files = line.partition('\t')
+        if not any('->' in m and _host_side_covers(m.split('->')[0], port) for m in mappings.split(',')):
+            continue
+        if not any(os.path.realpath(f) == own for f in config_files.split(',') if f):
+            return False
+        holders += 1
+    return holders > 0
 
 
 def free_the_port(port):
@@ -289,6 +319,9 @@ def free_the_port(port):
     `unreachable-holder` is a port nothing here could even take hold of, and
     `held` is one that survived everything we were allowed to do to it."""
     if port_is_free(port):
+        return True, ''
+    if held_by_own_stack(port):
+        print(f"    port {port} is held by this stack's own container -- left for compose", flush=True)
         return True, ''
 
     attempted = False

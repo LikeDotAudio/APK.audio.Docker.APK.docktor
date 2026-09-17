@@ -99,6 +99,27 @@
       <div class="pill-bar-fill" id="fill-disk"></div>
       <span class="pill-content">💾 <span id="sys-disk-num">Querying…</span></span>
     </div>
+    <!-- 💲 THE CPU COST METER. Cumulative CPU time of every container, charged at
+         a price per CPU-minute; the ledger is the server's (/api/cost), so it
+         keeps counting with no tab open. Click to set the price or reset. -->
+    <div class="telemetry-pill cost-pill" id="pill-cost" role="button" tabindex="0"
+         title="CPU cost meter: click to set the price per CPU-minute">
+      <span class="pill-content">💲 <span id="sys-cost-num">set a price</span></span>
+    </div>
+    <div class="cost-panel" id="cost-panel" hidden>
+      <label>Price per CPU-minute
+        <span class="cost-input"><span id="cost-currency">$</span>
+          <input id="cost-price" type="number" min="0" step="0.0001" inputmode="decimal"></span>
+      </label>
+      <p class="cost-note">Charged on CPU actually burned by every container, from now on — a new
+         price never reprices what is already counted.</p>
+      <p class="cost-lines" id="cost-lines"></p>
+      <div class="cost-verbs">
+        <button class="btn small accent" id="cost-save">Save price</button>
+        <button class="btn small dark" id="cost-reset">Reset meter</button>
+        <button class="btn small plain" id="cost-close">Close</button>
+      </div>
+    </div>
   </div>
 
   <div class="verbs right">

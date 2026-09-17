@@ -271,6 +271,8 @@ class ManagerHandler(BaseHTTPRequestHandler):
                     hours=float(params.get("hours", ["24"])[0]),
                     fast=params.get("fast", ["0"])[0] == "1",
                     with_history=params.get("history", ["1"])[0] != "0"))
+            if route == "/api/cost":
+                return self._json(api.cost(quiet=True))
             if route == "/api/log":
                 return self._json({"records": LOG.tail(int(params.get("n", ["400"])[0]))})
             if route == "/api/stream":
@@ -319,6 +321,9 @@ class ManagerHandler(BaseHTTPRequestHandler):
         if route == "/api/chat":
             result = api.chat(body.get("message"))
             return self._json(result)
+
+        if route == "/api/cost":
+            return self._json(api.set_cost(body))
 
         if route == "/api/log/clear":
             LOG.publish("clear", "")
@@ -656,7 +661,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     a full stats sample belongs to whichever process is the long-running one.
     """
     from .readers import (start_resource_sampler, start_watchdog,
-                          start_volume_sampler)
+                          start_volume_sampler, start_cost_sampler)
 
     url = f"http://{'localhost' if bind in ('0.0.0.0', '127.0.0.1', '::') else bind}:{port}/"
     httpd = _bind_or_wait(bind, port, url, open_browser, takeover)
@@ -675,6 +680,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     # while somebody had the tab open is a graph of when the tab was open. Five
     # minutes a point, written into DockTor own named volume.
     start_volume_sampler()
+    start_cost_sampler()
     start_watchdog()
 
     if open_browser:

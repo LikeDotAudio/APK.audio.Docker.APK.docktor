@@ -107,6 +107,63 @@ PURPOSE = {
         "to apk.audio mirrors. Everything else on the bench is something this page "
         "talks to."),
 
+    # --- DATABASE:cluster:SQL -- the redundant SQL server ------------------------
+    "SQL-Node-1": (
+        "Galera node 1 of 3, and the one the cluster forms around",
+        "MariaDB 11.4 with Galera replication on its own `sql-node-1-data` volume, "
+        "reachable only on the compose network. galera-start.sh decides at boot "
+        "whether this node founds the cluster or joins it; nodes 2 and 3 start after "
+        "it, and compose stops it last so it is the one marked safe_to_bootstrap.",
+        "The database of record lives on all three nodes at once. With this one gone "
+        "the other two keep a Primary and keep writing; without any node SQL-Proxy has "
+        "no writer, Broker-SqlCapture cannot open its session and Storage-PHP answers "
+        "every corpus endpoint with an error."),
+
+    "SQL-Node-2": (
+        "Galera node 2 of 3",
+        "MariaDB 11.4 with Galera replication on its own `sql-node-2-data` volume, "
+        "started after SQL-Node-1 (service_started, never service_healthy -- a joiner "
+        "cannot be healthy until a Primary exists) and joining it by state transfer.",
+        "The second copy is what makes a node failure a non-event: two of three is "
+        "still a Primary, so writes continue while one node restarts. Down to one "
+        "node the cluster loses quorum and stops accepting writes."),
+
+    "SQL-Node-3": (
+        "Galera node 3 of 3",
+        "MariaDB 11.4 with Galera replication on its own `sql-node-3-data` volume, "
+        "joining the cluster after SQL-Node-2, and the first node compose stops.",
+        "The third vote. Galera needs a majority to stay Primary, and three nodes is "
+        "the smallest count that survives losing any one of them."),
+
+    "SQL-Proxy": (
+        "The one database address: sql-proxy:3306",
+        "ProxySQL in front of the three Galera nodes. It sends every query to a single "
+        "writer and moves the writer when that node dies; healthy means it has one. "
+        "Published to the host only on loopback, 127.0.0.1:3307.",
+        "Clients name one host and never learn which node is alive. Without it "
+        "Broker-SqlCapture fails name resolution on sql-proxy and exits, "
+        "Storage-PHP loses the database, and a node failure becomes every client's "
+        "problem instead of the proxy's."),
+
+    "SQL-Schema-Init": (
+        "The cluster schema, applied on every up. Runs once and exits",
+        "A one-shot on the node image (restart: no) that applies the delta-capture "
+        "and scanalyzer schemas through SQL-Proxy, then checks that every object each "
+        "file creates exists. Exited (0) is its success state.",
+        "It is why an empty cluster -- after a nuke, or on a new machine -- has the "
+        "bus_delta and corpus tables the capture agent and the portal expect, without "
+        "anyone running SQL by hand."),
+
+    "SQL-Backup": (
+        "Nightly hot backup, and the cluster's tool shell",
+        "Runs mariadb-backup from a Synced node at 07:30 UTC into a HOST directory "
+        "(/srv/apk-audio/sql-backups), keeping seven files, reading the node datadirs "
+        "through read-only mounts. The cluster tools live in it too: `docker exec "
+        "SQL-Backup cluster-status.sh` reports WHOLE or DEGRADED and names the writer.",
+        "Galera replicates mistakes as faithfully as data, so three nodes are not a "
+        "backup. The files land outside Docker, which is what lets them survive the "
+        "volume deletion a nuke performs."),
+
     # --- Server:Broker:MQTT -- the bus stack -----------------------------------
     "Broker-Mosquitto": (
         "The bus stack's own broker, on 1884/9002",
@@ -153,6 +210,36 @@ PURPOSE = {
         "It is a separate service rather than a thread inside the orchestrator because "
         "the orchestrator restarts whenever a panel rebuild goes wrong, and a clock that "
         "stops when something unrelated stops is not a clock."),
+
+    # --- APK:web:Gateway / OsApi / Static -- the web tier ------------------------
+    "Portal-Gateway": (
+        "The web tier's front door: one origin on 443",
+        "Caddy, published on ${APK_GATEWAY_BIND:-127.0.0.1}:443. It routes /api/os/* "
+        "and the legacy /api/* to Portal-OsApi, /mqtt to Portal-Broker's WebSockets, "
+        "/manager/* to DockTor, /api/frames/* to the orchestrator on the BareMetal "
+        "node, and everything else to Portal-WebStatic, and it requires auth on writes.",
+        "It gives the editor, the OS shell, the bus and DockTor one origin, so no page "
+        "guesses which server it is talking to and no browser hits a mixed-origin "
+        "wall. The other two web containers publish no ports; without this one the "
+        "web tier cannot be reached at all."),
+
+    "Portal-OsApi": (
+        "The OS shell's API: server.py as a container",
+        "Python on the compose bridge serving /api/os/* (and the older unprefixed "
+        "/api/*) behind Portal-Gateway, publishing no port. The APK:OS and APK:FrontEnd "
+        "trees are in the image at /srv/portal; artifacts and GANTT data are kept on "
+        "named volumes.",
+        "Portal-WebStatic can only hand out files. Everything the OS shell does that "
+        "changes something -- saving an artifact, editing the GANTT -- is an API call "
+        "this container answers."),
+
+    "Portal-WebStatic": (
+        "The web tier's files",
+        "nginx over APK:FrontEnd at /, APK:OS and the Softapps a browser can open "
+        "as-is, all COPYed into the image. No API and no ports: it sits behind "
+        "Portal-Gateway, and a JS or CSS edit is a fast image rebuild.",
+        "It is every page the portal shows. Without it the gateway still answers but "
+        "has nothing to serve outside /api and /manager."),
 
     # --- APK:BareMetal -- the terminal machine ---------------------------------
     "Node-BareMetal": (
@@ -311,6 +398,182 @@ PURPOSE = {
         "before anything else mounts -- for_each_stack starts it first. Log files "
         "written under /logs survive rebuilds, panics and nukes of the containers, "
         "because they live in the checkout rather than in any container."),
+
+    # --- APK:plugin:* -- one container per plugin, started by node role --------
+    # Every plugin runs a binary from apk-plugins:local (or apk-plugins-python:local)
+    # built by APK:plugins:Build, and speaks to the broker. The role is its
+    # compose profile; APKAUDIO_PLUGIN_ROLES in _common.sh decides which run here.
+    "Plugin-AES70": (
+        "The AES70 (OCP.1) bridge. Role: control",
+        "apk-aes70: one outbound OCP.1 TCP client to the device named in config.ini "
+        "(APK_AES70_HOST / APK_AES70_PORT), republishing it under the plugin's topic. "
+        "Host networking so 127.0.0.1 in config.ini still means the host; it listens on nothing.",
+        "An AES70 device speaks OCP.1, not MQTT. Without this bridge its parameters are "
+        "not on the bus and nothing on the bench can read or move them."),
+
+    "Plugin-APPLETV": (
+        "AppleTV browse and control. Role: vendors",
+        "apk-appletv: finds AppleTVs on the LAN and controls them -- browse and control "
+        "in one process -- publishing to the broker only.",
+        "One process on purpose -- two would be two publishers on one retained tree. "
+        "Without it the AppleTVs in the room are absent from the bus."),
+
+    "Plugin-CHROMECAST": (
+        "Chromecast browse and control. Role: vendors",
+        "apk-chromecast: finds Chromecasts on the LAN and controls them -- browse and "
+        "control in one process -- publishing to the broker only.",
+        "Same single-publisher reason as AppleTV. Without it the Chromecasts in the "
+        "room are absent from the bus."),
+
+    "Plugin-DANTE": (
+        "Dante discovery: mDNS service tags and SAP. Role: discovery",
+        "apk-dante on host networking, listening for Audinate mDNS service tags and "
+        "SAP announcements and publishing the Dante devices and flows it finds.",
+        "mDNS and SAP multicast do not cross a Docker bridge, which is why it is on the "
+        "host. Without it the bench cannot see the Dante devices on the audio network."),
+
+    "Plugin-DESKTOP_MONITOR": (
+        "This machine's own telemetry. No role: every node",
+        "linux_desktop_monitor.py on apk-plugins-python:local, host networking, "
+        "publishing CPU, RAM, disks, network counters, temperatures and uptime. "
+        "Not built on the plugin runner, so its healthcheck is disabled.",
+        "Every node reports itself as a machine whatever role it plays. Host "
+        "networking is the measurement: interface counters and hostname are only the "
+        "host's inside the host's namespace. Without it the node is a name with no vitals."),
+
+    "Plugin-DNSSD": (
+        "DNS-SD continuous browse. Role: discovery",
+        "apk-dnssd: browses every DNS-SD service type on the LAN continuously and "
+        "publishes what it finds to the broker.",
+        "The general-purpose finder that replaced the retired discovery:MDNS stub; "
+        "without it services that announce over mDNS never appear on the bus."),
+
+    "Plugin-MIDI": (
+        "The MIDI bridge: ports <-> MQTT. Role: control",
+        "apk-midi on the compose bridge with /dev/snd, holding the ALSA sequencer: "
+        "input from MIDI ports is published under .../midi/Device/Input/..., and "
+        ".../midi/Device/Output/# is sent to the ports.",
+        "It is the only container that holds the ALSA sequencer, so a MIDI control "
+        "surface reaches the bus through this and nothing else."),
+
+    "Plugin-MILAN": (
+        "AVB / Milan AVDECC discovery. Role: l2",
+        "apk-milan on host networking with NET_RAW and NET_ADMIN, reading AVDECC at "
+        "Layer 2 over AF_PACKET and publishing under the bus token avb.",
+        "AVDECC is not IP, so no socket-level listener can hear it. One of only two "
+        "containers holding a raw capability; without it Milan entities are invisible."),
+
+    "Plugin-NETBOX": (
+        "The NetBox DCIM agent. Role: vendors",
+        "netbox-agent on the compose bridge, reading the NetBox inventory at "
+        "APK_NETBOX_URL (default the bench NetBox on 8081) with NETBOX_API_TOKEN from "
+        "the environment, and putting it on the bus.",
+        "It joins the inventory to the live bus: what NetBox says is installed can be "
+        "compared with what discovery actually hears. Without it the inventory is "
+        "only visible in NetBox's own UI."),
+
+    "Plugin-NETBOX-Sync": (
+        "Bus -> NetBox writer. Role: netbox-sync. Runs once and exits",
+        "netbox-sync, a one-shot (restart: no) beside Plugin-NETBOX: it drains what "
+        "discovery has put on the bus and creates the devices in NetBox. It needs "
+        "NETBOX_API_TOKEN_WRITE -- the read token gets 403 -- and exits at once without it.",
+        "It is how discovered hardware becomes inventory without typing it in. Its own "
+        "role because it WRITES to NetBox, so a node runs it only on purpose."),
+
+    "Plugin-NETGEAR": (
+        "Netgear M4350 switch tables. Role: switches",
+        "netgear-agent for one switch (APK_NETGEAR_HOST), reading its port, PoE and "
+        "neighbour tables with NETGEAR_USERNAME / NETGEAR_PASSWORD and publishing them. "
+        "One container per switch; it exits if the password is empty.",
+        "It shows which device is on which switch port and what PoE it draws. Meant to "
+        "replace the poll APK:OS/netgear_switches.py still does inside the web server."),
+
+    "Plugin-NMOS": (
+        "NMOS mDNS browse agent. Role: discovery",
+        "apk-nmos on host networking, finding NMOS APIs (registries, nodes) announced "
+        "over mDNS and publishing them in the nmos bus table.",
+        "It answers where the NMOS registries and nodes on the LAN are. Its sibling "
+        "Plugin-NMOS_CONTROL reads what is registered inside them; `role` separates their rows."),
+
+    "Plugin-NMOS_CONTROL": (
+        "NMOS IS-04 registry agent. Role: discovery",
+        "apk-nmos-control, reading the IS-04 Query API (APK_NMOS_REGISTRY_HOST:"
+        "APK_NMOS_QUERY_PORT, default the bench registry on 127.0.0.1:3211) and "
+        "publishing one row per Device into the nmos table under bus token nmos-control.",
+        "Browse finds a registry; this reads what is registered in it. Without it the "
+        "bus knows the registry exists and nothing about the devices and senders inside."),
+
+    "Plugin-OSC": (
+        "The OSC bridge. Role: control",
+        "apk-osc on the compose bridge, receiving OSC over UDP on a loopback-published "
+        "port (APK_OSC_PUBLISH / APK_OSC_PORT, default 9000) and republishing it to "
+        "APK.audio/Protocol/GuiOsc/....",
+        "It is how an OSC controller or app drives the bench. It used to sit on the web "
+        "portal's UDP 8000 inside the orchestrator."),
+
+    "Plugin-PLAYSTATION": (
+        "PlayStation discovery, power state and wake. Role: vendors",
+        "apkaudio-playstation, finding PlayStations on the LAN, reporting whether each "
+        "is on or in rest mode, and waking one on request over the bus.",
+        "Without it a PlayStation in the room is neither visible nor wakeable from the bench."),
+
+    "Plugin-PRINTERS": (
+        "Printer discovery. Role: discovery",
+        "apk-printers: finds network printers and publishes them to the broker.",
+        "It puts the printers on the LAN in the same inventory as everything else "
+        "discovery finds, instead of leaving them to each machine's print dialog."),
+
+    "Plugin-PTP": (
+        "PTP v1, v2 and gPTP listener. Role: l2",
+        "apk-ptp on host networking with NET_RAW and NET_BIND_SERVICE, listening to "
+        "PTP on 319/320 and gPTP at Layer 2, and publishing the clocks and grandmaster it hears.",
+        "Every AES67, Dante and AVB stream depends on a shared clock. This is how the "
+        "bench sees who is grandmaster and which domain each device follows; it is the "
+        "other of the two raw-capability containers."),
+
+    "Plugin-RAVENNA": (
+        "RAVENNA / AES67 browse. Role: discovery",
+        "apk-ravenna on host networking, browsing RAVENNA and AES67 streams and "
+        "devices and publishing them.",
+        "Without it AES67 and RAVENNA sources on the network are invisible to the bench."),
+
+    "Plugin-SAP": (
+        "SAP passive multicast listener. Role: discovery",
+        "apk-sap on host networking, listening to SAP announcements on multicast and "
+        "publishing the SDP stream descriptions they carry.",
+        "SAP is how AES67 senders advertise a stream. Without it those streams exist on "
+        "the wire and nowhere on the bus."),
+
+    "Plugin-SOUNDCARD_IN": (
+        "Sound card capture offered over WebRTC. Role: sound",
+        "soundcard-to-webrtc on host networking with /dev/snd, capturing the ALSA "
+        "default input and offering it as WebRTC in room APK_SOUNDCARD_ROOM, "
+        "signalled over the broker. It exits if the default card has no capture device.",
+        "It lets a browser tab listen to a physical input on this machine. Host "
+        "networking because WebRTC ICE needs the host's real addresses."),
+
+    "Plugin-SOUNDCARD_OUT": (
+        "WebRTC audio played on a sound card. Role: sound",
+        "webrtc-to-soundcard with /dev/snd, joining room APK_SOUNDCARD_ROOM over the "
+        "broker and playing what it receives on the ALSA default output. It exits if "
+        "that output cannot be opened.",
+        "The other half of SOUNDCARD_IN: audio from a browser or another node comes "
+        "out of this machine's speakers."),
+
+    "Plugin-SPACENAVIGATOR": (
+        "3Dconnexion SpaceNavigator on the bus. Role: puck",
+        "spacenavigator_probe.py on apk-plugins-python:local, reading the device at "
+        "APK_SPACENAVIGATOR_DEVICE (by-id path) and publishing six axes and two buttons. "
+        "Docker refuses to create it when that device is not plugged in.",
+        "It turns the puck into a controller anything on the bus can use. Its own "
+        "role, included in no default, because a device named in devices: must exist."),
+
+    "Plugin-TRENDNET": (
+        "TRENDnet switch tables over SNMP. Role: switches",
+        "trendnet-agent for one switch (APK_TRENDNET_HOST), reading its tables over SNMP "
+        "and publishing them. One container per switch.",
+        "It gives TRENDnet switches the same port-to-device view Plugin-NETGEAR gives "
+        "Netgear; with no host set it has nothing to poll."),
 
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (

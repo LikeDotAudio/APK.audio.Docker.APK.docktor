@@ -133,6 +133,16 @@ PORTAL_COMPOSE_FILE="$(first_existing \
 # Reached by `compose.sh plugins …` and validated by verify.sh.
 PLUGINS_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:APK/APK:plugins:Build/Docker/docker-compose.yml")"
+# THE PLUGIN ROLES THIS NODE RUNS. stacks.sh counts a plugin in one of these as
+# expected (so the page and the watchdog bring it back) and one outside them as
+# idle — drawn grey, with a start button, never remounted on its own.
+# NOT EVERY ROLE BY DEFAULT: `sound` needs a capture card ALSA can open, `puck`
+# a SpaceNavigator plugged in, `switches` NETGEAR_PASSWORD, `netbox-sync`
+# NETBOX_API_TOKEN_WRITE. Without them those containers exit at once, and an
+# expected container that exits is one the watchdog remounts every 30s.
+# Export this with the extra roles on a node that has them.
+: "${APKAUDIO_PLUGIN_ROLES:=discovery,l2,vendors,control,instruments}"
+export APKAUDIO_PLUGIN_ROLES
 NMOS_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:protocols/PROTOCOL:discovery:NMOS/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml")"
@@ -235,6 +245,7 @@ COMPOSE_NODE=("${COMPOSE_BASE[@]}" -f "$BAREMETAL_COMPOSE_FILE")
 COMPOSE_MQTT=("${COMPOSE_BASE[@]}" -f "$MQTT_COMPOSE_FILE")
 COMPOSE_PORTAL=("${COMPOSE_BASE[@]}" -f "$PORTAL_COMPOSE_FILE")
 COMPOSE_PLUGINS=("${COMPOSE_BASE[@]}" -f "$PLUGINS_COMPOSE_FILE")
+for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "$_apk_role"); done
 COMPOSE_NMOS=("${COMPOSE_BASE[@]}" -f "$NMOS_COMPOSE_FILE")
 
 # NMOS conformance harness (nmos-testing + the facade that depends on it) is
@@ -563,9 +574,9 @@ for_each_stack() {
     # manager is what brings the logger back, so it must be able to start on a
     # bench where that volume does not exist yet.
     if [ "$direction" = "reverse" ]; then
-        order=(node netbox ember aes70 nmos portal mqtt core sqlcluster logger docktor)
+        order=(plugins node netbox ember aes70 nmos portal mqtt core sqlcluster logger docktor)
     else
-        order=(docktor logger sqlcluster core mqtt portal nmos aes70 ember netbox node)
+        order=(docktor logger sqlcluster core mqtt portal nmos aes70 ember netbox node plugins)
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
@@ -599,6 +610,7 @@ for_each_stack() {
             netbox) compose=("${COMPOSE_NETBOX[@]}");;
             ember)  compose=("${COMPOSE_EMBER[@]}");;
             node)   compose=("${COMPOSE_NODE[@]}");;
+            plugins) compose=("${COMPOSE_PLUGINS[@]}");;
             *)      log_error "for_each_stack: no such stack '$stack'"; worst=2; continue;;
         esac
         "${compose[@]}" "$@"

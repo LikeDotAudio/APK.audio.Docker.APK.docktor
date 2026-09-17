@@ -75,15 +75,15 @@ const state = {
   autoRebuildTimer: null,
   autoRebuildSeconds: 30,
   autoRebuildKey: null,
-  autoRebuildCancelled: false,
+  autoRebuildCancelled: true,
   autoRemountStoppedTimer: null,
   autoRemountStoppedSeconds: 30,
   autoRemountStoppedKey: null,
-  autoRemountStoppedCancelled: false,
+  autoRemountStoppedCancelled: true,
   autoRemountDarkTimer: null,
   autoRemountDarkSeconds: 30,
   autoRemountDarkKey: null,
-  autoRemountDarkCancelled: false,
+  autoRemountDarkCancelled: true,
   meterTimer: null,
   followTimer: null,
   busy: 0,          // a DEPTH of runs in flight, not a flag -- see follow()
@@ -657,7 +657,8 @@ function renderBenchHealth(snapshot) {
          Every container writing to <code>${escapeHTML(disk.root || "")}</code> shares it, and a
          database that cannot write does not warn — it exits. Reclaim layers with Prune, or find
          the consumer before this becomes an outage.</p>` : "",
-    stopped.length ? `
+    // Countdowns off: the disk warning above stays, the remount band does not.
+    stopped.length && state.autoTimers ? `
       <div class="dark-stack auto-remount-stopped-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
           <div>
@@ -692,6 +693,7 @@ function renderBenchHealth(snapshot) {
       </div>
       ` : "",
   ].join("");
+  host.hidden = !host.innerHTML.trim();
 
   const stoppedNowBtn = $("#stopped-remount-now", host);
   if (stoppedNowBtn) {
@@ -818,7 +820,7 @@ function renderDarkStacks(snapshot) {
          and brings up each empty stack alone, so this page does not count down to a
          whole-bench <code>up</code> of its own. <b>Remount Now</b> is still here if you want it sooner.</p>
       <p><button id="dark-remount-now" class="btn small accent" style="white-space: nowrap;">🚀 Remount Now</button></p>
-      ` : `
+      ` : !state.autoTimers ? "" : `
       <div class="dark-stack auto-remount-dark-banner" style="background: rgba(245, 158, 11, 0.15); border: 1px solid #f59e0b; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
           <div>
@@ -1013,7 +1015,10 @@ function renderStaleImages(snapshot) {
     state.autoRebuildTimer = null;
   }
 
-  if (!stale.length) {
+  // COUNTDOWNS OFF, NO BANNER. A "Scheduled … PAUSED" band for a schedule
+  // nobody turned on is a red warning about a choice already made; the stale
+  // verdict still lands on each card and in the detail pane.
+  if (!stale.length || !state.autoTimers) {
     if (state.autoRebuildTimer) {
       clearInterval(state.autoRebuildTimer);
       state.autoRebuildTimer = null;
@@ -1304,6 +1309,10 @@ function renderGrid(snapshot) {
       .map((label) => ({ label, stack: label, hue: "#e5484d", ours: true, containers: [] })),
     ...(snapshot.groups || []),
   ];
+  // IDLE PODS, LAST AND GREY: plugin stacks declared under a role this node
+  // does not run. Drawn so "is it discovered?" has an answer on the page, and
+  // not counted as a fault.
+  const idle = (snapshot.idle_stacks || []).filter((row) => !known.has(row.stack) && !issues.has(row.stack));
   if (!snapshot.count && !groups.length) {
     // AND THE BAND IS ALREADY DRAWN, above this guard on purpose: an empty
     // bench is exactly when "which stacks are missing" is the only question,
@@ -1364,7 +1373,22 @@ function renderGrid(snapshot) {
       </section>`;
   }).join("");
 
-  host.innerHTML = lassoHtml;
+  const idleHtml = idle.map((row) => {
+    const roles = [...new Set(row.idle.flatMap((c) => c.roles))].join(", ");
+    return `
+      <section class="lasso idle" style="--group: #6f7480" data-stack="${escapeAttr(row.stack)}">
+        <header class="lasso-head">
+          <span class="group-pill">${escapeHTML(row.stack.replace(/^APK:plugin:/, ""))}</span>
+          <span class="lasso-stack">${escapeHTML(row.stack)}</span>
+          <span class="lasso-count">not started — role: ${escapeHTML(roles || "none")}</span>
+        </header>
+        <p class="idle-names">${escapeHTML(row.idle.map((c) => c.container).join(" · "))}</p>
+        <p class="dark-fix"><button class="btn small" data-saction="up-stack"
+             data-stack="${escapeAttr(row.stack)}"></button></p>
+      </section>`;
+  }).join("");
+
+  host.innerHTML = lassoHtml + idleHtml;
   renderPodFilter(groups, issues);
   state.pods = { groups, issues };
 
@@ -1612,6 +1636,88 @@ function bytes(text) {
   const found = /([\d.]+)\s*([kmgt]?i?b)/i.exec(String(text ?? ""));
   const scale = found && BYTE_UNITS[found[2].toLowerCase()];
   return scale ? parseFloat(found[1]) * scale : 0;
+}
+
+/* ------------------------------------------------------------ sorting tables
+ * EVERY TABLE ON THE PAGE SORTS, and no renderer has to ask for it: a click on
+ * any <th> sorts that column, a second click reverses it, a third puts the
+ * server's order back. THE ORDER OUTLIVES THE REDRAW — every table here is
+ * rebuilt with innerHTML on the next scan, and a sort that snapped back every
+ * few seconds would be a sort nobody could read. So the choice is kept by
+ * table (its id, else its class) and re-applied whenever a table arrives.
+ * A CELL MAY SAY WHAT IT SORTS BY with data-sort; otherwise its text is read —
+ * a byte count as bytes (so 758 KiB sits below 7.40 MiB), a leading number as
+ * a number, anything else as words, and numbers ahead of words ("nothing
+ * attached" is not a count of zero). */
+const tableSorts = new Map();
+
+const tableKey = (table) => table.id || table.className || "table";
+
+function cellValue(cell) {
+  const text = cell ? (cell.dataset.sort ?? cell.textContent).trim() : "";
+  if (/^-?[\d.]+\s*[kmgt]?i?b\b/i.test(text)) return bytes(text);
+  const n = parseFloat(text);
+  return Number.isFinite(n) && /^-?[\d.]/.test(text) ? n : text.toLowerCase();
+}
+
+function applyTableSort(table) {
+  const sort = tableSorts.get(tableKey(table));
+  const heads = table.tHead ? [...table.tHead.rows[0].cells] : [];
+  heads.forEach((th, index) => {
+    th.classList.add("sortable");
+    th.dataset.dir = sort && sort.column === index ? sort.dir : "";
+  });
+  const body = table.tBodies[0];
+  if (!body) return;
+  if (!body.dataset.serverOrder) {
+    [...body.rows].forEach((row, index) => { row.dataset.serverIndex = index; });
+    body.dataset.serverOrder = "1";
+  }
+  const rows = [...body.rows];
+  rows.sort(sort
+    ? (first, second) => {
+        const a = cellValue(first.cells[sort.column]);
+        const b = cellValue(second.cells[sort.column]);
+        const order = typeof a === typeof b
+          ? (typeof a === "number" ? a - b : a.localeCompare(b, undefined, { numeric: true }))
+          : (typeof a === "number" ? -1 : 1);
+        return (sort.dir === "desc" ? -order : order)
+          || first.dataset.serverIndex - second.dataset.serverIndex;
+      }
+    : (first, second) => first.dataset.serverIndex - second.dataset.serverIndex);
+  rows.forEach((row) => body.appendChild(row));
+}
+
+function wireTableSorting() {
+  document.addEventListener("click", (event) => {
+    const th = event.target.closest("thead th");
+    if (!th || event.target.closest("a, button, input, select")) return;
+    const table = th.closest("table");
+    const key = tableKey(table);
+    const column = th.cellIndex;
+    const was = tableSorts.get(key);
+    // A NUMBER COLUMN OPENS LARGEST FIRST — the question asked of a size or a
+    // CPU column is "what is the biggest" — and a word column opens A to Z.
+    const firstRow = table.tBodies[0] && table.tBodies[0].rows[0];
+    const opens = firstRow && typeof cellValue(firstRow.cells[column]) === "number" ? "desc" : "asc";
+    const next = !was || was.column !== column ? opens
+      : was.dir === opens ? (opens === "asc" ? "desc" : "asc") : null;
+    if (next) tableSorts.set(key, { column, dir: next });
+    else tableSorts.delete(key);
+    applyTableSort(table);
+  });
+  // A redraw hands back a fresh <table> in the server's order; sort it before
+  // it is painted. Only added tables are touched, so reordering rows (which is
+  // itself a mutation) does not call back into a sort.
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        (node.tagName === "TABLE" ? [node] : node.querySelectorAll("table")).forEach(applyTableSort);
+      }
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+  $$("table").forEach(applyTableSort);
 }
 
 function humanBytes(value) {
@@ -2053,7 +2159,7 @@ function volumeHue(index) {
  * this tab costs nothing but a repaint. */
 function volumeCadence(on) {
   if (state.volumeTimer) { clearInterval(state.volumeTimer); state.volumeTimer = null; }
-  if (!on) return;
+  if (!on || document.hidden) return;
   loadVolumes();
   state.volumeTimer = setInterval(loadVolumes, VOLUME_REFRESH_MS);
 }
@@ -2088,7 +2194,14 @@ function volumeSeries() {
     label: row.label,
     group: "total",
     hue: volumeHue(index),
-    values: points.map((point) => [point.t, Number(point[row.key]) || 0]),
+    // A KEY THE SAMPLE LEFT OUT WAS NOT MEASURED, and the line steps over it
+    // rather than dropping to zero — see record_volume_sample in readers.py.
+    values: points
+      // Lines written before that rule carry disk_used 0 beside disk_total 0,
+      // which is the same unmeasured reading spelled the old way.
+      .filter((point) => point[row.key] !== undefined && point[row.key] !== null
+        && !(row.key === "disk_used" && !point.disk_total))
+      .map((point) => [point.t, Number(point[row.key]) || 0]),
   }));
 
   const sizes = (latest && latest.vols) || {};
@@ -2266,7 +2379,7 @@ function volumeTableHTML() {
   const body = rows.map((row) => `
     <tr class="role-${escapeAttr(row.role)}">
       <td class="name">${escapeHTML(row.name)}</td>
-      <td class="size">${row.size_bytes < 0
+      <td class="size" data-sort="${Number(row.size_bytes)}">${row.size_bytes < 0
           ? `<span class="down" title="docker system df -v skips bind-backed volumes, and this folder could not be walked">not measured</span>`
           : escapeHTML(humanBytes(row.size_bytes))}
           ${row.measured === "folder" ? `<small title="walked with du, because docker will not size a bind-backed volume">du</small>` : ""}</td>
@@ -2307,8 +2420,11 @@ function renderVolumes() {
     <div class="vol-graph">
       <div class="vol-head">
         <h3>📈 Storage over time
-          <small>${escapeHTML(humanBytes(disk.used_bytes || 0))} of ${escapeHTML(humanBytes(disk.total_bytes || 0))}
-            used on ${escapeHTML(disk.data_root || "the docker root")} · one sample every ${every} min</small></h3>
+          <small>${disk.total_bytes
+              ? `${escapeHTML(humanBytes(disk.used_bytes || 0))} of ${escapeHTML(humanBytes(disk.total_bytes))}
+                 used on ${escapeHTML(disk.data_root || "the docker root")}`
+              : `the disk under ${escapeHTML(disk.data_root || "the docker root")} is not visible to this manager`}
+            · one sample every ${every} min</small></h3>
         <div class="vol-windows">${VOLUME_WINDOWS.map(([hours, label]) => `
           <button class="btn plain micro ${state.volumeHours === hours ? "on" : ""}" data-hours="${hours}">${label}</button>`).join("")}
           <button class="btn plain micro scale" id="vol-scale"
@@ -2561,6 +2677,11 @@ function renderDetail(detail) {
   html += row("State", `${escapeHTML(s.status)} | Running: ${s.running} | Exit Code: ${s.exit_code}`);
   html += row("Health", escapeHTML(detail.health) + ` | Restarts: ${s.restarts} | OOM Killed: ${s.oom_killed}`);
   html += row("Created", escapeHTML(detail.created));
+  const spent = state.cost && state.cost.containers && state.cost.containers[detail.name];
+  if (spent) {
+    html += row("Cost", `${money(spent.cost, state.cost.currency)} · ${minutesText(spent.cpu_minutes)} CPU · `
+                + `${minutesText(spent.up_minutes)} up <span class="dim">(since the meter started)</span>`);
+  }
   html += row("Image", escapeHTML(detail.image));
 
   html += planeHTML(detail.plane);
@@ -2820,7 +2941,10 @@ function armScan(seconds) {
   clearInterval(state.scanTimer);
   state.scanPhase = null;
   state.scanTimer = null;
-  if (!seconds) return;
+  // A HIDDEN TAB KEEPS ITS CADENCE AND DROPS ITS TIMER: every beat is four
+  // scripts against every container on the server, for a grid nobody can see.
+  // The choice survives in scanEvery and restTimers() re-arms it on the way back.
+  if (!seconds || document.hidden) return;
 
   const run = () => { state.scanTimer = setInterval(() => scan({ quiet: true }), seconds * 1000); };
   if (60 % seconds) { run(); return; }
@@ -2829,6 +2953,22 @@ function armScan(seconds) {
   // remainder is the distance to the next mark in every time zone.
   const step = seconds * 1000;
   state.scanPhase = setTimeout(() => { scan({ quiet: true }); run(); }, step - (Date.now() % step));
+}
+
+/* A TAB NOBODY IS LOOKING AT DOES NOT POLL. Measured on 2026-09-17
+ * (PLAN-3319.01): the dashboard left open behind another tab still ran a full
+ * scan every 15 s, meters every 5 s and the volume walk every minute, and the
+ * server spent them on docker for a page that paints nothing. Hidden, the scan,
+ * meter and volume timers are dropped — the SSE log stream stays open, because
+ * it costs nothing until the server has something to say. Visible again, one
+ * scan runs at once so the grid is not a quarter-minute stale, and each
+ * cadence is re-armed from the choice it kept. A run in flight (follow) is
+ * left alone: its 2 s beat ends with the run. */
+function restTimers() {
+  armScan(state.scanEvery);
+  armMeters(Boolean(state.meters));
+  volumeCadence(state.view === "volumes" && !document.hidden);
+  if (!document.hidden && state.scanEvery) scan({ quiet: true });
 }
 
 /* HOW MUCH OF THE CARD TO DRAW, as a CLASS ON THE GRID rather than a branch in
@@ -2856,7 +2996,7 @@ function armMeters(on) {
   $("#live-resources").classList.toggle("on", on);
   $("#live-resources").textContent = on ? "📈 Live Resources (5s active)" : "📈 Live Resources (CPU / RAM)";
   clearInterval(state.meterTimer);
-  state.meterTimer = on
+  state.meterTimer = on && !document.hidden
     ? setInterval(() => get("/api/resources").then(applyMeters).catch(() => {}), 5000)
     : null;
 }
@@ -3111,7 +3251,74 @@ function escapeAttr(text) {
   return escapeHTML(text).replace(/"/g, "&quot;");
 }
 
+/* 💲 THE COST METER. The server keeps the ledger (readers.sample_cost, every
+ * 30s, in /storage), so this only reads it and sets the price. CPU-minutes are
+ * the charge; container up-minutes are shown beside them so an idle-but-running
+ * bench is visible too. */
+function money(value, currency) {
+  const v = Number(value) || 0;
+  const digits = v !== 0 && Math.abs(v) < 1 ? 4 : 2;
+  return `${currency || "$"}${v.toFixed(digits)}`;
+}
+
+function minutesText(minutes) {
+  const m = Number(minutes) || 0;
+  return m >= 120 ? `${(m / 60).toFixed(1)} h` : `${m.toFixed(1)} min`;
+}
+
+function renderCost(meter) {
+  state.cost = meter;
+  const el = $("#sys-cost-num");
+  if (!el || !meter) return;
+  const since = meter.since ? new Date(meter.since * 1000).toLocaleString([], {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  el.textContent = meter.price_per_cpu_minute > 0
+    ? `${money(meter.cost, meter.currency)} · ${minutesText(meter.cpu_minutes)} CPU`
+    : `${minutesText(meter.cpu_minutes)} CPU · set a price`;
+  $("#pill-cost").title = `CPU cost since ${since}: ${minutesText(meter.cpu_minutes)} of CPU, `
+    + `${minutesText(meter.up_minutes)} of container up-time, at `
+    + `${money(meter.price_per_cpu_minute, meter.currency)}/CPU-minute. Click to change.`;
+  const lines = $("#cost-lines");
+  if (lines) {
+    const top = Object.entries(meter.containers || {})
+      .sort((a, b) => b[1].cpu_minutes - a[1].cpu_minutes).slice(0, 5)
+      .map(([name, row]) => `${escapeHTML(name)} — ${minutesText(row.cpu_minutes)} · ${money(row.cost, meter.currency)}`);
+    lines.innerHTML = `<b>${money(meter.cost, meter.currency)}</b> since ${escapeHTML(since)} ·
+      ${minutesText(meter.cpu_minutes)} CPU · ${minutesText(meter.up_minutes)} up<br>
+      ${top.length ? `Top: ${top.join("<br>")}` : "No CPU counted yet — the first reading is a baseline."}`;
+  }
+}
+
+function wireCost() {
+  const panel = $("#cost-panel");
+  const open = () => {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden && state.cost) {
+      $("#cost-price").value = state.cost.price_per_cpu_minute || "";
+      $("#cost-currency").textContent = state.cost.currency || "$";
+      $("#cost-price").focus();
+    }
+  };
+  $("#pill-cost").onclick = open;
+  $("#pill-cost").onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } };
+  $("#cost-close").onclick = () => { panel.hidden = true; };
+  $("#cost-save").onclick = async () => {
+    const value = $("#cost-price").value;
+    if (value === "" || Number(value) < 0) return;
+    renderCost(await post("/api/cost", { price_per_cpu_minute: Number(value) }));
+  };
+  $("#cost-price").onkeydown = (event) => { if (event.key === "Enter") $("#cost-save").click(); };
+  $("#cost-reset").onclick = async () => {
+    if (!confirm("Zero the cost meter and start counting from now? The price is kept.")) return;
+    renderCost(await post("/api/cost", { reset: true }));
+  };
+  const refresh = () => get("/api/cost").then(renderCost).catch(() => {});
+  refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+}
+
 function wireMenus() {
+  wireCost();
   let savedAuto = null;
   try { savedAuto = localStorage.getItem("apk.manager.autoTimers"); } catch { /* no store */ }
   setAutoTimers(savedAuto === "1");
@@ -3263,12 +3470,14 @@ async function loadWebPagesOnce() {
 
 async function boot() {
   wireMenus();
+  wireTableSorting();
   // Before the stream, so the first line to arrive already has a dial to be
   // the colour of.
   buildPaceDial();
   syncPaceClock();
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) syncPaceClock();
+    restTimers();
   });
   openStream();
 

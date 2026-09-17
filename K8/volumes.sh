@@ -151,6 +151,14 @@ while IFS=$'\x1f' read -r name driver mount device labels; do
 
     size="${VOLUME_SIZE[$name]:--1}"
     links="${VOLUME_LINKS[$name]:-0}"
+    # THE SAME SKIP COSTS THE LINK COUNT. A volume `system df -v` leaves out
+    # has no Links either, and the 0 it defaulted to drew the storage and log
+    # volumes — mounted by DockTor and by every logging container — as
+    # "nothing attached". Asked of `ps -a` instead, stopped containers
+    # included, which is what system df counts. Only for the skipped few.
+    if [ $FAST -eq 0 ] && [ -z "${VOLUME_LINKS[$name]+set}" ]; then
+        links="$(docker ps -aq --filter "volume=$name" 2>/dev/null | wc -l)"
+    fi
     measured=docker
     if [ "$size" = "-1" ]; then
         measured=none

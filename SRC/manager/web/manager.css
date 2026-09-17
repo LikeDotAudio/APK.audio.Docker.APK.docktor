@@ -1270,3 +1270,51 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
  * says "Stop This Pod" should not leave which pod to inference. */
 .lasso-stack { font: 500 10px var(--mono); color: var(--dimmer); }
 .lasso-nostack { font: 400 10px var(--sans); color: var(--dimmer); font-style: italic; }
+
+/* IDLE PODS: declared, deliberately not started on this node. Grey and quiet —
+ * present so discovery is visible, never styled as a fault. */
+.cards > .lasso.idle { opacity: .55; border-style: dashed; }
+.cards > .lasso.idle:hover { opacity: .9; }
+.lasso.idle .idle-names { margin: 0 2px 6px; font: 10.5px var(--mono); color: var(--dimmer); }
+.lasso.idle .dark-fix { margin: 0; }
+
+/* 💲 THE COST PILL AND ITS PANEL. The pill is a button; the panel drops under
+ * the telemetry strip and is the only place the price is typed. */
+.cost-pill { cursor: pointer; }
+.cost-pill:hover, .cost-pill:focus-visible { border-color: var(--accent, #f59e0b); outline: none; }
+/* TWO ROWS OF TWO, NOT A COLUMN OF FOUR. The strip sits in the toolbar, where
+ * height is what there is least of; four stacked pills pushed the bar to twice
+ * the height of every button beside it. Each column is as wide as its widest
+ * pill, so CPU lines up over disk and RAM over cost. The cost panel is
+ * absolutely placed and takes no cell. */
+.system-telemetry-strip {
+  position: relative;
+  display: grid; grid-template-columns: repeat(2, max-content);
+  gap: 3px 4px; align-items: stretch;
+}
+.cost-panel {
+  position: absolute; z-index: 40; top: 100%; right: 0; margin-top: 6px;
+  width: min(340px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 10px 12px; border: 1px solid var(--edge); border-radius: 6px;
+  background: var(--panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font: 12px/1.45 var(--sans); color: var(--ink);
+}
+.cost-panel label { display: grid; gap: 4px; font-weight: 700; }
+.cost-input { display: flex; align-items: center; gap: 4px; }
+.cost-input input {
+  flex: 1; min-width: 0; padding: 5px 7px; border-radius: 4px;
+  border: 1px solid var(--edge); background: var(--ground); color: var(--ink); font: inherit;
+}
+.cost-note { margin: 6px 0; color: var(--dimmer); font-size: 11px; }
+.cost-lines { margin: 6px 0; font-size: 11px; color: var(--dim); }
+.cost-verbs { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------ sortable heads
+ * Every <th> sorts (manager.js wireTableSorting). The arrow is the column the
+ * table is ordered by; a bare head shows a faint one on hover only. */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--ink); }
+th.sortable::after { content: " ↕"; opacity: 0; font-size: .9em; }
+th.sortable:hover::after { opacity: .45; }
+th.sortable[data-dir="asc"]::after  { content: " ▲"; opacity: 1; color: var(--accent); }
+th.sortable[data-dir="desc"]::after { content: " ▼"; opacity: 1; color: var(--accent); }

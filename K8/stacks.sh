@@ -58,6 +58,7 @@ $EMBER_COMPOSE_FILE
 $LOGGER_COMPOSE_FILE
 $MANAGER_COMPOSE_FILE" \
 MODE="$MODE" \
+PLUGIN_ROLES="$APKAUDIO_PLUGIN_ROLES" \
 python3 - <<'PY'
 import os
 import re
@@ -128,10 +129,10 @@ def restart_policies(lines):
     if item_indent is None:
         return {}, set()
     policies = {}
-    profiled = set()
+    profiled = {}
     name = None
     policy = None
-    has_profile = False
+    has_profile = None
     for line in lines:
         if not line.strip() or line.lstrip().startswith('#'):
             continue
@@ -140,9 +141,9 @@ def restart_policies(lines):
             if name:
                 policies[name] = policy or DEFAULT_RESTART
                 if has_profile:
-                    profiled.add(name)
+                    profiled[name] = has_profile
             name = policy = None
-            has_profile = False
+            has_profile = None
             continue
         if indent != item_indent:
             continue
@@ -151,14 +152,15 @@ def restart_policies(lines):
             if name:
                 policies[name] = policy or DEFAULT_RESTART
                 if has_profile:
-                    profiled.add(name)
+                    profiled[name] = has_profile
             name, policy = match.group(2), None
             # NOT reset here: profiles: may sit ABOVE container_name: in the
             # same block (it does in the NMOS file), so the flag is carried
             # across the pair and cleared when the block ends.
             continue
         if PROFILE_LINE.match(line):
-            has_profile = True
+            has_profile = [r.strip(" \"'") for r in PROFILE_LINE.match(line).group(2).strip("[] ").split(",")
+                           if r.strip(" \"'")] or ["?"]
             continue
         match = RESTART_LINE.match(line)
         if match:
@@ -166,8 +168,10 @@ def restart_policies(lines):
     if name:
         policies[name] = policy or DEFAULT_RESTART
         if has_profile:
-            profiled.add(name)
+            profiled[name] = has_profile
     return policies, profiled
+
+PLUGIN_ROLES = {r for r in (os.environ.get("PLUGIN_ROLES") or "").split(",") if r}
 
 stacks = []
 # TWO RUNGS, NOT ONE. It was `<stack>/Docker/<file>` after the 2026-09-06 split
@@ -200,8 +204,13 @@ for path in sorted({p for pattern in patterns for p in glob.glob(pattern)}):
     # DECLARED means "this bench is supposed to be running it". A profiled
     # service is declared to COMPOSE and not to the bench, so it is removed
     # once here and no derivation below has to remember the exception.
-    declared = [name for name in all_declared if name not in profiled]
-    optional = [name for name in all_declared if name in profiled]
+    # A PLUGIN IN A ROLE THIS NODE RUNS IS EXPECTED, NOT OPTIONAL. The roles
+    # are APKAUDIO_PLUGIN_ROLES (_common.sh, every role by default); a plugin
+    # outside them is `idle` — declared, deliberately not started — and the
+    # page draws it grey rather than red.
+    enabled = lambda n: n in profiled and any(r in PLUGIN_ROLES for r in profiled[n])
+    declared = [name for name in all_declared if name not in profiled or enabled(name)]
+    optional = [name for name in all_declared if name in profiled and not enabled(name)]
     absent = [name for name in declared if name not in present]
     stacks.append({
         # The grandparent: the parent of every compose file is the literal
@@ -209,13 +218,17 @@ for path in sorted({p for pattern in patterns for p in glob.glob(pattern)}):
         "stack": os.path.basename(os.path.dirname(os.path.dirname(path))),
         "compose_file": path,
         "project": project.group(1),
-        "driven": os.path.realpath(path) in driven,
+        # EVERY APK:plugin:* STACK IS DRIVEN: up-stack.sh finds it by name and
+        # switches on its own roles, so a button here can bring it back.
+        "driven": os.path.realpath(path) in driven
+                  or os.path.basename(os.path.dirname(os.path.dirname(path))).startswith("APK:plugin:"),
         "declared": declared,
         # The profiled ones, and whichever are switched on. Named rather than
         # counted because the only question is WHICH — a conformance suite left
         # running after a pass is 732 MB and a published 5000/5001.
         "optional": optional,
         "optional_present": [n for n in optional if n in present],
+        "idle": ["%s:%s" % (n, "|".join(profiled.get(n) or [])) for n in optional if n not in present],
         "present": [n for n in declared if n in present],
         "running": [n for n in declared if n in running],
         "absent": absent,
@@ -317,5 +330,6 @@ else:
             str(len(s["declared"])), str(len(s["present"])), str(len(s["running"])),
             ",".join(s["absent"]),
             ",".join(s["stopped"]),
+            ",".join(s["idle"]),
         ]))
 PY

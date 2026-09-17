@@ -673,6 +673,11 @@ def snapshot(quiet=True, with_apps=True):
         # nothing on the host, this is the container that IS on the host,
         # exited, carrying a restart policy that said it would not be. Flat and
         # of container names because that is the unit of the repair.
+        # DECLARED AND DELIBERATELY NOT STARTED: plugin stacks whose role this
+        # node does not run (APKAUDIO_PLUGIN_ROLES). Not a fault — the page
+        # draws them grey with a start button, and nothing remounts them.
+        "idle_stacks": [{"stack": row["stack"], "idle": row.get("idle", [])}
+                        for row in stacks if row.get("idle") and not row["present"]],
         "stopped_containers": [{"stack": row["stack"], "container": name}
                                for row in stacks for name in row["stopped"]],
         # THE SECOND KIND OF WRONG, pre-sliced for the same reason:
@@ -950,6 +955,25 @@ def volumes(quiet=True, hours=24, fast=False, with_history=True):
     return reading
 
 
+def cost(quiet=True):
+    """💲 WHAT THE BENCH HAS COST IN CPU — /api/cost. The ledger, summarised."""
+    from .readers import read_cost_ledger, cost_summary
+    return cost_summary(read_cost_ledger(quiet=quiet))
+
+
+def set_cost(body, quiet=True):
+    """POST /api/cost — {price_per_cpu_minute, currency} and/or {reset: true}."""
+    from .readers import set_cost_price, cost_summary
+    price = body.get("price_per_cpu_minute")
+    try:
+        price = None if price in (None, "") else float(price)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "price_per_cpu_minute must be a number."}
+    ledger = set_cost_price(price=price, currency=body.get("currency"),
+                            reset=bool(body.get("reset")), quiet=quiet)
+    return {"ok": True, **cost_summary(ledger)}
+
+
 # ---------------------------------------------------------------------------
 # Here and not in serve.py because this module owns the route table and serve.py
 # is the transport. The dispatcher reads these paths and check_manager_routes.py
@@ -982,6 +1006,9 @@ ROUTES = (
     {"method": "GET", "path": "/api/volumes",
      "what": "every volume with its size, the four docker totals, the disk "
              "under them and the sampled history of all of it (&hours=, &fast=1)"},
+    {"method": "GET", "path": "/api/cost",
+     "what": "the CPU cost meter: CPU-minutes and container up-minutes since it "
+             "started, charged at the price per CPU-minute in force when burned"},
     {"method": "GET", "path": "/api/log", "what": "the execution log's tail (&n=)"},
     {"method": "GET", "path": "/api/stream", "what": "the execution log as Server-Sent Events"},
     {"method": "GET", "path": "/api/container/<name>",
@@ -992,6 +1019,9 @@ ROUTES = (
      "what": "the compose file or Dockerfile that built it, and its text"},
     {"method": "POST", "path": "/api/broadcast", "what": "publish the inventory to every broker"},
     {"method": "POST", "path": "/api/chat", "what": "one line onto the bus"},
+    {"method": "POST", "path": "/api/cost",
+     "what": "set the price per CPU-minute from now on ({price_per_cpu_minute}), "
+             "or zero the meter ({reset: true})"},
     {"method": "POST", "path": "/api/log/clear", "what": "clear the execution log"},
     {"method": "POST", "path": "/api/action/<key>",
      "what": "run one verb from ACTIONS, from CONTAINER_ACTIONS when a "
