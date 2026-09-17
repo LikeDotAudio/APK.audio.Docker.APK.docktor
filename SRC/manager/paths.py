@@ -47,6 +47,25 @@ REPOSITORY_ROOT = os.path.abspath(os.path.join(DOCKERS_DIRECTORY, '..'))
 import glob as _glob
 ESTATE_LAYOUT = ('pods' if not _glob.glob(os.path.join(DOCKERS_DIRECTORY, 'POD:*'))
                  and _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*.pod')) else 'apk')
+# The estate's own settings, read the way _common.sh reads them: DOCKTOR_* keys
+# only, never over a value already in the environment. Here too, because a
+# DockTor started from a terminal (bin/docktor serve) never sources _common.sh.
+if ESTATE_LAYOUT == 'pods':
+    try:
+        with open(os.path.join(DOCKERS_DIRECTORY, 'docktor.env'), encoding='utf-8') as _settings:
+            for _line in _settings:
+                _key, _sep, _value = _line.split('#', 1)[0].strip().partition('=')
+                if _sep and _key.startswith('DOCKTOR_') and _key not in os.environ:
+                    os.environ[_key] = _value.strip().strip('"')
+    except OSError:
+        pass
+
+# DOCKTOR_APK_INTEGRATIONS=off — the estate is not APK.audio: no broker
+# discovery out of APK:BareMetal, no chat onto the APK.audio bus on 1883, no
+# APK.audio pre-build gates, no .apk.skills synch. Each of those only ever
+# reported that its APK.audio half was missing. On unless an estate says off.
+APK_INTEGRATIONS = os.environ.get('DOCKTOR_APK_INTEGRATIONS', 'on').lower() not in ('off', '0', 'false', 'no')
+
 if ESTATE_LAYOUT == 'pods' and not os.environ.get('DOCKTOR_IGNORE_COMPOSE'):
     os.environ['DOCKTOR_IGNORE_COMPOSE'] = os.pathsep.join(
         _glob.glob(os.path.join(DOCKERS_DIRECTORY, '*', 'Docker', 'docker-compose.manager.yml'))

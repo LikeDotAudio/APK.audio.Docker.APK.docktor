@@ -564,6 +564,12 @@ def start_watchdog(interval=30):
     WATCHDOG_ACTIVE = True
     containerised = os.path.exists("/.dockerenv")
 
+    # A STACK THAT WILL NOT BUILD IS NOT RETRIED EVERY 30 SECONDS. A broken
+    # Dockerfile failed its remount 47 times in a row (2026-09-17), each attempt
+    # a build. After a failure the stack waits 1, 2, 4 … minutes (capped at
+    # 30) before the next try; it is forgiven the moment it is seen running.
+    backoff = {}      # stack -> (consecutive failures, not before this time)
+
     def loop():
         time.sleep(15)
         while True:
@@ -573,13 +579,29 @@ def start_watchdog(interval=30):
                     for s in stack_list:
                         if s.get("manager") and not containerised:
                             continue
+                        stack_name = s.get("stack")
                         if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
-                            stack_name = s.get("stack")
+                            failures, not_before = backoff.get(stack_name, (0, 0.0))
+                            if time.time() < not_before:
+                                continue
                             if stack_name and not is_any_script_running():
-                                emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
-                                run_management_script('up-stack.sh', args=[stack_name], cancellable=True,
-                                                      ordered_by=f"the DockTor watchdog ({stack_name} was down)")
+                                emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down",
+                                                                   "attempt": failures + 1})
+                                exit_code, _ = run_management_script(
+                                    'up-stack.sh', args=[stack_name], cancellable=True,
+                                    ordered_by=f"the DockTor watchdog ({stack_name} was down)")
+                                if exit_code:
+                                    failures += 1
+                                    wait = min(60 * 2 ** (failures - 1), 1800)
+                                    backoff[stack_name] = (failures, time.time() + wait)
+                                    emit("WATCHDOG_BACKING_OFF", {"stack": stack_name, "failures": failures,
+                                                                 "retry_in_seconds": wait,
+                                                                 "exit_code": exit_code})
+                                else:
+                                    backoff.pop(stack_name, None)
                                 time.sleep(10)
+                        elif stack_name in backoff:
+                            backoff.pop(stack_name, None)
             except Exception as err:
                 emit("WATCHDOG_ERROR", {"error": str(err)})
             time.sleep(interval)

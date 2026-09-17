@@ -923,6 +923,8 @@ compose_for_stack() {
 # 2 means part of the source was unreadable, so the tree is short but looks
 # intact.
 synch_skills() {
+    # DOCKTOR_APK_INTEGRATIONS=off: .apk.skills is APK.audio's; nothing to synch.
+    case "${DOCKTOR_APK_INTEGRATIONS:-on}" in off|0|false|no) return 0 ;; esac
     local script="$REPO_ROOT/.apk.skills/synch.py"
     if [ ! -f "$script" ]; then
         announce SKILLS_SYNCH_MISSING "{\"script\":\"$script\"}"

@@ -15,6 +15,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 echo "🛡️ Enforcing Upstream Pre-Build Container Test Gates (PLAN-170.01)..."
 echo "======================================================================"
 
+# DOCKTOR_APK_INTEGRATIONS=off: every gate below is an APK.audio script, so on
+# any other estate each one is only ever ABSENT. Pass without reporting that.
+case "${DOCKTOR_APK_INTEGRATIONS:-on}" in
+    off|0|false|no) exit 0 ;;
+esac
+
 failed=()
 ran=0
 absent=0

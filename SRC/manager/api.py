@@ -1062,6 +1062,12 @@ def chat(message):
     payload = {"sender": "USER_CHAT", "message": text,
                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     published = False
+    from .paths import APK_INTEGRATIONS
+    if not APK_INTEGRATIONS:
+        # DOCKTOR_APK_INTEGRATIONS=off: there is no APK.audio bus to say it on.
+        emit("CHAT", payload)
+        return {"ok": True, "topic": CHAT_TOPIC, "published": False,
+                "sounds_like_panic": text.lower() in PANIC_WORDS}
     try:
         import paho.mqtt.publish as publish
         publish.single(CHAT_TOPIC, json.dumps(payload), hostname="127.0.0.1",

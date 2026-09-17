@@ -24,7 +24,7 @@ import time
 import threading
 
 from . import palette
-from .paths import BAREMETAL_ROOT
+from .paths import BAREMETAL_ROOT, APK_INTEGRATIONS
 from .bus import (emit, STATUS_TOPIC, MANAGER_TOPIC, CONTAINERS_TOPIC,
                   SERVER_NAME, BROKER_HOST, BROKER_PORT)
 from .runner import run_management_script
@@ -41,6 +41,8 @@ def broker_candidates(say=None):
     No fallback list, deliberately: BAREMETAL_ROOT degrades QUIETLY, so a stale
     spelling would cost the broker order without ever costing an error message.
     """
+    if not APK_INTEGRATIONS:
+        return None                   # DOCKTOR_APK_INTEGRATIONS=off: nothing to discover
     try:
         sys.path.insert(0, os.path.join(BAREMETAL_ROOT, "Baremetal:Manager"))
         import mqtt_broker_discovery
