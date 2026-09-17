@@ -28,6 +28,11 @@ services:
         target: "${APKAUDIO_REPO}"
         bind:
           propagation: rprivate
+      # DockTor's own history (the VOLUMES tab). storage-volume.sh --ensure
+      # creates the volume over a local folder before manager.sh mounts this.
+      - type: volume
+        source: docktor-storage
+        target: /storage
     environment:
       APK_MANAGER_BIND: 127.0.0.1
       APK_MANAGER_PORT: 18765
@@ -45,3 +50,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+
+volumes:
+  docktor-storage:
+    name: "${DOCKTOR_STORAGE_VOLUME:-docktor-standalone-storage}"
+    external: true

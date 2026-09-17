@@ -86,6 +86,22 @@ if ! compgen -G "$DOCKERS_DIR/POD:*" >/dev/null && compgen -G "$DOCKERS_DIR/*.po
     # Exported so a container started from here (docker-compose.standalone.yml)
     # resolves the same folder: inside it, the walk from /app finds nothing.
     export DOCKTOR_DOCKERS_DIR="$DOCKERS_DIR"
+    # The estate's own settings: `$DOCKERS_DIR/docktor.env`, KEY=VALUE lines,
+    # `#` comments. Only DOCKTOR_* keys, and never over a value already in the
+    # environment — a person typing a variable outranks a file. Read, not
+    # sourced: nothing in it runs.
+    if [ -f "$DOCKERS_DIR/docktor.env" ]; then
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            _line="${_line%%#*}"
+            [[ "$_line" =~ ^[[:space:]]*(DOCKTOR_[A-Z0-9_]+)=(.*)$ ]] || continue
+            _key="${BASH_REMATCH[1]}"
+            _value="${BASH_REMATCH[2]}"
+            _value="${_value%"${_value##*[![:space:]]}"}"
+            _value="${_value#\"}"; _value="${_value%\"}"
+            [ -n "${!_key+x}" ] || export "$_key=$_value"
+        done < "$DOCKERS_DIR/docktor.env"
+        unset _line _key _value
+    fi
 fi
 unset -f _docktor_has_pods
 unset _docktor_parent
@@ -213,6 +229,14 @@ STORAGE_HOST_DIR="$REPO_ROOT/APK:Documentation/STORAGE/DockTor"
 # scripts prefer this when it is a real mount, so the same code writes to the
 # same bytes from the host and from inside the container.
 STORAGE_MOUNT_DIR="/storage"
+# A `pods` estate has no APK:Documentation, and `docktor-storage` is a
+# host-wide name APK.audio's DockTor already binds — reusing it reads as a
+# mismatch to both. Its own volume, in a folder the estate can gitignore.
+if [ "$ESTATE_LAYOUT" = "pods" ]; then
+    STORAGE_VOLUME_NAME="${DOCKTOR_STORAGE_VOLUME:-docktor-standalone-storage}"
+    STORAGE_HOST_DIR="${DOCKTOR_STORAGE_DIR:-$DOCKERS_DIR/.docktor/storage}"
+    export DOCKTOR_STORAGE_VOLUME="$STORAGE_VOLUME_NAME"
+fi
 
 GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
 BOLD="\033[1m"; OFF="\033[0m"
@@ -680,10 +704,9 @@ for_each_stack() {
 
 # discovered_stacks — every stack root in a `pods` estate, one per line as
 # `<stack>\t<compose file>`, in mount order: pods in DOCKTOR_POD_ORDER (space
-# separated, `.pod` optional), else in the estate's own `pods.order` file (one
-# pod per line, `#` comments), then any pod neither names, alphabetically;
-# stacks alphabetically inside a pod. The file is the estate's to keep — the
-# order is a fact about its stacks, not about this tool. DockTor's own file is left out — for_each_stack puts it first.
+# separated, `.pod` optional — usually set in the estate's docktor.env, since
+# the order is a fact about its stacks, not about this tool), then any pod it
+# does not name, alphabetically; stacks alphabetically inside a pod. DockTor's own file is left out — for_each_stack puts it first.
 # A compose file with no top-level `name:` is an overlay, not a stack root.
 discovered_stacks() {
     DOCKERS="$DOCKERS_DIR" MANAGER="$MANAGER_COMPOSE_FILE" ORDER="${DOCKTOR_POD_ORDER:-}" \
@@ -692,12 +715,6 @@ import glob, os, re
 dockers = os.environ["DOCKERS"]
 manager = os.path.realpath(os.environ.get("MANAGER") or "")
 words = os.environ.get("ORDER", "").split()
-if not words:
-    try:
-        with open(os.path.join(dockers, "pods.order"), encoding="utf-8") as handle:
-            words = [line.split("#", 1)[0].strip() for line in handle]
-    except OSError:
-        pass
 order = [w if w.endswith(".pod") else w + ".pod" for w in words if w]
 pods = sorted((os.path.basename(p) for p in glob.glob(os.path.join(dockers, "*.pod"))),
               key=lambda n: (order.index(n) if n in order else len(order), n.lower()))
