@@ -630,6 +630,7 @@ compose_for_stack() {
     local want="$1" entry name file dir
     STACK_COMPOSE=()
     for entry in \
+        "COMPOSE_SQLCLUSTER|$SQLCLUSTER_COMPOSE_FILE" \
         "COMPOSE_CORE|$COMPOSE_FILE" \
         "COMPOSE_NODE|$BAREMETAL_COMPOSE_FILE" \
         "COMPOSE_MQTT|$MQTT_COMPOSE_FILE" \
@@ -648,6 +649,33 @@ compose_for_stack() {
             STACK_COMPOSE_FILE="$file"
             return 0
         fi
+    done
+
+    # THE POD-ROOT STACKS HAVE NO ARRAY, AND MUST NOT NEED ONE. Every container
+    # is its own repository at APK:PODS/POD:<pod>/<Stack>/ (Docker/ + SRC/), and
+    # there are thirty of them — a hand-kept array per stack is the table that
+    # goes stale the day a plugin is split. Without this, stacks.sh listed
+    # APK:web:Gateway and up-stack.sh answered "No compose file … is named by the
+    # stack" for the very name it printed (2026-09-17).
+    # Only the stack's own docker-compose.yml: an overlay (*.host.yml) is a choice
+    # the caller makes, not something a name implies.
+    local found
+    for found in "$DOCKERS_DIR"/POD:*/"$want"/Docker/docker-compose.yml \
+                 "$DOCKERS_DIR"/"$want"/Docker/docker-compose.yml; do
+        [ -f "$found" ] || continue
+        STACK_COMPOSE=("${COMPOSE_BASE[@]}" -f "$found")
+        STACK_COMPOSE_FILE="$found"
+        # A PLUGIN STACK DECLARES ITS SERVICE UNDER A NODE ROLE (profiles:), so a
+        # bare `up` would start nothing and report success. Naming the stack IS
+        # the request for it: switch on that file's own roles, unless the caller
+        # already chose some.
+        if [ -z "${COMPOSE_PROFILES:-}" ]; then
+            local roles
+            roles="$(grep -oE '^[[:space:]]*profiles:[[:space:]]*\[[^]]*\]' "$found" \
+                     | sed -E 's/.*\[//; s/\]//; s/[[:space:]"'"'"']//g' | tr '\n' ',' | sed 's/,$//')"
+            [ -n "$roles" ] && export COMPOSE_PROFILES="$roles"
+        fi
+        return 0
     done
     return 1
 }
