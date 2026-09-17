@@ -61,7 +61,7 @@ for container in "$@"; do
         || [ "$(docker inspect --format '{{.Name}}' "$container" 2>/dev/null)" = "/$MANAGER_CONTAINER" ]; }; then
         log_error "Refusing to rebuild $MANAGER_CONTAINER from inside $MANAGER_CONTAINER."
         echo "  It would stop the container running this rebuild halfway through."
-        echo "  From a host terminal:  ./APK:PODS/Docktor/K8/manager.sh up"
+        echo "  From a host terminal:  '$(cd "$MANAGEMENT_SCRIPTS_DIR/.." 2>/dev/null && pwd || echo "<DockTor>")/K8/manager.sh' up"
         announce CONTAINER_REBUILD_REFUSED "{\"container\":\"$container\",\"reason\":\"self\"}"
         worst=3
         continue

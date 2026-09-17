@@ -288,7 +288,11 @@ def read_stacks(quiet=True):
                        "declared": declared, "present": present,
                        "running": running, "absent": absent, "stopped": stopped,
                        "dark": bool(declared) and present == 0,
-                       "manager": os.path.basename(f[1]) == 'docker-compose.manager.yml'})
+                       # EITHER manager file: a `pods` estate runs DockTor from
+                       # docker-compose.standalone.yml, and a manager that did not
+                       # know its own stack scheduled its own rebuild every countdown.
+                       "manager": os.path.basename(f[1]) in ('docker-compose.manager.yml',
+                                                            'docker-compose.standalone.yml')})
     return stacks
 
 
