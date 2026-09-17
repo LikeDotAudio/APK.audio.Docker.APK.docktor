@@ -218,6 +218,42 @@ ACTIONS = {
         "done": "✅ DockTor storage volume is in place.",
         "failed": "❌ Storage volume setup exited {code} — read the output above.",
     },
+    # ── TWO VERBS ABOUT A HOST PROCESS RATHER THAN A CONTAINER, and this tool
+    # has had a reason for them since the day it was containerised: a DockTor
+    # started at a terminal holds 127.0.0.1:8765 on the host network stack, so
+    # the CONTAINER manager can never bind and no remount can win. The dark
+    # band has always said so — and then printed `kill <pid>` for a person to
+    # paste. These are that sentence with a button under it.
+    "list-pids": {
+        "label": "🔎 What Holds the Manager Port",
+        "script": "kill-pid.sh", "args": ["--list"], "confirm": None,
+        "done": "✅ Listed above: what is listening, and every DockTor process.",
+        "failed": "❌ Could not list processes — kill-pid.sh exited {code}.",
+    },
+    # THE ONLY ROW IN THIS TABLE THAT TAKES A VALUE FROM THE PERSON. `prompt`
+    # is how the client knows to ask, and `pattern` is checked AGAIN in
+    # run_action and a THIRD time in the script: this value reaches a signal,
+    # and a client is not a place to enforce anything.
+    "kill-pid": {
+        "label": "🔪 Kill a Process (by pid)",
+        "script": "kill-pid.sh", "args": [],
+        "prompt": {
+            "label": "Process id",
+            "placeholder": "e.g. 182129",
+            "pattern": "^[0-9]{1,7}$",
+            "hint": "Press 🔎 first — it lists what holds the port, with pids.",
+        },
+        "confirm": "Send SIGTERM to this process (then SIGKILL if it ignores "
+                   "it)?\n\nTHIS IS A HOST PROCESS, NOT A CONTAINER. If the pid "
+                   "is the DockTor serving this page, that is a legitimate use "
+                   "— it is how a terminal manager stands aside for the "
+                   "container — but THIS TAB WILL GO DARK. The container takes "
+                   "the socket within about five seconds; reload and it is "
+                   "serving.",
+        "done": "✅ The process is stopped.",
+        "failed": "❌ kill-pid.sh exited {code} — read the output above. Exit 2 "
+                  "means it REFUSED and signalled nothing.",
+    },
     # ☢️ THE ONLY VERB IN THIS FILE THAT DELETES THE DATA. Every other cleanup
     # row is built around never touching a named volume — prune.sh says so in
     # its own header — and this one removes them by name, on purpose, along
@@ -343,12 +379,52 @@ CONTAINER_ACTIONS = {
 # for_each_stack does not drive the manager compose file. up-stack.sh resolves
 # the name through compose_for_stack, so no stack compose command is spelled
 # twice.
+# THREE VERBS AT ONE POD, and the grid is why there are three: the cards are
+# lassoed by pod now, so the unit a hand reaches for is the pod and not the
+# bench. Each is one file in docker scripts/ and each refuses the manager pod
+# from inside the manager, for the reason written in all three.
 STACK_ACTIONS = {
     "up-stack": {
         "label": "🚀 Remount This Stack", "script": "up-stack.sh", "confirm": None,
         "done": "✅ {name} remounted.",
         "failed": "❌ Could not remount {name} — up-stack.sh exited {code}.\n"
                   "   Only that stack was touched; read the output above.",
+    },
+    # NOT up-stack WITH A FLAG: that one builds what changed and is the cheap
+    # daily verb; this one is --no-cache and minutes, and the confirm is what
+    # separates them at the button.
+    "rebuild-stack": {
+        "label": "🧱 Rebuild This Pod",
+        "script": "rebuild-stack.sh",
+        "confirm": "Rebuild every image in {name} from scratch?\n\n"
+                   "--no-cache, so this takes minutes — a Rust pod longer. The "
+                   "containers are replaced one at a time AFTER the build "
+                   "succeeds, so a failed build leaves this pod running as it "
+                   "is rather than down.",
+        "done": "✅ {name} rebuilt from scratch and running.",
+        "failed": "❌ Rebuild of {name} FAILED — rebuild-stack.sh exited {code}.\n"
+                  "   Only that pod was touched; read the output above.",
+    },
+    # IN PLACE: compose restart, nothing rebuilt or recreated. The cheapest of
+    # the four, for a pod that is up and merely wedged.
+    "restart-stack": {
+        "label": "🔄 Restart This Pod", "script": "restart-stack.sh", "confirm": None,
+        "done": "✅ {name} restarted.",
+        "failed": "❌ Could not restart {name} — restart-stack.sh exited {code}.\n"
+                  "   Only that pod was touched; read the output above.",
+    },
+    # "DELETE" BECAUSE THAT IS WHAT IT DOES TO THE CONTAINERS — they are removed,
+    # not paused. The volumes and images stay, and the confirm says so.
+    "down-stack": {
+        "label": "🗑️ Delete This Pod",
+        "script": "down-stack.sh",
+        "confirm": "Take {name} off the bench?\n\n"
+                   "Its containers are stopped and removed. NO NAMED VOLUME is "
+                   "touched and no image is deleted, so a remount brings it "
+                   "back with its data — and nothing in any other pod is "
+                   "stopped.",
+        "done": "🛑 {name} is off the bench.",
+        "failed": "❌ Could not stop {name} — down-stack.sh exited {code}.",
     },
 }
 
@@ -387,10 +463,15 @@ def action_table():
     times. Like `confirm`, it bounds nothing: nuke.sh's own token does.
     """
     return {
+        # `prompt` travels for the same kind of reason `verify` does: it tells a
+        # client to ask for a value and what shape it has to be. It bounds
+        # nothing — run_action() re-checks the pattern and kill-pid.sh checks it
+        # a third time before the value goes anywhere near a signal.
         "actions": {key: {"label": row["label"],
                           "confirm": (confirmations(row) or [None])[0],
                           "confirms": confirmations(row),
                           "verify": row.get("verify"),
+                          "prompt": row.get("prompt"),
                           "preempts": bool(row.get("preempts"))}
                     for key, row in ACTIONS.items()},
         # No container verb preempts: they are scoped to one card, and a stop
@@ -448,6 +529,27 @@ def is_ours(container, projects):
     if project:
         return project in projects
     return any(hint in container["name"].lower() for hint in NAME_HINTS)
+
+
+def _group_stack(cards):
+    """The stack directory a group's cards come from, or None if they disagree.
+
+    MAJORITY, NOT FIRST: a group is keyed on the container NAME, so a hand-run
+    container called Storage-Scratch lands in the Storage group carrying no
+    repo at all — and one such card must not be able to take the pod verbs away
+    from the five that do come from a compose file.
+    None when nothing in the group names a stack: the verbs are then drawn
+    disabled, because there is no compose file for them to act on.
+    """
+    counts = {}
+    for card in cards:
+        repo = card.get("repo") or {}
+        name = repo.get("name")
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return None
+    return max(counts, key=lambda name: (counts[name], name))
 
 
 def snapshot(quiet=True, with_apps=True):
@@ -534,9 +636,21 @@ def snapshot(quiet=True, with_apps=True):
     # is the order the grid lays them out.
     hues = palette.hues_for(ordered)
     document = {
+        # `stack` IS WHAT THE POD VERBS TAKE, and it is NOT the label. A group is
+        # `palette.group_of(name)` — a reading of the container's NAME, which is
+        # how Storage-MariaDB and Storage-Portal come to sit together — while
+        # up-stack.sh, rebuild-stack.sh and down-stack.sh all take the DIRECTORY
+        # under APK:PODS/. The two differ on nearly every row ("Storage" is
+        # `DATABASE:server:SQL`), so the client is handed the answer rather than
+        # left to guess it from a label it must not parse.
+        # READ OFF THE CARDS' OWN `repo`, which stack_repo_map built from the
+        # container_name: lines in each compose file — so a group whose cards
+        # come from one compose file gets that stack, and a group of containers
+        # nothing here declares gets None and draws no verbs at all.
         "groups": [{"label": f"⚙️ MOUNTING ({label})" if HEX_HASH_PATTERN.match(label) else label,
                     "ours": any(c["ours"] for c in groups[label]),
                     "hue": hues[label],
+                    "stack": _group_stack(groups[label]),
                     "containers": sorted(groups[label], key=lambda c: c["name"].lower())}
                    for label in ordered],
         "count": len(cards),
@@ -967,6 +1081,18 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container",
     if name is None:
         row = ACTIONS.get(key)
         args = list(row["args"]) if row else []
+        # A ROW THAT ASKS FOR A VALUE TAKES EXACTLY ONE, AND IT IS CHECKED HERE.
+        # `prompt.pattern` is in the payload so the client can mark a bad box
+        # red; that is a courtesy, and this is the enforcement. A row without a
+        # prompt ignores `extra` entirely — no verb in this table may be given
+        # arguments it did not ask for.
+        if row is not None and row.get("prompt") and extra:
+            value = str(extra[0])
+            if not re.fullmatch(row["prompt"].get("pattern", r"[^\n]{0,200}"), value):
+                emit("ACTION_ARGUMENT_REFUSED", {"action": key, "value": value[:60]})
+                return 2, (f"❌ {row['label']}: '{value[:60]}' is not a value this "
+                           f"verb accepts, so nothing was run.")
+            args = args + [value]
     else:
         row = (STACK_ACTIONS if scope == "stack" else CONTAINER_ACTIONS).get(key)
         args = [name, *extra] if row else []

@@ -168,10 +168,23 @@ def restart_policies(lines):
     return policies, profiled
 
 stacks = []
-# <stack>/Docker/<file> since the 2026-09-06 split. A glob that matches nothing
-# is not an error in Python, so a wrong rung reads as a repo declaring no stacks.
-for path in sorted(glob.glob(os.path.join(dockers, "*", "Docker",
-                                          "docker-compose*.yml"))):
+# TWO RUNGS, NOT ONE. It was `<stack>/Docker/<file>` after the 2026-09-06 split
+# and is `POD:<pod>/<stack>/Docker/<file>` since the pods landed — and DockTor's
+# own stack still sits at the first depth, so BOTH are walked rather than either
+# replaced. With only the shallow glob this file reported a repository of ONE
+# stack (the manager) and the dashboard drew a bench with nothing on it.
+# ⚠️ A GLOB THAT MATCHES NOTHING IS NOT AN ERROR IN PYTHON, which is the whole
+#    reason this went unnoticed: a wrong rung reads exactly like a repo that
+#    declares no stacks. `seen` is what keeps a file found by both patterns —
+#    or through a compatibility symlink — from being counted twice.
+seen_paths = set()
+patterns = (os.path.join(dockers, "*", "Docker", "docker-compose*.yml"),
+            os.path.join(dockers, "*", "*", "Docker", "docker-compose*.yml"))
+for path in sorted({p for pattern in patterns for p in glob.glob(pattern)}):
+    real_path = os.path.realpath(path)
+    if real_path in seen_paths:
+        continue
+    seen_paths.add(real_path)
     try:
         with open(path, encoding="utf-8", errors="replace") as handle:
             text = handle.read()

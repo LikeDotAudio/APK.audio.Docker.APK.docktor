@@ -48,10 +48,14 @@ fi
 lowered="$(printf '%s' "$container" | tr '[:upper:]' '[:lower:]')"
 
 case "$lowered" in
+    # THROUGH stack_dir(), NOT SPELLED: both of these named the flat pre-pod
+    # layout, so `View Configuration Script / Dockerfile` on the two containers
+    # that HAVE one resolved to a file that is not there — and the button that
+    # exists to show you what built a container showed nothing.
     *baremetal*)
-        path="$DOCKERS_DIR/APK:BareMetal/Docker/Dockerfile" ;;
+        path="$(stack_dir 'APK:BareMetal')/Docker/Dockerfile" ;;
     *portal*|*web*)
-        path="$DOCKERS_DIR/Server:Storage:SQL database/Docker/Dockerfile" ;;
+        path="$(stack_dir 'DATABASE:server:SQL')/Docker/Dockerfile" ;;
     *mariadb*|*maria*|*broker*|*mqtt*)
         path="$COMPOSE_FILE" ;;
     *)

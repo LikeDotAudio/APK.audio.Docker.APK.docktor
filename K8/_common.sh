@@ -8,6 +8,7 @@
 #    spaces; an unquoted string word-splits into a bogus docker command.
 # 📂 One verb per file beside this one:
 #    STACK      up down rebuild-all rebuild-core panic panic-reboot up-stack
+#               restart-stack rebuild-stack down-stack
 #    CONTAINER  restart rebuild exec logs inspect config-path
 #    READERS    ps stats status disk host stacks staleness endpoints apps api
 #               topics purpose page-titles
@@ -21,7 +22,11 @@
 
 set -o pipefail
 
-MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# pwd -P: SRC/docker scripts is a symlink to ../K8, and the -d tests below walk
+# `..` physically while a logical `cd .. && pwd` does not. Called through the
+# link, the two disagreed and DOCKERS_DIR landed one level deep — which the
+# manager compose file then baked into the container as APKAUDIO_REPO.
+MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # APKAUDIO_REPO wins when set and valid; otherwise walk up. Dockerfile.manager
 # COPYs this folder to /app, so inside the manager the walk lands outside the
@@ -49,25 +54,88 @@ fi
 # `:?` — unset is a hard refusal at interpolation.
 export APKAUDIO_REPO="$REPO_ROOT"
 
-# ── Compose files: <stack>/Docker/<file>. The only place either half is
+# ── Compose files: <pod>/<stack>/Docker/<file>. The only place any of it is
 # spelled. ⚠️ A wrong path does not raise — compose warns and carries on, so
 # every stack reads as empty. Build contexts are repo-root-relative.
-COMPOSE_FILE="$DOCKERS_DIR/DATABASE:server:SQL/Docker/docker-compose.yml"
-BAREMETAL_COMPOSE_FILE="$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml"
-# Overridable so `check.sh node-hardware` can point it at fixtures; the
-# hardware decision runs at source time, so that is the only way to test it.
-BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.hardware.yml}"
-BAREMETAL_ROOT="$DOCKERS_DIR/APK:BareMetal/SRC"
-MQTT_COMPOSE_FILE="$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml"
-PORTAL_COMPOSE_FILE="$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml"
-NMOS_COMPOSE_FILE="$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml"
-AES70_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml"
-NETBOX_COMPOSE_FILE="$DOCKERS_DIR/DATABASE:server:NETBOX/Docker/docker-compose.yml"
-EMBER_COMPOSE_FILE="$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml"
+# ⚠️ AND THAT IS EXACTLY WHAT HAPPENED. The stacks moved down a rung into
+#    POD:APK / POD:database / POD:databus / POD:protocols and these ten lines
+#    kept the flat spellings, so ALL TEN named files that are not there. Nothing
+#    said so, because nothing in this ecosystem treats a missing compose file as
+#    an error: `up` mounted nothing and reported success, stacks.sh could not
+#    match a DRIVEN path so every stack read `driven: no`, and the dashboard drew
+#    the whole bench as stacks it cannot fix with a command to paste under each.
+# SO EVERY PATH IS NOW A LIST, NEWEST SPELLING FIRST, and first_existing() takes
+# the one that is on disk — the same shape the manager compose file below uses.
+# A move costs a line at the top of a list instead of a silent empty bench.
+first_existing() {
+    local first="$1" candidate
+    for candidate in "$@"; do
+        [ -e "$candidate" ] && { printf '%s' "$candidate"; return 0; }
+    done
+    printf '%s' "$first"
+}
+
+# stack_dir <folder-name> — where a stack folder actually IS. The pods put
+# every one of them under POD:APK / POD:database / POD:databus / POD:protocols,
+# and a handful of names changed in the same move; this looks in the flat spot
+# first (DockTor still lives there), then one rung down under any POD:.
+# Prints the flat path when nothing matches, so a caller's error names what it
+# wanted rather than an empty string.
+stack_dir() {
+    local want="$1" candidate
+    [ -d "$DOCKERS_DIR/$want" ] && { printf '%s' "$DOCKERS_DIR/$want"; return 0; }
+    for candidate in "$DOCKERS_DIR"/POD:*/"$want"; do
+        [ -d "$candidate" ] && { printf '%s' "$candidate"; return 0; }
+    done
+    printf '%s' "$DOCKERS_DIR/$want"
+}
+
+COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:database/DATABASE:server:SQL/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/DATABASE:server:SQL/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/Server:Storage:SQL database/Docker/docker-compose.yml")"
+BAREMETAL_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:APK/APK:BareMetal/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml")"
+# Overridable so a hardware fixture can be pointed at; the hardware decision
+# runs at source time, so that is the only way to test it.
+BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(first_existing \
+    "$DOCKERS_DIR/POD:APK/APK:BareMetal/Docker/docker-compose.hardware.yml" \
+    "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.hardware.yml")}"
+# NOT A COMPOSE FILE AND STILL LOAD-BEARING: test-gates.sh runs the node's own
+# checks out of here, and a stale spelling turned the broker-candidate gate into
+# `[Gate ABSENT]` — a gate that cannot find itself is a gate that stops testing
+# and says so in a colour nobody stops for.
+BAREMETAL_ROOT="$(first_existing \
+    "$DOCKERS_DIR/POD:APK/APK:BareMetal/SRC" \
+    "$DOCKERS_DIR/APK:BareMetal/SRC")"
+MQTT_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml")"
+PORTAL_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:APK/APK:audio:WebPortal/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml")"
+NMOS_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:protocols/PROTOCOL:discovery:NMOS/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml")"
+AES70_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:protocols/PROTOCOL:DEV:AES70/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml")"
+NETBOX_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:database/DATABASE:server:NETBOX/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/DATABASE:server:NETBOX/Docker/docker-compose.yml")"
+EMBER_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:protocols/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml")"
 # LOGGER STORAGE — owns the apk-audio-logs volume (APK:Documentation/LOGS) that
 # every other stack mounts at /logs. The space in the folder name is real; every
-# expansion of this path is quoted.
-LOGGER_COMPOSE_FILE="$DOCKERS_DIR/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml"
+# expansion of this path is quoted. THE TYPO IS ALSO A SPELLING: the folder was
+# `DATABSE:volume:Log STORAGE` and is now `DATABASE:volume:Log STORAGE`, so both
+# are listed rather than either being assumed corrected.
+LOGGER_COMPOSE_FILE="$(first_existing \
+    "$DOCKERS_DIR/POD:databus/DATABASE:volume:Log STORAGE/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/POD:databus/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml")"
 LOG_VOLUME_NAME="apk-audio-logs"
 
 # ── DOCKTOR OWN PERSISTENT STORAGE. The same shape as the log volume above and
@@ -311,9 +379,38 @@ node_hardware_report() {
 # Dockerfile.manager does not COPY the compose file, so /app has no such path.
 # The fallback literal is deliberate: an unset name makes panic.sh's exclusion
 # match nothing and the panic takes the manager with it.
-MANAGER_COMPOSE_FILE="$DOCKERS_DIR/APK:docktor/Docker/docker-compose.manager.yml"
-[ -f "$MANAGER_COMPOSE_FILE" ] \
-    || MANAGER_COMPOSE_FILE="$MANAGEMENT_SCRIPTS_DIR/../../Docker/docker-compose.manager.yml"
+# ⚠️ EVERY SPELLING, AND THE LAST ONE IS THE WALK. Both of the two this file
+#    used to carry were wrong at once — `APK:docktor` is not the folder (it is
+#    `APK:Docktor`), and the relative fallback counted one `..` too many (K8/ is
+#    directly under the stack root, so `../../Docker` is APK:PODS/Docker). The
+#    variable therefore named a file that does not exist, and NOTHING SAID SO:
+#    · stacks.sh puts this path in its DRIVEN set, so DockTor's own row read
+#      `driven: no` — the dashboard drew it in the band for stacks nothing here
+#      can fix, with a command to paste, beside a button it should have had.
+#    · manager_compose_value() read an empty file, so MANAGER_CONTAINER fell
+#      back to the literal `DockTor` and MANAGER_IMAGE to `docktor:local`.
+#    · COMPOSE_MANAGER pointed `-f` at nothing, so every verb that mounts the
+#      manager would have failed on the compose file rather than on anything
+#      real.
+#    A missing file here is silent by construction — compose warns, awk reads
+#    nothing, a realpath still compares — which is why it is worth four
+#    candidates and this comment.
+for _candidate in \
+    "$DOCKERS_DIR/APK:Docktor/Docker/docker-compose.manager.yml" \
+    "$DOCKERS_DIR/APK:docktor/Docker/docker-compose.manager.yml" \
+    "$DOCKERS_DIR/Docktor/Docker/docker-compose.manager.yml" \
+    "$MANAGEMENT_SCRIPTS_DIR/../Docker/docker-compose.manager.yml" \
+    "$MANAGEMENT_SCRIPTS_DIR/../../Docker/docker-compose.manager.yml"; do
+    if [ -f "$_candidate" ]; then
+        MANAGER_COMPOSE_FILE="$(cd "$(dirname "$_candidate")" && pwd)/$(basename "$_candidate")"
+        break
+    fi
+done
+unset _candidate
+# Absent everywhere: keep the first spelling so the error names the path it
+# wanted rather than an empty `-f`.
+[ -z "${MANAGER_COMPOSE_FILE:-}" ] \
+    && MANAGER_COMPOSE_FILE="$DOCKERS_DIR/APK:Docktor/Docker/docker-compose.manager.yml"
 
 manager_compose_value() {
     [ -f "$MANAGER_COMPOSE_FILE" ] || return 0
@@ -336,6 +433,72 @@ fi
 [ -z "$MANAGER_IMAGE" ] && MANAGER_IMAGE="docktor:local"
 
 COMPOSE_MANAGER=("${COMPOSE_BASE[@]}" -f "$MANAGER_COMPOSE_FILE")
+
+# ── THE ADDRESS DOCKTOR ANSWERS ON, read off its compose file rather than
+# typed. It was written `http://127.0.0.1:8765/` in up.sh, rebuild-all.sh,
+# manager.sh and cli.py — four copies of a port that is declared in exactly one
+# place, three rungs from anything that would notice them disagreeing.
+MANAGER_PORT="$(manager_compose_value APK_MANAGER_PORT)"
+[ -z "$MANAGER_PORT" ] && MANAGER_PORT=8765
+MANAGER_URL="http://localhost:$MANAGER_PORT/"
+
+# manager_answering [seconds] — is a DockTor serving on that port right now?
+# /api/health and not a TCP probe: the port is answered by whatever holds it,
+# and "something is listening" is not the question any caller here is asking.
+manager_answering() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS -m "${1:-2}" "${MANAGER_URL}api/health" >/dev/null 2>&1
+    else
+        python3 -c "import sys,urllib.request;urllib.request.urlopen('${MANAGER_URL}api/health',timeout=${1:-2})" \
+            >/dev/null 2>&1
+    fi
+}
+
+# open_manager_site [seconds] — raise the dashboard AS SOON AS IT ANSWERS.
+# THE POINT IS THE MOMENT. up.sh and rebuild-all.sh each opened a browser on
+# their LAST line, which on a clean rebuild is ten minutes after the tool that
+# would have shown you the build was up — and the one thing a person wants
+# while a bench rebuilds is the page that draws it. DockTor is mounted first
+# now; this is called the moment that mount returns, and it waits for the
+# server inside the container to bind before spending the click.
+# ONCE PER RUN, AND THE RUN IS THE PROCESS TREE: APKAUDIO_SITE_OPENED is
+# EXPORTED, so rebuild-all.sh → up-stack.sh → here cannot open three tabs.
+#   APKAUDIO_NO_OPEN=1   never open anything (CI, ssh, a second screen)
+# NEVER FROM INSIDE THE CONTAINER: there is no browser there, and asking for one
+# is how a service exits two seconds after it starts.
+open_manager_site() {
+    local waited=0 limit="${1:-45}"
+    [ "${APKAUDIO_NO_OPEN:-0}" = "1" ] && return 0
+    [ "${APKAUDIO_SITE_OPENED:-0}" = "1" ] && return 0
+    [ -f /.dockerenv ] && return 0
+    export APKAUDIO_SITE_OPENED=1
+
+    while [ "$waited" -lt "$limit" ]; do
+        if manager_answering 2; then
+            # A DISPLAY IS NOT GUARANTEED and its absence is not a failure: over
+            # ssh the URL is the whole answer, and a webbrowser call there opens
+            # a text browser in the middle of the build log.
+            if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+                log_info "DockTor is up — opening $MANAGER_URL"
+                python3 -c "import webbrowser; webbrowser.open('$MANAGER_URL')" 2>/dev/null \
+                    || xdg-open "$MANAGER_URL" >/dev/null 2>&1 \
+                    || log_warn "Could not raise a browser. It is at $MANAGER_URL"
+            else
+                log_info "DockTor is up at $MANAGER_URL (no display here, so nothing was opened)"
+            fi
+            announce MANAGER_SITE_OPENED "{\"url\":\"$MANAGER_URL\",\"waited_seconds\":$waited}"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    # NOT AN ERROR AND NOT SILENT. The mount may still be starting, and the
+    # caller is usually in the middle of building eight more stacks.
+    log_warn "DockTor did not answer on $MANAGER_URL within ${limit}s; carrying on."
+    announce MANAGER_SITE_TIMEOUT "{\"url\":\"$MANAGER_URL\",\"waited_seconds\":$limit}"
+    return 0
+}
 
 # containers_except_manager <ps-args...> — ids of every container but the
 # manager (`docker ps -q` includes it, and panic.sh killed its own process).
@@ -366,10 +529,21 @@ for_each_stack() {
     local worst=0 status
     local -a order
 
+    # ⚠️ DOCKTOR IS FIRST UP AND LAST DOWN, and neither is a preference:
+    #    · FIRST, because it is the only stack that can SHOW you the other
+    #      nine mounting. Mounted second (it was, behind the logger) the
+    #      dashboard arrived after the thing it exists to watch.
+    #    · LAST DOWN, for the same reason read backwards: the tool that reports
+    #      the teardown should not be the first thing to stop reporting.
+    # The logger moving to second is safe and was checked: every other stack
+    # declares apk-audio-logs `external: true` and needs LOGGER STORAGE first,
+    # but docker-compose.manager.yml deliberately declares it itself — the
+    # manager is what brings the logger back, so it must be able to start on a
+    # bench where that volume does not exist yet.
     if [ "$direction" = "reverse" ]; then
-        order=(node netbox ember aes70 nmos portal mqtt core docktor logger)
+        order=(node netbox ember aes70 nmos portal mqtt core logger docktor)
     else
-        order=(logger docktor core mqtt portal nmos aes70 ember netbox node)
+        order=(docktor logger core mqtt portal nmos aes70 ember netbox node)
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
@@ -378,6 +552,16 @@ for_each_stack() {
     for stack in "${order[@]}"; do
         if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; } && [ -f "/.dockerenv" ]; then
             log_warn "Skipping '$stack' (running inside manager container)"
+            continue
+        fi
+        # APKAUDIO_SKIP_STACKS — names this walk leaves alone, space separated.
+        # ONE CALLER AND ONE REASON: rebuild-all.sh builds and mounts DockTor
+        # BEFORE it builds anything else, so the two passes after that must not
+        # do it again — a second --no-cache build of the manager is minutes, and
+        # the second `up` would swap the dashboard out from under the page it
+        # just opened.
+        if [[ " ${APKAUDIO_SKIP_STACKS:-} " == *" $stack "* ]]; then
+            log_warn "Skipping '$stack' (APKAUDIO_SKIP_STACKS)"
             continue
         fi
         echo -e "\n── ${stack} ──"
@@ -397,6 +581,16 @@ for_each_stack() {
         "${compose[@]}" "$@"
         status=$?
         [ $status -ne 0 ] && worst=$status
+
+        # THE SITE OPENS THE MOMENT THE THING THAT SERVES IT IS UP, which is
+        # here and nowhere else: this is the one place that knows a docktor
+        # mount just succeeded, and the eight stacks after it take minutes.
+        # Only for an `up` — a `build` produces no server and a `down` is the
+        # opposite of an invitation.
+        if [ $status -eq 0 ] && [ "$1" = "up" ] \
+           && { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; }; then
+            open_manager_site
+        fi
     done
     return $worst
 }

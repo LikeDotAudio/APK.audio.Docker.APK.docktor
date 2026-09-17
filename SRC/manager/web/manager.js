@@ -24,10 +24,18 @@ const state = {
   palette: null,
   actions: { actions: {}, container_actions: {} },
   selected: null,
+  // WHICH POD IS LASSOED. A different question from `selected`, which is a
+  // CONTAINER — the pane on the right is about one container, the enclosure
+  // about all of a pod's — and they are deliberately not linked: picking a card
+  // to read must not move the pod verbs out from under the pointer.
+  selectedStack: null,
   detail: null,
   meters: false,
   density: "high",
   view: "cards",
+  // PODS SWITCHED OFF in the card grid, by name. Survives a repaint and a
+  // reload; a pod that no longer exists just stops matching anything.
+  hiddenPods: new Set(),
   // THE LAST SNAPSHOT AND STATS SAMPLE, HELD RATHER THAN RE-ASKED FOR. The
   // donut and the port table are second readings of what the cadences already
   // fetched; re-fetching per switch would be a third cadence on the box.
@@ -49,6 +57,12 @@ const state = {
   volumeHours: 24,
   volumeHidden: new Set(),
   volumeIsolated: null,
+  // LOG BY DEFAULT, AND THE DEFAULT IS THE POINT: this graph puts a 4 KiB
+  // volume and a 446 GiB filesystem on one axis, and drawn linearly the disk
+  // line is the only thing with a shape — everything else is a flat rule along
+  // the bottom, which is a picture of nothing. Linear is one click away and is
+  // the right reading when the series are of a size with each other.
+  volumeScale: "log",
   volumeTimer: null,
   scanEvery: 0,
   scanTimer: null,
@@ -344,37 +358,65 @@ function syncPaceClock() {
  * without touching returnValue, so the string left behind by the last press is
  * still there — a person who pressed "Do it" once and then dismissed a later
  * dialog with Escape would have been answering yes. */
-function ask(title, body, { verify = null } = {}) {
+function ask(title, body, { verify = null, prompt = null } = {}) {
   return new Promise((resolve) => {
     const dialog = $("#ask");
     const input = $("#ask-verify");
     const yes = $("#ask-yes");
+    const box = $("#ask-prompt-input");
     $("#ask-title").textContent = title;
     $("#ask-body").textContent = body;
     $("#ask-verify-word").textContent = verify || "";
     $("#ask-verify-wrap").hidden = !verify;
+    // THE VALUE BOX, RESET ON THE WAY IN like every other field in this one
+    // reused dialog — a pid left over from the last kill is the worst possible
+    // default for the next one.
+    $("#ask-prompt-wrap").hidden = !prompt;
+    $("#ask-prompt-label").textContent = prompt ? (prompt.label || "Value") : "";
+    $("#ask-prompt-hint").textContent = prompt ? (prompt.hint || "") : "";
+    box.value = "";
+    box.placeholder = prompt ? (prompt.placeholder || "") : "";
     input.value = "";
     // The button SAYS the word it is waiting for, so the dimmed state reads as
     // "not yet" rather than as a broken dialog.
     yes.textContent = verify ? `☢️ ${verify}` : "Do it";
-    yes.disabled = Boolean(verify);
-    input.oninput = verify
-      ? () => { yes.disabled = input.value.trim().toUpperCase() !== verify; }
-      : null;
+    // ARMED BY WHICHEVER GUARD THE ROW CARRIES: the typed word, the value
+    // matching its pattern, or neither. A prompt whose box is empty is not a
+    // question that has been answered, so the button waits.
+    const armed = () => {
+      if (verify && input.value.trim().toUpperCase() !== verify) return false;
+      if (prompt) {
+        const value = box.value.trim();
+        if (!value) return false;
+        if (prompt.pattern && !new RegExp(prompt.pattern).test(value)) return false;
+      }
+      return true;
+    };
+    yes.disabled = !armed();
+    input.oninput = verify ? () => { yes.disabled = !armed(); } : null;
+    box.oninput = prompt ? () => { yes.disabled = !armed(); } : null;
     // ENTER DOES NOTHING HERE, AND THAT IS THE POINT. The form is
     // method="dialog", so a bare Enter submits its FIRST button — Cancel —
     // and somebody who typed the word and pressed Enter would be told nothing
     // and see the dialog vanish. Neither answer is right for a keystroke that
     // was aimed at a text field: the armed button is the only way through.
     input.onkeydown = (event) => { if (event.key === "Enter") event.preventDefault(); };
+    box.onkeydown = input.onkeydown;
     dialog.returnValue = "no";
     dialog.onclose = () => {
       input.oninput = null;
       input.onkeydown = null;
-      resolve(dialog.returnValue === "yes");
+      box.oninput = null;
+      box.onkeydown = null;
+      // THE ANSWER IS THE VALUE WHEN THERE IS ONE, and `false` either way on a
+      // refusal — every caller tests it for truthiness, and an empty string
+      // from a dismissed dialog must not read as a yes.
+      const said = dialog.returnValue === "yes";
+      resolve(prompt ? (said ? { value: box.value.trim() } : false) : said);
     };
     dialog.showModal();
-    if (verify) input.focus();
+    if (prompt) box.focus();
+    else if (verify) input.focus();
   });
 }
 
@@ -388,18 +430,27 @@ function ask(title, body, { verify = null } = {}) {
 async function askAll(row) {
   const confirms = row.confirms?.length ? row.confirms
                  : (row.confirm ? [row.confirm] : []);
+  // A ROW THAT ASKS FOR A VALUE AND HAS NOTHING TO CONFIRM STILL HAS TO ASK:
+  // without this the dialog would never open and the verb would run with no
+  // value at all.
+  if (!confirms.length && row.prompt) confirms.push(row.label);
+  let answer = true;
   for (let step = 0; step < confirms.length; step += 1) {
     const last = step === confirms.length - 1;
     const title = confirms.length > 1
       ? `${row.label} — ask ${step + 1} of ${confirms.length}`
       : row.label;
-    // The typed word guards the LAST ask only: asking for it three times
-    // teaches the hand to type it, which is the opposite of the point.
-    if (!(await ask(title, confirms[step], { verify: last ? row.verify : null }))) {
-      return false;
-    }
+    // The typed word and the value box guard the LAST ask only: asking for
+    // either three times teaches the hand to fill it in, which is the opposite
+    // of the point.
+    const said = await ask(title, confirms[step], {
+      verify: last ? row.verify : null,
+      prompt: last ? row.prompt : null,
+    });
+    if (!said) return false;
+    if (said && said.value !== undefined) answer = said;
   }
-  return true;
+  return answer;
 }
 
 function sheet(title, text, { filter = false } = {}) {
@@ -634,20 +685,7 @@ function renderBenchHealth(snapshot) {
           </div>
         </div>
       </div>
-      <p class="dark-lead">🛑 <b>${stopped.length} container${stopped.length > 1 ? "s" : ""}
-         exited and ${stopped.length > 1 ? "were" : "was"} not restarted.</b>
-         ${stopped.length > 1 ? "Their" : "Its"} compose file asked docker to keep
-         ${stopped.length > 1 ? "them" : "it"} up, so ${stopped.length > 1 ? "these are" : "this is"}
-         not a one-shot that finished — something stopped ${stopped.length > 1 ? "them" : "it"} and
-         nothing brought ${stopped.length > 1 ? "them" : "it"} back.</p>
-      ${stopped.map((row) => `
-        <div class="dark-stack driven">
-          <h3>🛑 ${escapeHTML(row.container)} <small>${escapeHTML(row.stack)}</small></h3>
-          <p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
-               data-stack="${escapeAttr(row.stack)}"></button>
-             <span>brings <b>${escapeHTML(row.stack)}</b> back up and nothing else;
-             the per-container Restart does just this one.</span></p>
-        </div>`).join("")}` : "",
+      ` : "",
   ].join("");
 
   const stoppedNowBtn = $("#stopped-remount-now", host);
@@ -765,27 +803,10 @@ function renderDarkStacks(snapshot) {
     }
   }
 
-  const rowHTML = (row) => `
-    <div class="dark-stack${row.restorable ? " driven" : ""}">
-      <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
-          <small>${row.declared} declared, none present</small></h3>
-      <p class="absent">${escapeHTML(row.absent.join("  ·  "))}</p>
-      ${row.restorable
-        ? `<p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
-               data-stack="${escapeAttr(row.stack)}"></button>
-             <span>builds the image if it is missing and brings up
-             <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>`
-        : `<code>docker compose -f '${escapeHTML(row.compose_file)}' up -d --build</code>`}
-    </div>`;
-
+  // THE ROWS THEMSELVES ARE DRAWN IN THEIR POD'S LASSO (darkRowHTML); this band
+  // keeps only what is about the whole bench — the countdown and the self-held
+  // warning. `stranded` rows have no countdown, so they draw nothing up here.
   host.innerHTML = [
-    stranded.length ? `
-      <p class="dark-lead stranded">🚧 <b>${stranded.length} stack${stranded.length > 1 ? "s" : ""} declared
-         under APK:PODS/ ${stranded.length > 1 ? "have" : "has"} no containers at all, and nothing on
-         this page will restart ${stranded.length > 1 ? "them" : "it"}.</b>
-         A panic removes containers host-wide; the remount behind it drives three of the six
-         compose files. Run the command to bring one back.</p>
-      ${stranded.map(rowHTML).join("")}` : "",
     driven.length ? `
       ${snapshot.watchdog ? `
       <p class="dark-lead">🛡️ <b>The server watchdog remounts these.</b> It checks every 30s
@@ -826,10 +847,6 @@ function renderDarkStacks(snapshot) {
         </div>
       </div>
       `}
-      <p class="dark-lead">⚠ <b>${driven.length} stack${driven.length > 1 ? "s" : ""} this tool DRIVES
-         ${driven.length > 1 ? "are" : "is"} empty.</b> Each row's remount builds and mounts
-         ${driven.length > 1 ? "that stack alone" : "it"}; if it has already been pressed, the
-         execution log says how far it got.</p>
       ${selfHeld ? `
         <p class="dark-lead self-held">🪞 <b>And this page is why.</b> You are reading it from a
            DockTor started at a terminal — pid ${escapeHTML(String(servedBy.pid))} on
@@ -839,9 +856,9 @@ function renderDarkStacks(snapshot) {
            container waits for the port rather than exiting — then Ctrl+C that process, or run
            this, and it takes the socket within five seconds. <b>This tab goes dark when you
            do; reload it and the container is serving.</b></p>
-        <code class="self-held-cmd">kill ${escapeHTML(String(servedBy.pid))}</code>` : ""}
-      ${driven.map(rowHTML).join("")}` : "",
+        <code class="self-held-cmd">kill ${escapeHTML(String(servedBy.pid))}</code>` : ""}` : "",
   ].join("");
+  host.hidden = !host.innerHTML.trim();
 
   const darkNowBtn = $("#dark-remount-now", host);
   if (darkNowBtn) {
@@ -878,6 +895,76 @@ function renderDarkStacks(snapshot) {
   }
 
   if (state.actions) labelVerbs();
+}
+
+/* THE PER-POD ROWS, drawn INSIDE the pod's lasso next to its cards rather than
+ * in a band above the whole grid: the fix is a pod verb, and it belongs where
+ * the pod is. The bands above keep only the bench-wide countdowns. */
+function darkRowHTML(row) {
+  return `
+    <div class="dark-stack${row.restorable ? " driven" : ""}">
+      <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
+          <small>${row.declared} declared, none present</small></h3>
+      <p class="absent">${escapeHTML(row.absent.join("  ·  "))}</p>
+      ${row.restorable
+        ? `<p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
+               data-stack="${escapeAttr(row.stack)}"></button>
+             <span>builds the image if it is missing and brings up
+             <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>`
+        : `<p>Nothing on this page restarts this stack — run:</p>
+           <code>docker compose -f '${escapeHTML(row.compose_file)}' up -d --build</code>`}
+    </div>`;
+}
+
+function stoppedRowHTML(row) {
+  return `
+    <div class="dark-stack driven">
+      <h3>🛑 ${escapeHTML(row.container)} <small>exited and was not restarted</small></h3>
+      <p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
+           data-stack="${escapeAttr(row.stack)}"></button>
+         <span>brings <b>${escapeHTML(row.stack)}</b> back up and nothing else;
+         the per-container Restart does just this one.</span></p>
+    </div>`;
+}
+
+function staleRowHTML(row) {
+  return `
+    <div class="dark-stack stale">
+      <h3>⚡ ${escapeHTML(row.container || row.service)}
+          <small>image built before its code changed</small></h3>
+      <p class="absent">image <code>${escapeHTML(row.image || row.service)}</code> —
+         built <b>${behind(row.behind)}</b> before this file was last changed:</p>
+      <p class="newest"><code>${escapeHTML(row.newest || "—")}</code></p>
+      ${row.container ? `
+        <p class="dark-fix"><button class="btn small violet" data-cverb="rebuild"
+             data-container="${escapeAttr(row.container)}"></button></p>` : ""}
+    </div>`;
+}
+
+/* WHICH POD A ROW BELONGS TO: the card of the same container first, then the
+ * group whose compose directory is the row's stack. A row that matches neither
+ * gets a lasso of its own, named by its stack — a pod with no cards. */
+function podIssues(snapshot) {
+  const groups = snapshot.groups || [];
+  const byContainer = new Map();
+  groups.forEach((g) => g.containers.forEach((c) => byContainer.set(c.name, g.label)));
+  const byStack = new Map();
+  groups.forEach((g) => { if (g.stack && !byStack.has(g.stack)) byStack.set(g.stack, g.label); });
+  const issues = new Map();   // label -> [html]
+  const add = (row, html) => {
+    const label = byContainer.get(row.container) || byStack.get(row.stack) || row.stack;
+    if (!issues.has(label)) issues.set(label, []);
+    issues.get(label).push(html);
+  };
+  (snapshot.dark_stacks || []).forEach((row) => {
+    if (row.restorable && snapshot.action_running) return;
+    add(row, darkRowHTML(row));
+  });
+  if (!snapshot.action_running) {
+    (snapshot.stopped_containers || []).forEach((row) => add(row, stoppedRowHTML(row)));
+    (snapshot.stale_services || []).forEach((row) => add(row, staleRowHTML(row)));
+  }
+  return issues;
 }
 
 /* WHAT THE GRID DRAWS WRONG. The band above covers the container that is not
@@ -972,7 +1059,7 @@ function renderStaleImages(snapshot) {
   }
 
   host.innerHTML = `
-    <div class="dark-stack stale auto-rebuild-banner" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; margin-bottom: 15px; padding: 14px 18px; border-radius: 8px;">
+    <div class="dark-stack stale auto-rebuild-banner" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; margin: 0; padding: 14px 18px; border-radius: 8px;">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
         <div>
           <h3 style="margin: 0; font-size: 1.15em; color: #f87171; display: flex; align-items: center; gap: 8px;">
@@ -1003,26 +1090,7 @@ function renderStaleImages(snapshot) {
           `}
         </div>
       </div>
-    </div>
-    <p class="dark-lead stale">⚡ <b>${stale.length} container${stale.length > 1 ? "s are" : " is"}
-       running an image that was built before the code inside it.</b>
-       ${stale.length > 1 ? "They are" : "It is"} up and healthy and every other reading on this
-       page says so — this is the one that does not. <b>What is compared:</b> the moment the image
-       was built, against the newest file its Dockerfile copies in. Each 🧱 Rebuild below builds
-       that one image from the tree and swaps its container — the old one keeps running until the
-       build succeeds — and nothing else on the bench is touched. ⚡ Rebuild All Dockers &amp; Mount
-       does all of ${stale.length > 1 ? "them" : "it"} and everything else besides.</p>
-    ${stale.map((row) => `
-      <div class="dark-stack stale">
-        <h3>⚡ ${escapeHTML(row.container || row.service)}
-            <small>in ${escapeHTML(row.stack)}</small></h3>
-        <p class="absent">image <code>${escapeHTML(row.image || row.service)}</code> —
-           built <b>${behind(row.behind)}</b> before this file was last changed:</p>
-        <p class="newest"><code>${escapeHTML(row.newest || "—")}</code></p>
-        ${row.container ? `
-          <p class="dark-fix"><button class="btn small violet" data-cverb="rebuild"
-               data-container="${escapeAttr(row.container)}"></button></p>` : ""}
-      </div>`).join("")}`;
+    </div>`;
 
   const nowBtn = $("#stale-rebuild-now", host);
   if (nowBtn) {
@@ -1200,27 +1268,105 @@ function renderGrid(snapshot) {
   renderDarkStacks(snapshot);
   renderStaleImages(snapshot);
   const host = $("#cards");
-  if (!snapshot.count) {
+  const issues = podIssues(snapshot);
+  const known = new Set((snapshot.groups || []).map((g) => g.label));
+  // A POD WITH NO CARDS BUT SOMETHING TO SAY — a dark stack, mostly. First, so
+  // an absence is not scrolled past on the way to forty green cards.
+  const groups = [
+    ...[...issues.keys()].filter((label) => !known.has(label))
+      .map((label) => ({ label, stack: label, hue: "#e5484d", ours: true, containers: [] })),
+    ...(snapshot.groups || []),
+  ];
+  if (!snapshot.count && !groups.length) {
     // AND THE BAND IS ALREADY DRAWN, above this guard on purpose: an empty
     // bench is exactly when "which stacks are missing" is the only question,
     // and returning earlier would answer it with one grey sentence.
     host.innerHTML = `<p class="empty">No containers. Mount the stack to see them here.</p>`;
+    renderPodFilter([], issues);
     return;
   }
-  // CONTINUOUS MATRIX: no forced carriage returns between groups.
-  // Cards flow back-to-back across the whole grid to fill available space.
-  const cardsHtml = snapshot.groups.map((group) => {
+  /* 🪢 THE LASSO — ONE ENCLOSURE PER POD, and it replaces the continuous
+   * matrix that used to live here ("no forced carriage returns between
+   * groups", cards flowing back-to-back to fill the width). That packed well
+   * and read badly: five NETBOX cards came out four on one row and one on the
+   * next, so the only thing saying which pod a card belonged to was a badge
+   * the size of a word. The pod is the unit people act on — three of the
+   * verbs on this page take one — so it is now the unit the grid DRAWS: a
+   * tinted, hue-bordered enclosure with the pod's name on its edge and its
+   * cards inside it.
+   * THE ENCLOSURE IS A CONTROL, NOT A BOX. Clicking anywhere in it that is not
+   * a card selects the pod, which opens its verbs — remount, rebuild, stop.
+   * Nothing is hidden behind a hover: the header is always the name, the
+   * count, and how many of them are running.
+   * WIDTH IS SPENT PER POD rather than across the pane, so a one-container pod
+   * is one card wide and does not leave four columns of nothing beside it —
+   * see .lasso in the stylesheet. */
+  const lassoHtml = groups.map((group) => {
     const hue = group.hue || "";
     const groupName = group.label;
-    return group.containers.map((c) => {
+    const cards = group.containers.map((c) => {
       c.groupLabel = groupName;
       c.groupHue = hue;
       c.groupOurs = group.ours;
       return cardHTML(c);
     }).join("");
+
+    const total = group.containers.length;
+    // RUNNING IS READ OFF THE SAME WORD THE CARD DRAWS, not off a second
+    // rule: `tone` is the server's verdict and `live` is what a green card is.
+    const live = group.containers.filter(isRunning).length;
+    const selected = state.selectedStack === groupName;
+    const problems = issues.get(groupName) || [];
+    // THE VERBS TAKE THE STACK DIRECTORY AND THE HEADING SHOWS THE GROUP NAME,
+    // and they are different strings on nearly every pod — "Storage" is
+    // `DATABASE:server:SQL`. The server decides which stack a group belongs to
+    // (see _group_stack); a group it could not place gets no buttons rather
+    // than buttons aimed at a name no compose file answers to.
+    const stack = group.stack || "";
+    return `
+      <section class="lasso${group.ours ? " ours" : ""}${selected ? " selected" : ""}${problems.length ? " has-issues" : ""}"
+               style="--group: ${escapeAttr(hue || "#6f7480")}; --n: ${Math.max(1, total)}"
+               data-lasso="${escapeAttr(groupName)}" data-stack="${escapeAttr(stack)}"${state.hiddenPods.has(groupName) ? " hidden" : ""}>
+        <header class="lasso-head">
+          <span class="group-pill">${escapeHTML(groupName)}</span>
+          ${stack ? `<span class="lasso-stack" title="The directory under APK:PODS/ that the buttons on this pod act on">${escapeHTML(stack)}</span>` : ""}
+          <span class="lasso-count">${total ? `${live} of ${total} running` : "no containers"}</span>
+        </header>
+        ${problems.length ? `<div class="lasso-issues">${problems.join("")}</div>` : ""}
+        ${cards ? `<div class="group group-all">${cards}</div>` : ""}
+      </section>`;
   }).join("");
 
-  host.innerHTML = `<div class="group group-all">${cardsHtml}</div>`;
+  host.innerHTML = lassoHtml;
+  renderPodFilter(groups, issues);
+  state.pods = { groups, issues };
+
+  // THE WHOLE ENCLOSURE IS THE CLICK TARGET, minus the things inside it that
+  // are targets of their own. A second click on the selected pod lets it go,
+  // so selecting is never a state you have to find the way out of.
+  $$("[data-lasso]", host).forEach((lasso) => {
+    lasso.onclick = (event) => {
+      if (event.target.closest(".card, .dark-stack, button, a")) return;
+      const name = lasso.dataset.lasso;
+      state.selectedStack = state.selectedStack === name ? null : name;
+      if (state.selectedStack) selectPod(name);
+      else if (state.detailPod) clearDetail();
+      $$("[data-lasso]", host).forEach((other) => {
+        other.classList.toggle("selected", other.dataset.lasso === state.selectedStack);
+      });
+    };
+    // THE VERBS ARE A RIGHT-CLICK, NOT AN OVERLAY. Four buttons fading in over
+    // the header of whichever pod the pointer crossed covered the name and the
+    // count on the way past; a context menu is there only when asked for, at
+    // the pointer, and a link inside the pod keeps the browser's own menu.
+    lasso.oncontextmenu = (event) => {
+      if (event.target.closest("a, input, textarea")) return;
+      event.preventDefault();
+      const card = event.target.closest(".card");
+      openPodMenu(lasso.dataset.lasso, lasso.dataset.stack, event.clientX, event.clientY,
+                  card ? card.dataset.container : null);
+    };
+  });
 
   $$(".card", host).forEach((card) => {
     card.onclick = (event) => {
@@ -1228,6 +1374,14 @@ function renderGrid(snapshot) {
       // is a list that goes stale the third time.
       if (event.target.closest("button")) return;
       select(card.dataset.container);
+    };
+  });
+  $$("[data-cverb]", host).forEach((button) => {
+    const row = state.actions && state.actions.container_actions[button.dataset.cverb];
+    button.textContent = row ? row.label : button.dataset.cverb;
+    button.onclick = (event) => {
+      event.stopPropagation();
+      runContainerAction(button.dataset.cverb, button.dataset.container, button);
     };
   });
   $$("[data-remove]", host).forEach((button) => {
@@ -1247,11 +1401,57 @@ function renderGrid(snapshot) {
       runContainerAction("rebuild", button.dataset.rebuild, button);
     };
   });
+  // THE POD VERBS ON EVERY LASSO ARE WORDED BY THE SERVER, like every other
+  // button here — and they are rebuilt with the grid, so this has to run after
+  // the paint or three buttons per pod would read `up-stack rebuild-stack
+  // down-stack` until the next repaint.
+  if (state.actions) labelVerbs();
   renderViews();
   // AFTER THE PAINT, ONCE. The first scan to land after a verb is the answer to
   // that verb, and it is read from the top: a list still parked where the
   // reader left it looks like the list that was there before.
   if (state.rewind) rewindPane();
+}
+
+/* ONE TOGGLE PER POD, redrawn with the grid so a new pod shows up on the next
+ * scan. Toggling flips `hidden` on the lassos already drawn — no repaint. */
+function renderPodFilter(groups, issues = new Map()) {
+  const bar = $("#pod-filter");
+  if (!bar) return;
+  const names = groups.map((g) => g.label);
+  bar.innerHTML = `<span class="pod-filter-lead">🫛 Pods</span>` + groups.map((g) => `
+      <label style="--group: ${escapeAttr(g.hue || "#6f7480")}"
+             title="Show or hide ${escapeAttr(g.label)}">
+        <input type="checkbox" value="${escapeAttr(g.label)}"${state.hiddenPods.has(g.label) ? "" : " checked"}>
+        <span>${issues.has(g.label) ? "⚠ " : ""}${escapeHTML(g.label)} <small>${g.containers.length}</small></span>
+      </label>`).join("") + `
+    <button class="btn small plain" data-pods="all">Show all</button>
+    <button class="btn small plain" data-pods="none">Hide all</button>`;
+  $$("input[type=checkbox]", bar).forEach((box) => {
+    box.onchange = () => {
+      if (box.checked) state.hiddenPods.delete(box.value);
+      else state.hiddenPods.add(box.value);
+      applyPodFilter();
+    };
+  });
+  $$("[data-pods]", bar).forEach((button) => {
+    button.onclick = () => {
+      const show = button.dataset.pods === "all";
+      names.forEach((name) => (show ? state.hiddenPods.delete(name) : state.hiddenPods.add(name)));
+      $$("input[type=checkbox]", bar).forEach((box) => { box.checked = show; });
+      applyPodFilter();
+    };
+  });
+  bar.hidden = state.view !== "cards" || !groups.length;
+}
+
+function applyPodFilter() {
+  $$("[data-lasso]", $("#cards")).forEach((lasso) => {
+    lasso.hidden = state.hiddenPods.has(lasso.dataset.lasso);
+  });
+  try {
+    localStorage.setItem("apk.manager.hiddenpods", JSON.stringify([...state.hiddenPods]));
+  } catch { /* no store */ }
 }
 
 /* THE ONE PLACE THE READING IS SCROLLED BY THE PAGE rather than by the person.
@@ -1307,6 +1507,8 @@ function applyView(name) {
   // is a control with nothing to control, and the first thing tried when the
   // ring looks wrong.
   $("#density").closest("label").hidden = state.view !== "cards";
+  const podFilter = $("#pod-filter");
+  if (podFilter) podFilter.hidden = state.view !== "cards" || !podFilter.children.length;
   try { localStorage.setItem("apk.manager.view", state.view); } catch { /* no store */ }
   renderViews();
   // THE SCROLL OFFSET BELONGS TO THE READING YOU LEFT. One scrollport holds all
@@ -1865,13 +2067,28 @@ function volumeChartSVG(series) {
   const yMax = Math.max(...all.map((pair) => pair[1])) || 1;
   const span = (tMax - tMin) || 1;
   const x = (t) => L + ((t - tMin) / span) * (W - L - R);
-  const y = (value) => H - B - (value / yMax) * (H - T - B);
 
-  const grid = [0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-    const value = yMax * fraction;
-    return `<line class="grid" x1="${L}" y1="${y(value)}" x2="${W - R}" y2="${y(value)}"/>
-            <text class="axis" x="${L - 8}" y="${y(value) + 3.5}" text-anchor="end">${escapeHTML(humanBytes(value))}</text>`;
-  }).join("");
+  // TWO SCALES AND THE FLOOR IS WHY LOG NEEDS ITS OWN: log10(0) is -Infinity
+  // and a container layer of 0 B is an ordinary reading, so everything under a
+  // byte is pinned to the baseline rather than dropped — a series that
+  // vanishes reads as a volume that was deleted.
+  const logTop = Math.log10(Math.max(yMax, 10));
+  const height = H - T - B;
+  const y = state.volumeScale === "log"
+    ? (value) => H - B - (Math.max(0, Math.log10(Math.max(value, 1))) / logTop) * height
+    : (value) => H - B - (value / yMax) * height;
+
+  // THE GRIDLINES ARE THE UNITS THE LABELS ARE IN. A decade of TEN per line put
+  // `9.77 KiB` and `977 KiB` on the axis — true, and unreadable, because the
+  // numbers beside this graph are binary. Powers of 1024 give four or five
+  // lines a person already has words for: 1 KiB, 1 MiB, 1 GiB, 1 TiB.
+  const marks = state.volumeScale === "log"
+    ? [1, 1024, 1024 ** 2, 1024 ** 3, 1024 ** 4, 1024 ** 5].filter((value) => value <= yMax * 1.05)
+    : [0, 0.25, 0.5, 0.75, 1].map((fraction) => yMax * fraction);
+
+  const grid = marks.map((value) => `
+      <line class="grid" x1="${L}" y1="${y(value)}" x2="${W - R}" y2="${y(value)}"/>
+      <text class="axis" x="${L - 8}" y="${y(value) + 3.5}" text-anchor="end">${escapeHTML(humanBytes(value))}</text>`).join("");
 
   const ticks = [0, 0.5, 1].map((fraction) => {
     const when = new Date((tMin + span * fraction) * 1000);
@@ -1881,12 +2098,19 @@ function volumeChartSVG(series) {
             </text>`;
   }).join("");
 
+  // FILLS ONLY ON THE LINEAR AXIS. Under a log axis the area under a line is
+  // not a quantity of anything — it is the logarithm's shadow — and with a
+  // dozen series it painted the whole panel grey, hiding the lines it was
+  // supposed to be under. Linear areas still earn their place: they say which
+  // side of the line the volume is on.
+  const filled = state.volumeScale !== "log";
   const bodies = drawn.map((row) => {
     const line = row.values.map((pair) => `${x(pair[0]).toFixed(1)},${y(pair[1]).toFixed(1)}`).join(" ");
     const first = row.values[0], last = row.values[row.values.length - 1];
-    const area = `M ${x(first[0]).toFixed(1)},${(H - B).toFixed(1)} L ${line.split(" ").join(" L ")} L ${x(last[0]).toFixed(1)},${(H - B).toFixed(1)} Z`;
-    return `<path class="vol-area" d="${area}" fill="${escapeAttr(row.hue)}"/>
-            <polyline class="vol-line" points="${line}" stroke="${escapeAttr(row.hue)}"/>`;
+    const area = filled
+      ? `<path class="vol-area" d="M ${x(first[0]).toFixed(1)},${(H - B).toFixed(1)} L ${line.split(" ").join(" L ")} L ${x(last[0]).toFixed(1)},${(H - B).toFixed(1)} Z" fill="${escapeAttr(row.hue)}"/>`
+      : "";
+    return `${area}<polyline class="vol-line" points="${line}" stroke="${escapeAttr(row.hue)}"/>`;
   }).join("");
 
   return `
@@ -1961,7 +2185,15 @@ function volumePointerHTML() {
         <p class="note">The folder is where the graph above comes from. Until the named volume exists, the
            manager writes into the folder directly — which works from a terminal and is lost the moment
            this tool runs as a container, because a container has no such folder.</p>`}
-      ${action ? `<button class="btn plain small" id="make-storage">${escapeHTML(action.label)}</button>` : ""}
+      ${action && !(exists && bound)
+        ? `<button class="btn plain small" id="make-storage">${escapeHTML(action.label)}</button>`
+        // THE BUTTON GOES WHEN THERE IS NOTHING FOR IT TO DO. Its label comes
+        // from the server and says "Create", which over a volume that already
+        // exists is a button offering to do the thing it just did — and the
+        // verb is idempotent, so pressing it teaches nothing. It comes back
+        // the moment a refresh finds the volume gone.
+        : `<p class="note">The volume exists and points at the folder above. <code>volumes</code> and
+             <code>storage</code> at a terminal say the same thing; nothing here needs pressing.</p>`}
     </div>`;
 }
 
@@ -2015,7 +2247,12 @@ function renderVolumes() {
           <small>${escapeHTML(humanBytes(disk.used_bytes || 0))} of ${escapeHTML(humanBytes(disk.total_bytes || 0))}
             used on ${escapeHTML(disk.data_root || "the docker root")} · one sample every ${every} min</small></h3>
         <div class="vol-windows">${VOLUME_WINDOWS.map(([hours, label]) => `
-          <button class="btn plain micro ${state.volumeHours === hours ? "on" : ""}" data-hours="${hours}">${label}</button>`).join("")}</div>
+          <button class="btn plain micro ${state.volumeHours === hours ? "on" : ""}" data-hours="${hours}">${label}</button>`).join("")}
+          <button class="btn plain micro scale" id="vol-scale"
+                  title="${escapeAttr(state.volumeScale === "log"
+                    ? "Log scale: each gridline is ten times the one below, so a 4 KiB volume and a 446 GiB disk are both readable. Click for linear."
+                    : "Linear scale: equal heights are equal bytes. The largest series sets the axis, so everything much smaller is flat along the bottom. Click for log.")}"
+          >${state.volumeScale === "log" ? "log" : "linear"}</button></div>
       </div>
       ${chart || `<p class="empty">The series has fewer than two samples in this window. One is written
          every ${every} minutes while this manager runs, and into
@@ -2025,7 +2262,13 @@ function renderVolumes() {
       <p class="note">Every series is drawn from the same zero on one byte axis, one over top of the other —
          so two lines at the same height are the same number of bytes. <b>Click a legend row to isolate it</b>;
          click it again to bring the rest back. The right-hand number is the change across this window: that
-         is the one that answers "what is eating the disk", which a size cannot.</p>
+         is the one that answers "what is eating the disk", which a size cannot.
+         ${state.volumeScale === "log"
+           ? `The axis is <b>logarithmic</b> — each gridline is ten times the one below it, which is the only
+              way a 4 KiB volume and a ${escapeHTML(humanBytes(disk.total_bytes || 0))} filesystem share one
+              drawing. Heights are NOT proportional to bytes while it says <code>log</code>.`
+           : `The axis is <b>linear</b>: equal heights are equal bytes, and the largest series sets the top —
+              so anything much smaller than it is flat along the bottom.`}</p>
     </div>
 
     <div class="vol-head">
@@ -2058,6 +2301,13 @@ function renderVolumes() {
       loadVolumes();
     };
   });
+
+  const scale = $("#vol-scale", host);
+  if (scale) scale.onclick = () => {
+    state.volumeScale = state.volumeScale === "log" ? "linear" : "log";
+    try { localStorage.setItem("apk.manager.volscale", state.volumeScale); } catch { /* no store */ }
+    renderVolumes();
+  };
 
   const make = $("#make-storage", host);
   if (make) make.onclick = () => runAction("storage-volume", make).then(() => loadVolumes());
@@ -2301,27 +2551,34 @@ async function loadSurface(name) {
   if (host) host.innerHTML = surfaceHTML(surface);
 }
 
-function renderLaunchers(detail) {
-  const host = $("#launchers");
-  const buttons = [];
-  for (const endpoint of detail.endpoints) {
+/* WHAT A CONTAINER CAN BE REACHED AT, as rows and not markup: the pane draws
+ * them as buttons and the right-click menu draws them as menu rows, and two
+ * copies of "which scheme is opened and which is copied" would drift. */
+function launcherItems(detail) {
+  const items = [];
+  for (const endpoint of detail.endpoints || []) {
     const scheme = endpoint.uri.split("://")[0];
-    if (endpoint.kind === "open") {
-      buttons.push(`<a class="btn ${scheme === "http" ? "accent" : "plain"} small"
-        href="${escapeAttr(endpoint.uri)}" target="_blank" rel="noreferrer">🌐 Open ${escapeHTML(endpoint.label)} (${escapeHTML(endpoint.uri)})</a>`);
-    } else {
-      // A mqtt:// or mysql:// handed to a browser is at best a dialog asking
-      // what application to use, so these are copied and never opened.
-      buttons.push(`<button class="btn teal small" data-copy="${escapeAttr(endpoint.uri)}">📋 Copy ${escapeHTML(endpoint.label)} (${escapeHTML(endpoint.uri)})</button>`);
-    }
+    // A mqtt:// or mysql:// handed to a browser is at best a dialog asking
+    // what application to use, so these are copied and never opened.
+    items.push(endpoint.kind === "open"
+      ? { open: true, uri: endpoint.uri, http: scheme === "http", text: `🌐 Open ${endpoint.label} (${endpoint.uri})` }
+      : { open: false, uri: endpoint.uri, text: `📋 Copy ${endpoint.label} (${endpoint.uri})` });
   }
   // A published port the endpoint table does not know about. Its own page
   // states its name; page-titles.sh fetched and remembered it, so the launcher
   // reads as a place and not as a number.
-  for (const port of detail.undeclared) {
+  for (const port of detail.undeclared || []) {
     const label = port.title ? `${port.title} (${port.port})` : `Open Port ${port.port}`;
-    buttons.push(`<a class="btn plain small" href="${escapeAttr(port.uri)}" target="_blank" rel="noreferrer">🌐 ${escapeHTML(label)}</a>`);
+    items.push({ open: true, uri: port.uri, text: `🌐 ${label}` });
   }
+  return items;
+}
+
+function renderLaunchers(detail) {
+  const host = $("#launchers");
+  const buttons = launcherItems(detail).map((item) => item.open
+    ? `<a class="btn ${item.http ? "accent" : "plain"} small" href="${escapeAttr(item.uri)}" target="_blank" rel="noreferrer">${escapeHTML(item.text)}</a>`
+    : `<button class="btn teal small" data-copy="${escapeAttr(item.uri)}">${escapeHTML(item.text)}</button>`);
 
   const verbs = Object.entries(state.actions.container_actions)
     .filter(([key]) => key !== "logs")
@@ -2344,8 +2601,119 @@ function renderLaunchers(detail) {
   });
 }
 
+/* ------------------------------------------------------------- the pod pane
+ * WHAT A CLICK ON A LASSO OPENS: the same right-hand pane a card opens, about
+ * the POD — its compose file, each container's image and build state, each
+ * container's runtime — and the pod verbs. Drawn from the snapshot and stats
+ * sample already held, so it costs no fetch and repaints with the grid. */
+function isRunning(c) {
+  return /^up\b/i.test(c.status || "");
+}
+
+function selectPod(name) {
+  state.detailPod = name;
+  state.selected = null;
+  $$(".card").forEach((card) => card.classList.remove("selected"));
+  renderPodDetail(name);
+}
+
+function clearDetail() {
+  state.detailPod = null;
+  state.detail = null;
+  $("#detail-title").textContent = "🔍 Container Build & Runtime Details";
+  $("#copy-inspect").disabled = true;
+  $("#view-script").disabled = true;
+  $("#launchers").hidden = true;
+  $("#detail").innerHTML = `<p class="empty">Click any container on the left to inspect its build state,
+         runtime detail and the file that built it.</p>`;
+}
+
+function renderPodDetail(name) {
+  const pods = state.pods || { groups: [], issues: new Map() };
+  const group = pods.groups.find((g) => g.label === name);
+  if (!group) { clearDetail(); return; }
+  const snapshot = state.snapshot || {};
+  const stack = group.stack || "";
+  const stackRow = (snapshot.stacks || []).find((r) => r.stack === stack);
+  const containers = group.containers;
+  const running = containers.filter(isRunning).length;
+  const problems = pods.issues.get(name) || [];
+
+  state.detail = null;
+  $("#detail-title").textContent = `🪢 Pod: ${name}`;
+  $("#copy-inspect").disabled = true;
+  $("#view-script").disabled = true;
+
+  const launchers = $("#launchers");
+  launchers.hidden = false;
+  launchers.innerHTML = stack
+    ? `<span class="lab">🪢 This pod:</span>
+       <button class="btn small" data-saction="restart-stack" data-stack="${escapeAttr(stack)}"></button>
+       <button class="btn small violet" data-saction="rebuild-stack" data-stack="${escapeAttr(stack)}"></button>
+       <button class="btn small danger" data-saction="down-stack" data-stack="${escapeAttr(stack)}"></button>
+       <button class="btn small accent" data-saction="up-stack" data-stack="${escapeAttr(stack)}"></button>`
+    : `<span class="lab">🪢 This pod:</span>
+       <span class="lasso-nostack">not declared by any compose file — there is nothing to restart, rebuild or delete as a pod</span>`;
+
+  let html = `<h3>🩺 POD STATUS</h3>`;
+  html += row("Running", `${running} of ${containers.length} container${containers.length === 1 ? "" : "s"}`,
+              running === containers.length && containers.length ? "" : "dim");
+  if (stackRow) {
+    html += row("Declared", `${stackRow.declared} declared · ${stackRow.present} present · ${stackRow.running} running`);
+    if (stackRow.absent.length) html += row("Missing", escapeHTML(stackRow.absent.join(" · ")), "dim");
+    if (stackRow.stopped.length) html += row("Stopped", escapeHTML(stackRow.stopped.join(" · ")), "dim");
+  }
+  if (problems.length) html += `<div class="lasso-issues">${problems.join("")}</div>`;
+
+  html += `<h3>📄 WHAT BUILDS THIS POD</h3>`;
+  html += row("Pod directory", stack ? escapeHTML(`APK:PODS/${stack}`) : "none — no compose file declares these containers",
+              stack ? "path" : "dim");
+  if (stackRow) {
+    html += row("Compose file", escapeHTML(stackRow.compose_file), "path");
+    html += row("Project", escapeHTML(stackRow.project || "—"));
+    html += row("Driven here", stackRow.driven ? "yes — the verbs above act on it" : "no — run compose by hand", stackRow.driven ? "" : "dim");
+  }
+
+  html += `<h3>🧱 BUILD — ONE IMAGE PER CONTAINER</h3>`;
+  html += containers.length ? containers.map((c) => {
+    const st = c.staleness;
+    const verdict = !st ? "not built from this tree"
+      : st.stale === "yes" ? `⚡ STALE — built ${behind(st.behind)} before ${escapeHTML(st.newest || "its code")} changed`
+      : `✅ current — built ${escapeHTML(st.built || "")}`;
+    return row(c.name, `${escapeHTML(c.image || "—")} <small>· ${verdict}</small>`, st && st.stale === "yes" ? "" : "dim");
+  }).join("") : row("Images", "no containers to read", "dim");
+
+  html += `<h3>⚙ RUNTIME</h3>`;
+  html += containers.length ? `<table class="pod-runtime">
+      <thead><tr><th>Container</th><th>Status</th><th>CPU</th><th>MEM</th><th>Ports</th></tr></thead>
+      <tbody>${containers.map((c) => {
+        const r = (state.resources && state.resources[c.name]) || c.resources || {};
+        return `<tr>
+          <td><a href="#" data-pod-container="${escapeAttr(c.name)}">${escapeHTML(c.emoji || "")} ${escapeHTML(c.name)}</a></td>
+          <td class="t-${escapeAttr(c.tone || "idle")}">${escapeHTML(c.status)}</td>
+          <td>${escapeHTML(r.cpu_percent || "—")}</td>
+          <td>${escapeHTML(r.memory || "—")}</td>
+          <td>${escapeHTML((c.published || []).map((p) => p.port || p).join(", ") || (c.network_mode === "host" ? "host network" : "—"))}</td>
+        </tr>`;
+      }).join("")}</tbody></table>
+      <p class="empty">Click a container for its full inspect.</p>`
+    : row("Containers", "none present", "dim");
+
+  $("#detail").innerHTML = html;
+  $$("[data-pod-container]", $("#detail")).forEach((link) => {
+    link.onclick = (event) => { event.preventDefault(); select(link.dataset.podContainer); };
+  });
+  $$("#detail [data-cverb]").forEach((button) => {
+    const verb = state.actions && state.actions.container_actions[button.dataset.cverb];
+    button.textContent = verb ? verb.label : button.dataset.cverb;
+    button.onclick = () => runContainerAction(button.dataset.cverb, button.dataset.container, button);
+  });
+  if (state.actions) labelVerbs();
+}
+
 async function select(name) {
   state.selected = name;
+  state.detailPod = null;
   $$(".card").forEach((card) => card.classList.toggle("selected", card.dataset.container === name));
   $("#detail").innerHTML = `<p class="empty">Inspecting ${escapeHTML(name)}…</p>`;
   try {
@@ -2365,6 +2733,7 @@ async function scan({ apps = true, quiet = false } = {}) {
     $("#scan-state").textContent = new Date().toLocaleTimeString();
     // The pane already open on a container is repainted with the grid, because
     // the two disagreeing is what the follow cadence exists for.
+    if (state.detailPod) renderPodDetail(state.detailPod);
     if (state.selected && !state.busy) {
       get(`/api/container/${encodeURIComponent(state.selected)}?live=1`)
         .then(renderDetail).catch(() => {});
@@ -2474,12 +2843,19 @@ function markRunning(button, on) {
 async function runAction(key, button, skipConfirm = false, origin = null) {
   const row = state.actions.actions[key];
   if (!row) return;
-  if (!skipConfirm && !(await askAll(row))) return;
+  const said = skipConfirm ? true : await askAll(row);
+  if (!said) return;
+  // THE ONE VERB THAT CARRIES A VALUE sends it as `args`, which the server
+  // accepts ONLY for a row that declared a prompt and only after re-checking
+  // the pattern. Every other verb sends none, and a row that did not ask for
+  // arguments cannot be given any.
+  const args = said && said.value !== undefined ? [said.value] : undefined;
   markRunning(button, true);
   follow(true);
   try {
     await post(`/api/action/${encodeURIComponent(key)}`,
-               { origin: origin || `the "${row.label}" button in the DockTor web UI` });
+               { origin: origin || `the "${row.label}" button in the DockTor web UI`,
+                 ...(args ? { args } : {}) });
   } finally {
     // A STOP AND THE RUN IT CANCELLED FINISH IN EITHER ORDER, and both land
     // here. follow() counts, so the bar comes back when the LAST of them ends.
@@ -2554,6 +2930,114 @@ async function runStackAction(key, stack, button) {
     markRunning(button, false);
     follow(false);
   }
+}
+
+/* THE POD MENU — ONE FLOATING .menu-items FOR THE WHOLE GRID, drawn at the
+ * pointer on a right-click inside a lasso. Rebuilt on every open, so its words
+ * come from the server table like every other verb, and a verb pressed while
+ * one is running is greyed here the same way follow() greys the bar.
+ * OVER A CARD IT IS THE SAME MENU WITH THE CONTAINER ON TOP: that container's
+ * launchers and verbs first, then the pod's. The launchers need
+ * /api/container, so they arrive a beat after the menu does. */
+function openPodMenu(name, stack, x, y, container = null) {
+  const menu = podMenu();
+  const token = (state.podMenuToken = (state.podMenuToken || 0) + 1);
+  const busy = (state.busy || 0) > 0;
+  const off = busy ? " disabled" : "";
+  // THE MANAGER CANNOT ACT ON ITS OWN POD FROM INSIDE ITS OWN CONTAINER — every
+  // stack script refuses it with exit 2 (up-stack.sh, rebuild-stack.sh, …), so
+  // offering the row only buys a red failure. Greyed with the host command
+  // named, and only when this server IS containerised: a terminal manager may.
+  const snapshot = state.snapshot || {};
+  const self = Boolean(snapshot.manager?.containerised
+    && (snapshot.stacks || []).some((row) => row.stack === stack && row.manager));
+  const selfOff = self ? " disabled" : off;
+  let html = "";
+  if (container) {
+    const cverbs = Object.entries(state.actions?.container_actions || {})
+      .map(([key, row]) => `<button type="button" data-menu-cverb="${key}"${key === "logs" ? off : selfOff}>${escapeHTML(row.label)}</button>`)
+      .join("");
+    html += `<div class="note">🐳 ${escapeHTML(container)}</div>
+      <div data-menu-launchers><div class="note">🚀 finding launchers…</div></div>
+      ${cverbs}<div class="sep"></div>`;
+  }
+  html += `<div class="note">🪢 ${escapeHTML(name)}${stack && stack !== name ? ` · <code>${escapeHTML(stack)}</code>` : ""}</div>`;
+  html += stack
+    ? ["up-stack", "restart-stack", "rebuild-stack", "down-stack"].map((key) => {
+        const row = state.actions?.stack_actions?.[key];
+        return `<button type="button" data-pod-verb="${key}"${key === "down-stack" ? ' class="nuke"' : ""}${selfOff}>${escapeHTML(row ? row.label : key)}</button>`;
+      }).join("") + (self
+        ? `<div class="note">This is DockTor itself — it cannot remount, restart, rebuild or delete its own pod from inside. From a host terminal: <code>APK:Docktor/K8/rebuild-stack.sh 'APK:Docktor'</code></div>`
+        : "")
+    : `<div class="note">Not declared by any compose file — there is no pod to remount, rebuild or stop.</div>`;
+  menu.innerHTML = html;
+
+  const lassoEl = () => $(`[data-lasso="${CSS.escape(name)}"]`);
+  const cardEl = () => container && $(`.card[data-container="${CSS.escape(container)}"]`);
+  $$("[data-pod-verb]", menu).forEach((item) => {
+    item.onclick = () => { closePodMenu(); runStackAction(item.dataset.podVerb, stack, lassoEl()); };
+  });
+  $$("[data-menu-cverb]", menu).forEach((item) => {
+    item.onclick = () => { closePodMenu(); runContainerAction(item.dataset.menuCverb, container, cardEl()); };
+  });
+
+  $$(".menu-items").forEach((other) => { other.hidden = true; });
+  menu.hidden = false;
+  placePodMenu(menu, x, y);
+
+  if (container) {
+    get(`/api/container/${encodeURIComponent(container)}`).then((detail) => {
+      if (state.podMenuToken !== token || menu.hidden) return;
+      const host = $("[data-menu-launchers]", menu);
+      const items = launcherItems(detail);
+      host.innerHTML = items.length
+        ? items.map((item) => item.open
+            ? `<a href="${escapeAttr(item.uri)}" target="_blank" rel="noreferrer">${escapeHTML(item.text)}</a>`
+            : `<button type="button" data-menu-copy="${escapeAttr(item.uri)}">${escapeHTML(item.text)}</button>`).join("")
+        : `<div class="note">🚀 no launchers — nothing published</div>`;
+      $$("a", host).forEach((link) => { link.addEventListener("click", closePodMenu); });
+      $$("[data-menu-copy]", host).forEach((item) => {
+        item.onclick = () => { navigator.clipboard.writeText(item.dataset.menuCopy); closePodMenu(); };
+      });
+      placePodMenu(menu, x, y);
+    }).catch(() => {
+      if (state.podMenuToken !== token) return;
+      const host = $("[data-menu-launchers]", menu);
+      if (host) host.innerHTML = `<div class="note">🚀 launchers unavailable</div>`;
+    });
+  }
+}
+
+/* KEPT ON SCREEN: a right-click near the bottom or right edge opens the menu
+ * up or left of the pointer rather than under the fold. Re-run when the
+ * launchers land, because they make the menu taller. */
+function placePodMenu(menu, x, y) {
+  const { width, height } = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(x, innerWidth - width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, innerHeight - height - 4))}px`;
+}
+
+function podMenu() {
+  let menu = $("#pod-menu");
+  if (!menu) {
+    menu = document.createElement("div");
+    menu.id = "pod-menu";
+    menu.className = "menu-items pod-menu";
+    menu.hidden = true;
+    menu.onclick = (event) => event.stopPropagation();
+    document.body.appendChild(menu);
+    document.addEventListener("click", closePodMenu);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closePodMenu(); });
+    addEventListener("scroll", (event) => { if (!menu.contains(event.target)) closePodMenu(); }, true);
+    addEventListener("resize", closePodMenu);
+    addEventListener("blur", closePodMenu);
+  }
+  return menu;
+}
+
+function closePodMenu() {
+  const menu = $("#pod-menu");
+  if (menu) menu.hidden = true;
 }
 
 /* ------------------------------------------------------------------- boot */
@@ -2741,6 +3225,11 @@ async function boot() {
   cadence.onchange = () => armScan(Number(cadence.value));
   armScan(15);
 
+  try {
+    const pods = JSON.parse(localStorage.getItem("apk.manager.hiddenpods") || "[]");
+    if (Array.isArray(pods)) state.hiddenPods = new Set(pods.filter((p) => typeof p === "string"));
+  } catch { /* no store, or not ours */ }
+
   const density = $("#density");
   density.value = DENSITIES.includes(savedDensity()) ? savedDensity() : "high";
   density.onchange = () => applyDensity(density.value);
@@ -2752,6 +3241,14 @@ async function boot() {
   // on whichever input is checked. `change` fires on the input that just BECAME
   // checked, so there is no need to ask which. The `checked` in the markup is
   // the cards default and is overwritten here before the first paint.
+  // The axis a person chose is a way of reading, and survives a reload with the
+  // view that needs it. Anything but the two words is ignored rather than
+  // trusted: this comes back from a store the page does not control.
+  try {
+    const scale = localStorage.getItem("apk.manager.volscale");
+    if (scale === "log" || scale === "linear") state.volumeScale = scale;
+  } catch { /* no store */ }
+
   const wanted = VIEWS.includes(savedView()) ? savedView() : "cards";
   $$("#view input[name=view]").forEach((radio) => {
     radio.checked = radio.value === wanted;

@@ -55,8 +55,11 @@ clean_build_cache "the mount"
 
 echo -e "\n${BOLD}${GREEN}✅ APK.audio Ecosystem Containers Active!${OFF}"
 
-# Open browser to DockTor Web UI immediately after DockTor container is up
-log_step "Loading DockTor Web UI (http://127.0.0.1:8765/)..."
-python3 -c "import webbrowser; webbrowser.open('http://127.0.0.1:8765/')" 2>/dev/null || true
+# THE BROWSER IS NOT OPENED HERE ANY MORE. It was, on this line — the last line
+# of a run that mounts ten stacks — so the page that draws a mount arrived after
+# the mount. DockTor is first in for_each_stack now and open_manager_site() is
+# called the moment ITS up returns, which on a cold bench is a minute in rather
+# than ten. On a run that never reached DockTor this says where it would be.
+[ "${APKAUDIO_SITE_OPENED:-0}" = "1" ] || log_info "DockTor: $MANAGER_URL"
 
 exit 0

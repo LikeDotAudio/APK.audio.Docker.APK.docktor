@@ -183,13 +183,39 @@ def _can_raise_a_browser():
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
+def _already_serving(url="http://127.0.0.1:8765/api/health"):
+    """Is a DockTor answering RIGHT NOW? Two seconds, and never an exception."""
+    try:
+        import urllib.request
+        urllib.request.urlopen(url, timeout=2).read(1)
+        return True
+    except Exception:
+        return False
+
+
 def _open_browser_immediately():
-    if _can_raise_a_browser():
-        try:
-            import webbrowser
-            webbrowser.open_new_tab("http://127.0.0.1:8765/")
-        except Exception:
-            pass
+    """Raise the dashboard ONLY IF THERE IS ONE, and say so if there is not.
+
+    IT USED TO OPEN UNCONDITIONALLY, on the first line of `up` and `rebuild` —
+    which on the bench those verbs exist for (nothing mounted yet) is a browser
+    tab that says ERR_CONNECTION_REFUSED while the build it was meant to show
+    runs for ten minutes behind it.
+    THE SCRIPTS OWN THE OTHER HALF NOW: DockTor is the first stack
+    for_each_stack mounts, and open_manager_site() in _common.sh raises the page
+    the moment it answers. APKAUDIO_SITE_OPENED is how the two halves agree on
+    one tab — set here when this one opens it, read there.
+    """
+    if os.environ.get("APKAUDIO_SITE_OPENED") == "1":
+        return
+    if not _can_raise_a_browser() or not _already_serving():
+        # Not "no browser": the mount is about to raise one itself.
+        return
+    os.environ["APKAUDIO_SITE_OPENED"] = "1"
+    try:
+        import webbrowser
+        webbrowser.open_new_tab("http://127.0.0.1:8765/")
+    except Exception:
+        pass
 
 
 def run_cli_mode(argv=None):
@@ -202,6 +228,10 @@ def run_cli_mode(argv=None):
     os.environ.setdefault('APKAUDIO_ORDERED_BY',
                           "the terminal: K8:runner.py " + " ".join(argv or ['status']))
 
+    # THE PAGE IS WORTH HAVING OPEN FOR THESE, and for a rebuild it is the whole
+    # point — but only when there is already something to open. A cold bench
+    # gets its tab from the mount itself, seconds after DockTor binds, because
+    # DockTor is what for_each_stack mounts first.
     if action in ('rebuild', 'clean', 'up', 'remount', 'mount', 'start', 'rebuild-one', 'rebuild-container'):
         _open_browser_immediately()
 

@@ -241,7 +241,10 @@ fi
 # Last: the PHP tier, if its harness is in the checkout. An absent harness and
 # a MISSPELLED one are indistinguishable, which is how this whole tier vanished
 # from verify without a line of output when the rung moved.
-api_tests="$DOCKERS_DIR/Server:Storage:SQL database/SRC/APK:API/tests/run.sh"
+# The comment above turned out to be about ITSELF: the rung moved again with the
+# pods, this line did not, and the whole PHP tier went back to being skipped in
+# silence. stack_dir() is what finds the stack now, under whichever POD: holds it.
+api_tests="$(stack_dir 'DATABASE:server:SQL')/SRC/APK:API/tests/run.sh"
 if [ -f "$api_tests" ]; then
     note "Running APK:API integration test script..."
     if out="$( cd "$REPO_ROOT" && bash "$api_tests" 2>&1 )"; then

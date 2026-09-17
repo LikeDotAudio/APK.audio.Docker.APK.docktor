@@ -16,9 +16,10 @@
 # `up` here grows a precondition, so does step 1 there.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
-# The compose file and array are _common.sh: panic.sh and panic-reboot.sh need
-# the same two, and a second array here is a second place to be right.
-MANAGER_URL="http://localhost:8765/"
+# The compose file, the array AND THE URL are _common.sh's: panic.sh and
+# panic-reboot.sh need the same three, and a second copy here is a second place
+# to be right. The port in the copy that used to live on this line was a
+# literal; the one in _common.sh is read out of the compose file.
 
 # The one export this script exists for. REPO_ROOT is walked from the script own
 # location, so it is right after a rename and on somebody else checkout.
@@ -28,13 +29,25 @@ case "${1:-up}" in
     up|start)
         log_step "Starting DockTor"
         echo "  repository bound at: $APKAUDIO_REPO"
+        # THE FOLDER BEFORE THE MOUNT. docker-compose.manager.yml declares
+        # `docktor-storage` as a local volume bound to a folder, and compose
+        # will happily CREATE that volume against a directory that is not
+        # there — the failure lands later, on a container that will not start,
+        # naming a device instead of a missing folder. --ensure is idempotent
+        # and does nothing on the second run.
+        "$MANAGEMENT_SCRIPTS_DIR/storage-volume.sh" --ensure \
+            || log_warn "Storage volume not ready; compose will name what it could not mount."
+
         # --build every time: the package is COPYed into the image rather than
         # bound, so a manager started without a build runs last week code
         # while the checkout beside it has this week.
         "${COMPOSE_MANAGER[@]}" up -d --build
         status=$?
         announce MANAGER_UP "{\"url\":\"$MANAGER_URL\",\"repo\":\"$APKAUDIO_REPO\",\"exit_code\":$status}"
-        [ $status -eq 0 ] && log_info "DockTor on $MANAGER_URL"
+        # STARTING IT AND SHOWING IT ARE ONE GESTURE. `manager.sh up` is how a
+        # person starts this tool by hand, and the next thing they did every
+        # time was type the URL — which this printed and did not open.
+        [ $status -eq 0 ] && open_manager_site
         exit $status
         ;;
     down|stop)

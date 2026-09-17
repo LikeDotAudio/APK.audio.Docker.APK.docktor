@@ -49,6 +49,14 @@
              touches an image, a container or a volume. -->
         <button data-action="clean-cache"></button>
         <button data-action="clean-cache-all"></button>
+        <!-- A HOST PROCESS IS NOT A CONTAINER, and these two are the only
+             things in this menu that are about one. They are here because the
+             process people need to stop is nearly always a DockTor started at
+             a terminal, holding the port the container needs — which is a
+             "stop", and this is the stop menu. 🔎 lists what holds the port
+             with pids; 🔪 asks for one and signals it. -->
+        <button data-action="list-pids"></button>
+        <button data-action="kill-pid"></button>
         <!-- BELOW THE LINE, AND IT IS THE ONLY THING DOWN THERE. Everything
              above this rule is reversible by a remount; ☢️ NUKE EVERYTHING
              deletes the named volumes, which is the DATA, and nothing in this
@@ -98,6 +106,14 @@
     <button class="btn plain" id="refresh">🔄 Refresh Status</button>
   </div>
 </header>
+
+<!-- THE OTHER HALF OF "THE GRID CANNOT DRAW THIS": the dark band is for a
+     container that is MISSING, this one for a container that is here, green,
+     and running code the tree has moved past. Filled from `stale_services`,
+     hidden when every image is current. It sits ABOVE both panes, not inside
+     the grid pane: a countdown that will rebuild something has to be seen
+     whichever pane is being read. -->
+<div class="stale-images" id="stale-images" hidden></div>
 
 <main class="split">
   <section class="pane grid-pane">
@@ -151,6 +167,11 @@
            ways of LOOKING, and a second copy of the button already in that
            menu. -->
     </div>
+    <!-- WHICH PODS THE CARD GRID DRAWS. One toggle per pod, filled from
+         `snapshot.groups` on every scan, remembered per browser. A hidden pod
+         is only not DRAWN — its cards are still built, so the meters keep
+         writing and showing it again is a toggle, not a fetch. -->
+    <div class="pod-filter" id="pod-filter" hidden></div>
     <!-- THE BOX ITSELF, WHICH NO CARD IS ABOUT. On 2026-09-09 the root
          filesystem filled with nothing on this bench saying so — the first
          signal was MariaDB crash-looping and three NetBox containers sitting
@@ -172,14 +193,6 @@
          renders as nothing — which reads like a stack this repository never
          had. Filled from `dark_stacks`, hidden when there are none. -->
     <div class="dark-stacks" id="dark-stacks" hidden></div>
-
-    <!-- THE OTHER HALF OF "THE GRID CANNOT DRAW THIS": the band above is for a
-         container that is MISSING, this one for a container that is here,
-         green, and running code the tree has moved past. Filled from
-         `stale_services`, hidden when every image is current, and BELOW the
-         dark band because a stack that is gone outranks one merely out of
-         date. -->
-    <div class="stale-images" id="stale-images" hidden></div>
 
     <div class="cards" id="cards">
       <p class="empty">Reading docker…</p>
@@ -332,6 +345,16 @@
          for the last dialog of a verb whose row carries `verify`. A click is
          one gesture and the hand is already making it by the third dialog;
          spelling a word is a different one. -->
+    <!-- THE ONE VERB THAT TAKES A VALUE types it here: 🔪 Kill a Process wants
+         a pid. Shown only for a verb whose row carries `prompt`, worded by the
+         server like everything else on this page, and checked again by
+         run_action() and a third time by the script — a text box in a browser
+         is a courtesy, never an enforcement. -->
+    <label class="ask-prompt" id="ask-prompt-wrap" hidden>
+      <span id="ask-prompt-label"></span>
+      <input id="ask-prompt-input" type="text" autocomplete="off" spellcheck="false" inputmode="numeric">
+      <small id="ask-prompt-hint"></small>
+    </label>
     <label class="ask-verify" id="ask-verify-wrap" hidden>
       <span>Type <b id="ask-verify-word"></b> to arm the button:</span>
       <input id="ask-verify" type="text" autocomplete="off" spellcheck="false"

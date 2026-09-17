@@ -20,27 +20,37 @@ for arg in "$@"; do
     esac
 done
 
+# ⚠️ EVERY PATH HERE GOES THROUGH stack_dir(), AND NONE IS SPELLED WHOLE. This
+# table held twenty absolute paths in the flat pre-pod layout, so after the move
+# every one of them named a directory that is not there and `open <name>`
+# answered "not found" for the entire ecosystem. The folder NAME is what this
+# table is about; WHERE that folder sits has one answer and it is in _common.sh.
+# Three names changed in the same move and are corrected here: the broker is
+# DATABUS:Broker:MQTT, NMOS is PROTOCOL:discovery:NMOS, and APK:Yo is
+# APK:YoControl. LOGGER STORAGE is added because it is a stack like the others
+# and was the one nobody could open at all.
 declare -A REPO_MAP=(
-    ["mqtt"]="Server:Broker:MQTT|$DOCKERS_DIR/Server:Broker:MQTT"
-    ["apk-mqtt-broker"]="Server:Broker:MQTT|$DOCKERS_DIR/Server:Broker:MQTT"
-    ["sql"]="DATABASE:server:SQL|$DOCKERS_DIR/DATABASE:server:SQL"
-    ["apk-sql-database"]="DATABASE:server:SQL|$DOCKERS_DIR/DATABASE:server:SQL"
-    ["nmos"]="Server:Discovery:NMOS|$DOCKERS_DIR/Server:Discovery:NMOS"
-    ["apk-nmos-discovery"]="Server:Discovery:NMOS|$DOCKERS_DIR/Server:Discovery:NMOS"
-    ["ember"]="PROTOCOL:DEV:EMBER|$DOCKERS_DIR/PROTOCOL:DEV:EMBER"
-    ["apk-ember-server"]="PROTOCOL:DEV:EMBER|$DOCKERS_DIR/PROTOCOL:DEV:EMBER"
-    ["netbox"]="DATABASE:server:NETBOX|$DOCKERS_DIR/DATABASE:server:NETBOX"
-    ["apk-netbox-server"]="DATABASE:server:NETBOX|$DOCKERS_DIR/DATABASE:server:NETBOX"
-    ["docktor"]="APK:docktor|$DOCKERS_DIR/APK:docktor"
-    ["apk-docktor"]="APK:docktor|$DOCKERS_DIR/APK:docktor"
-    ["aes70"]="PROTOCOL:DEV:AES70|$DOCKERS_DIR/PROTOCOL:DEV:AES70"
-    ["apk-protocol-aes70"]="PROTOCOL:DEV:AES70|$DOCKERS_DIR/PROTOCOL:DEV:AES70"
-    ["baremetal"]="APK:BareMetal|$DOCKERS_DIR/APK:BareMetal"
-    ["apk-baremetal"]="APK:BareMetal|$DOCKERS_DIR/APK:BareMetal"
-    ["yo"]="APK:Yo|$DOCKERS_DIR/APK:Yo"
-    ["apk-yo"]="APK:Yo|$DOCKERS_DIR/APK:Yo"
-    ["webportal"]="APK:audio:WebPortal|$DOCKERS_DIR/APK:audio:WebPortal"
-    ["apk-webportal"]="APK:audio:WebPortal|$DOCKERS_DIR/APK:audio:WebPortal"
+    ["mqtt"]="DATABUS:Broker:MQTT|$(stack_dir 'DATABUS:Broker:MQTT')"
+    ["apk-mqtt-broker"]="DATABUS:Broker:MQTT|$(stack_dir 'DATABUS:Broker:MQTT')"
+    ["sql"]="DATABASE:server:SQL|$(stack_dir 'DATABASE:server:SQL')"
+    ["apk-sql-database"]="DATABASE:server:SQL|$(stack_dir 'DATABASE:server:SQL')"
+    ["nmos"]="PROTOCOL:discovery:NMOS|$(stack_dir 'PROTOCOL:discovery:NMOS')"
+    ["apk-nmos-discovery"]="PROTOCOL:discovery:NMOS|$(stack_dir 'PROTOCOL:discovery:NMOS')"
+    ["ember"]="PROTOCOL:DEV:EMBER|$(stack_dir 'PROTOCOL:DEV:EMBER')"
+    ["apk-ember-server"]="PROTOCOL:DEV:EMBER|$(stack_dir 'PROTOCOL:DEV:EMBER')"
+    ["netbox"]="DATABASE:server:NETBOX|$(stack_dir 'DATABASE:server:NETBOX')"
+    ["apk-netbox-server"]="DATABASE:server:NETBOX|$(stack_dir 'DATABASE:server:NETBOX')"
+    ["docktor"]="APK:Docktor|$(stack_dir 'APK:Docktor')"
+    ["apk-docktor"]="APK:Docktor|$(stack_dir 'APK:Docktor')"
+    ["aes70"]="PROTOCOL:DEV:AES70|$(stack_dir 'PROTOCOL:DEV:AES70')"
+    ["apk-protocol-aes70"]="PROTOCOL:DEV:AES70|$(stack_dir 'PROTOCOL:DEV:AES70')"
+    ["baremetal"]="APK:BareMetal|$(stack_dir 'APK:BareMetal')"
+    ["apk-baremetal"]="APK:BareMetal|$(stack_dir 'APK:BareMetal')"
+    ["yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
+    ["apk-yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
+    ["logger"]="DATABASE:volume:Log STORAGE|$(stack_dir 'DATABASE:volume:Log STORAGE')"
+    ["webportal"]="APK:audio:WebPortal|$(stack_dir 'APK:audio:WebPortal')"
+    ["apk-webportal"]="APK:audio:WebPortal|$(stack_dir 'APK:audio:WebPortal')"
 )
 
 if [ -z "$QUERY" ]; then
@@ -48,7 +58,7 @@ if [ -z "$QUERY" ]; then
     printf "%-22s %-36s %-45s\n" "KEY / NAME" "SUBMODULE PATH" "STANDALONE GIT REPO PATH"
     printf "%-22s %-36s %-45s\n" "----------------------" "------------------------------------" "---------------------------------------------"
     
-    for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo webportal; do
+    for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo logger webportal; do
         IFS="|" read -r subpath repopath <<< "${REPO_MAP[$key]}"
         printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:PODS/$subpath" "$repopath"
     done

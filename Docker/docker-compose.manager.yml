@@ -33,7 +33,13 @@ services:
   manager:
     build:
       context: "../../.."                                          # repo root
-      dockerfile: "APK:PODS/Docktor/Docker/Dockerfile.manager"
+      # ⚠️ REAL PATH, AND IT IS `APK:Docktor`. This said `APK:PODS/Docktor`, a
+      # directory that has never existed, so every mount of this stack died on
+      # `lstat .../APK:PODS/Docktor: no such file or directory` — including the
+      # remount button on the dashboard's own row. The CONTEXT above is right as
+      # it stands: this file is one rung under APK:PODS, so `../../..` is the
+      # checkout root, which is what the dockerfile path below is relative to.
+      dockerfile: "APK:PODS/APK:Docktor/Docker/Dockerfile.manager"
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped

@@ -101,6 +101,11 @@ echo "  repository bound at: $APKAUDIO_REPO"
 # --build AND --force-recreate: --build alone reuses a container whose image tag
 # has not changed, and docktor:local is rebuilt in place, so compose sees
 # the same reference and leaves the old container on the old layers.
+# The precondition manager.sh `up` carries, carried here too — the header of
+# that file says a precondition added there is added here. The storage volume
+# is a folder, and compose creates the volume against it without checking.
+"$MANAGEMENT_SCRIPTS_DIR/storage-volume.sh" --ensure \
+    || log_warn "Storage volume not ready; compose will name what it could not mount."
 announce COMPOSE_RUN "{\"action\":\"up --build --force-recreate\",\"services\":\"manager\"}"
 "${COMPOSE_MANAGER[@]}" up -d --build --force-recreate
 manager_status=$?
@@ -114,6 +119,11 @@ if [ $manager_status -ne 0 ]; then
 else
     log_info "$MANAGER_CONTAINER rebuilt from the code and running."
     announce PANIC_REBOOT_MANAGER_UP "{\"sender\":\"$SENDER\",\"container\":\"$MANAGER_CONTAINER\"}"
+    # THE TAB WENT DARK WHEN THIS CONTAINER WAS SWAPPED — that is what step 1
+    # does — and step 2 below is minutes of rebuilding every other image. This
+    # is the moment the replacement starts answering, so it is the moment to
+    # put the page back in front of whoever pressed PANIC.
+    open_manager_site
 fi
 
 log_step "2/2. Rebuilding every other image from the code and remounting"
