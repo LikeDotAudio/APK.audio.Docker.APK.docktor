@@ -18,7 +18,7 @@ total — HOW FAR.
 
 import re
 
-from .runner import is_error_line, is_benign_noise
+from .runner import BUILDKIT_STEP, is_error_line, is_benign_noise
 
 
 BAR_WIDTH = 18
@@ -33,7 +33,6 @@ BUILDKIT_LINE = re.compile(r'^#(\d+)[ \t]+(?:\d+\.\d+(?:[ \t]|$))?(.*)$')
 # `[ 4/12] RUN apt-get …` and `[stage-0 4/12] COPY …`. The fraction is the only
 # honest progress a docker build states about ITSELF, so it is the one number
 # that becomes a bar.
-BUILDKIT_STEP = re.compile(r'^\[\s*(?:[\w.+-]+\s+)?(\d+)\s*/\s*(\d+)\]\s*(.*)$')
 BUILDKIT_INTERNAL = re.compile(r'^\[internal\]\s*(.*)$')
 
 VERB_EMOJI = {

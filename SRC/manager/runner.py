@@ -94,6 +94,16 @@ def is_benign_noise(line):
     return any(pattern.search(line) for pattern in BENIGN_NOISE)
 
 
+# A BUILD STEP'S HEADER IS THE COMMAND, NOT ITS OUTCOME. BuildKit announces a
+# step by echoing the whole RUN line — `[web bundle 13/13] RUN set -eu; test -f
+# dist/index.html || { echo "dist/index.html is missing ..."; exit 1; }` — so a
+# gate that SAYS "missing" or "FATAL" for the case it guards read as an error on
+# every green build. A step that really fails says so on its own `ERROR` line.
+# Compose prefixes the service AND the stage (`web bundle`, `web stage-1`), so
+# the prefix is any number of words, not one.
+BUILDKIT_STEP = re.compile(r'^\[\s*(?:[\w.+-]+\s+)*(\d+)\s*/\s*(\d+)\]\s*(.*)$')
+
+
 ERROR_MARKERS = ('\u274c', '\u26a0', '\U0001f6a8')       # the emoji this GUI logs with
 ZERO_COUNTER = re.compile(r'"[a-z_]+"\s*:\s*0\b')
 NONZERO_EXIT = re.compile(r'"exit_code"\s*:\s*(?!0\b)-?\d+')
@@ -105,7 +115,7 @@ ERROR_WORDS = re.compile(
 
 def is_error_line(line):
     """True if this log line reports something going wrong."""
-    if is_benign_noise(line):
+    if is_benign_noise(line) or BUILDKIT_STEP.match(line):
         return False
     if any(marker in line for marker in ERROR_MARKERS):
         return True
