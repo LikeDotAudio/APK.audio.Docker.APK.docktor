@@ -239,14 +239,10 @@ fi
 #    volumes. Do not drop one.
 # ⚠️ `--remove-orphans` under a shared project deletes the other files'
 #    containers. rebuild-all.sh and panic.sh omit it deliberately.
-COMPOSE_SQLCLUSTER=("${COMPOSE_BASE[@]}" -f "$SQLCLUSTER_COMPOSE_FILE")
-COMPOSE_CORE=("${COMPOSE_BASE[@]}" -f "$COMPOSE_FILE")
-COMPOSE_NODE=("${COMPOSE_BASE[@]}" -f "$BAREMETAL_COMPOSE_FILE")
-COMPOSE_MQTT=("${COMPOSE_BASE[@]}" -f "$MQTT_COMPOSE_FILE")
-COMPOSE_PORTAL=("${COMPOSE_BASE[@]}" -f "$PORTAL_COMPOSE_FILE")
-COMPOSE_PLUGINS=("${COMPOSE_BASE[@]}" -f "$PLUGINS_COMPOSE_FILE")
+# Dynamically register stacks from docktor.json
+eval "$(python3 "$MANAGEMENT_SCRIPTS_DIR/config_helper.py" bash_eval apk-audio "$DOCKERS_DIR")"
+
 for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "$_apk_role"); done
-COMPOSE_NMOS=("${COMPOSE_BASE[@]}" -f "$NMOS_COMPOSE_FILE")
 
 # NMOS conformance harness (nmos-testing + the facade that depends on it) is
 # behind `profiles: ["conformance"]` — 732 MB of that stack's 1,087, off by
@@ -258,10 +254,6 @@ if [ -n "${APK_NMOS_PROFILES:-}" ]; then
     done
     unset _apk_nmos_profile
 fi
-COMPOSE_AES70=("${COMPOSE_BASE[@]}" -f "$AES70_COMPOSE_FILE")
-COMPOSE_NETBOX=("${COMPOSE_BASE[@]}" -f "$NETBOX_COMPOSE_FILE")
-COMPOSE_EMBER=("${COMPOSE_BASE[@]}" -f "$EMBER_COMPOSE_FILE")
-COMPOSE_LOGGER=("${COMPOSE_BASE[@]}" -f "$LOGGER_COMPOSE_FILE")
 
 # ── Hardware overlay (docker-compose.hardware.yml): the only thing that hands
 # Node-BareMetal its device nodes and turns on the agents that read them.
@@ -574,9 +566,9 @@ for_each_stack() {
     # manager is what brings the logger back, so it must be able to start on a
     # bench where that volume does not exist yet.
     if [ "$direction" = "reverse" ]; then
-        order=(plugins node netbox ember aes70 nmos portal mqtt core sqlcluster logger docktor)
+        order=("${DOCKTOR_STACKS_REVERSE[@]}")
     else
-        order=(docktor logger sqlcluster core mqtt portal nmos aes70 ember netbox node plugins)
+        order=("${DOCKTOR_STACKS_FORWARD[@]}")
     fi
 
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and

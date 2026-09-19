@@ -24,13 +24,8 @@ log_step "1/6. Unmounting Old Container Stacks & Cleaning Orphans..."
 # is what catches a container compose has lost track of.
 for_each_stack reverse down || log_warn "Compose down completed with warnings."
 
-# By NAME, because a container compose has lost track of still owns the name.
-docker rm -f Storage-MariaDB Storage-Portal Storage-Broker Node-BareMetal \
-             Broker-Mosquitto Broker-SqlCapture Node-BareMetal-Broker \
-             Portal-Broker Portal-Orchestrator Portal-Heartbeat \
-             apkaudio-mariadb apkaudio-broker apk_audio_web \
-             Ember-Docs Ember-Provider AES70-Site \
-             2>/dev/null || true
+# By label, because a container compose has lost track of still owns the name.
+docker rm -f $(docker ps -aq --filter label=com.docker.compose.project=apk-audio) 2>/dev/null || true
 
 log_step "2/6. Synchronizing Ecosystem Skills & Metadata..."
 synch_skills
