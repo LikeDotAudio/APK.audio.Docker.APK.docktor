@@ -35,7 +35,7 @@ if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:PODS"
 else
-    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK" ]; then
+    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK_THIN" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
     elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" && pwd)"
@@ -58,7 +58,7 @@ export APKAUDIO_REPO="$REPO_ROOT"
 # spelled. ⚠️ A wrong path does not raise — compose warns and carries on, so
 # every stack reads as empty. Build contexts are repo-root-relative.
 # ⚠️ AND THAT IS EXACTLY WHAT HAPPENED. The stacks moved down a rung into
-#    POD:APK / POD:database / POD:databus / POD:protocols and these ten lines
+#    POD:APK_THIN / POD:database / POD:databus / POD:protocols and these ten lines
 #    kept the flat spellings, so ALL TEN named files that are not there. Nothing
 #    said so, because nothing in this ecosystem treats a missing compose file as
 #    an error: `up` mounted nothing and reported success, stacks.sh could not
@@ -76,7 +76,7 @@ first_existing() {
 }
 
 # stack_dir <folder-name> — where a stack folder actually IS. The pods put
-# every one of them under POD:APK / POD:database / POD:databus / POD:protocols,
+# every one of them under POD:APK_THIN / POD:database / POD:databus / POD:protocols,
 # and a handful of names changed in the same move; this looks in the flat spot
 # first (DockTor still lives there), then one rung down under any POD:.
 # Prints the flat path when nothing matches, so a caller's error names what it
@@ -101,30 +101,30 @@ SQLCLUSTER_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:database/DATABASE:cluster:SQL/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/DATABASE:cluster:SQL/Docker/docker-compose.yml")"
 BAREMETAL_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:APK/APK:BareMetal/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml")"
 # Overridable so a hardware fixture can be pointed at; the hardware decision
 # runs at source time, so that is the only way to test it.
 BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(first_existing \
-    "$DOCKERS_DIR/POD:APK/APK:BareMetal/Docker/docker-compose.hardware.yml" \
+    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/Docker/docker-compose.hardware.yml" \
     "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.hardware.yml")}"
 # NOT A COMPOSE FILE AND STILL LOAD-BEARING: test-gates.sh runs the node's own
 # checks out of here, and a stale spelling turned the broker-candidate gate into
 # `[Gate ABSENT]` — a gate that cannot find itself is a gate that stops testing
 # and says so in a colour nobody stops for.
 BAREMETAL_ROOT="$(first_existing \
-    "$DOCKERS_DIR/POD:APK/APK:BareMetal/SRC" \
+    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/SRC" \
     "$DOCKERS_DIR/APK:BareMetal/SRC")"
 MQTT_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml")"
 # THE PORTAL STACK'S ROOT FILE IS THE BUS POD'S NOW. APK:audio:WebPortal became
-# APK:web:Static (content only, its own container), and the file that declared
+# APK:web:Frontend-Assets (content only, its own container), and the file that declared
 # Portal-Broker and `include:`d the four web stacks moved to the broker stack as
 # docker-compose.portal-broker.yml. Same project, same containers.
 PORTAL_COMPOSE_FILE="$(first_existing \
     "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.portal-broker.yml" \
-    "$DOCKERS_DIR/POD:APK/APK:audio:WebPortal/Docker/docker-compose.yml" \
+    "$DOCKERS_DIR/POD:APK_THIN/APK:audio:WebPortal/Docker/docker-compose.yml" \
     "$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml")"
 # EVERY PLUGIN CONTAINER, by node role: APK:plugins:Build `include:`s each
 # APK:plugin:* stack at the pod root. NOT in for_each_stack: nothing starts
@@ -132,7 +132,7 @@ PORTAL_COMPOSE_FILE="$(first_existing \
 # workspace — a verb that mounts "everything" should not also compile that.
 # Reached by `compose.sh plugins …` and validated by verify.sh.
 PLUGINS_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:APK/APK:plugins:Build/Docker/docker-compose.yml")"
+    "$DOCKERS_DIR/POD:APK_THICK/APK:plugins:Build/Docker/docker-compose.yml")"
 # THE PLUGIN ROLES THIS NODE RUNS. stacks.sh counts a plugin in one of these as
 # expected (so the page and the watchdog bring it back) and one outside them as
 # idle — drawn grey, with a start button, never remounted on its own.
@@ -667,7 +667,7 @@ compose_for_stack() {
     # is its own repository at APK:PODS/POD:<pod>/<Stack>/ (Docker/ + SRC/), and
     # there are thirty of them — a hand-kept array per stack is the table that
     # goes stale the day a plugin is split. Without this, stacks.sh listed
-    # APK:web:Gateway and up-stack.sh answered "No compose file … is named by the
+    # APK:web:Traffic-Router and up-stack.sh answered "No compose file … is named by the
     # stack" for the very name it printed (2026-09-17).
     # Only the stack's own docker-compose.yml: an overlay (*.host.yml) is a choice
     # the caller makes, not something a name implies.

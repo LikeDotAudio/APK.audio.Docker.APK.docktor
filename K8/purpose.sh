@@ -211,7 +211,7 @@ PURPOSE = {
         "the orchestrator restarts whenever a panel rebuild goes wrong, and a clock that "
         "stops when something unrelated stops is not a clock."),
 
-    # --- APK:web:Gateway / OsApi / Static -- the web tier ------------------------
+    # --- APK:web:Traffic-Router / OsApi / Static -- the web tier ------------------------
     "Portal-Gateway": (
         "The web tier's front door: one origin on 443",
         "Caddy, published on ${APK_GATEWAY_BIND:-127.0.0.1}:443. It routes /api/os/* "

@@ -66,7 +66,7 @@ COPY ["contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/contracts/t
 
 # The broker order comes from this one module and there is no fallback list — a
 # guess at the order is the defect that removes.
-COPY ["APK:PODS/POD:APK/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
+COPY ["APK:PODS/POD:APK_THICK/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
 
 RUN chmod +x "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts/"*.sh
 

@@ -50,10 +50,10 @@ declare -A REPO_MAP=(
     ["yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
     ["apk-yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
     ["logger"]="DATABASE:volume:Log STORAGE|$(stack_dir 'DATABASE:volume:Log STORAGE')"
-    # The WebPortal repository is APK:web:Static now; both old keys still open it.
-    ["static"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
-    ["webportal"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
-    ["apk-webportal"]="APK:web:Static|$(stack_dir 'APK:web:Static')"
+    # The WebPortal repository is APK:web:Frontend-Assets now; both old keys still open it.
+    ["static"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
+    ["webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
+    ["apk-webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
     ["plugins"]="APK:plugins:Build|$(stack_dir 'APK:plugins:Build')"
 )
 
