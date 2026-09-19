@@ -603,7 +603,20 @@ for_each_stack() {
             ember)  compose=("${COMPOSE_EMBER[@]}");;
             node)   compose=("${COMPOSE_NODE[@]}");;
             plugins) compose=("${COMPOSE_PLUGINS[@]}");;
-            *)      log_error "for_each_stack: no such stack '$stack'"; worst=2; continue;;
+            *)
+                clean_stack_name="${stack//:/_}"
+                clean_stack_name="${clean_stack_name//-/_}"
+                clean_stack_name="${clean_stack_name// /_}"
+                array_name="COMPOSE_BY_NAME_${clean_stack_name}[@]"
+                # If the array exists (has length), use it
+                if [ -n "${!array_name:-}" ]; then
+                    compose=("${!array_name}")
+                else
+                    log_error "for_each_stack: no such stack '$stack'"
+                    worst=2
+                    continue
+                fi
+                ;;
         esac
         "${compose[@]}" "$@"
         status=$?
