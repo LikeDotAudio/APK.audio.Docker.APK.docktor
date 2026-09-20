@@ -393,7 +393,7 @@ PURPOSE = {
 
     # --- APK:plugin:* -- one container per plugin, started by node role --------
     # Every plugin runs a binary from apk-plugins:local (or apk-plugins-python:local)
-    # built by APK:plugins:Build, and speaks to the broker. The role is its
+    # built by APK:discovery, and speaks to the broker. The role is its
     # compose profile; APKAUDIO_PLUGIN_ROLES in _common.sh decides which run here.
     "Plugin-AES70": (
         "The AES70 (OCP.1) bridge. Role: control",

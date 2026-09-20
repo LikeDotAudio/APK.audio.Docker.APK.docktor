@@ -17,6 +17,7 @@ LEGACY_MAPPINGS = {
     "PROTOCOL:DEV:AES70": ("AES70", "AES70_COMPOSE_FILE"),
     "PROTOCOL:DEV:EMBER": ("EMBER", "EMBER_COMPOSE_FILE"),
     "DATABASE:server:NETBOX": ("NETBOX", "NETBOX_COMPOSE_FILE"),
+    "APK:discovery": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:plugins:Build": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:Docktor": ("MANAGER", "MANAGER_COMPOSE_FILE")
 }
@@ -72,7 +73,7 @@ def cmd_bash_eval(project_name, dockers_dir):
             elif "Log STORAGE" in folder_name: up_order = 3
             elif "server:SQL" in folder_name or "cluster:SQL" in folder_name: up_order = 4
             elif folder_name == "APK:BareMetal": up_order = 6
-            elif folder_name == "APK:plugins:Build": up_order = 7
+            elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
             
             stack_info = {
                 "name": folder_name,

@@ -54,7 +54,7 @@ declare -A REPO_MAP=(
     ["static"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
     ["webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
     ["apk-webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
-    ["plugins"]="APK:plugins:Build|$(stack_dir 'APK:plugins:Build')"
+    ["plugins"]="APK:discovery|$(stack_dir 'APK:discovery')"
 )
 
 if [ -z "$QUERY" ]; then
