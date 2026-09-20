@@ -75,95 +75,54 @@ first_existing() {
     printf '%s' "$first"
 }
 
-# stack_dir <folder-name> — where a stack folder actually IS. The pods put
-# every one of them under POD:APK_THIN / POD:database / POD:databus / POD:protocols,
-# and a handful of names changed in the same move; this looks in the flat spot
-# first (DockTor still lives there), then one rung down under any POD:.
-# Prints the flat path when nothing matches, so a caller's error names what it
-# wanted rather than an empty string.
+# stack_dir <folder-name> — where a stack folder actually IS under APK:PODS.
+# Dynamically finds the folder regardless of pod nesting depth.
 stack_dir() {
-    local want="$1" candidate
-    [ -d "$DOCKERS_DIR/$want" ] && { printf '%s' "$DOCKERS_DIR/$want"; return 0; }
-    for candidate in "$DOCKERS_DIR"/POD:*/"$want"; do
-        [ -d "$candidate" ] && { printf '%s' "$candidate"; return 0; }
-    done
+    local want="$1" found
+    if [ -d "$DOCKERS_DIR/$want" ]; then
+        printf '%s' "$DOCKERS_DIR/$want"
+        return 0
+    fi
+    found="$(find "$DOCKERS_DIR" -maxdepth 4 -type d -name "$want" 2>/dev/null | head -n 1)"
+    if [ -n "$found" ]; then
+        printf '%s' "$found"
+        return 0
+    fi
     printf '%s' "$DOCKERS_DIR/$want"
 }
 
-COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:database/DATABASE:server:SQL/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/DATABASE:server:SQL/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/Server:Storage:SQL database/Docker/docker-compose.yml")"
-# THE REDUNDANT SQL SERVER — three Galera nodes behind SQL-Proxy. Every client
-# of the database (Broker-SqlCapture, Storage-PHP) reaches it as sql-proxy:3306,
-# so it mounts BEFORE core and mqtt. See APK:Documentation/🔍Audits/Cosmos DB.md.
-SQLCLUSTER_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:database/DATABASE:cluster:SQL/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/DATABASE:cluster:SQL/Docker/docker-compose.yml")"
-BAREMETAL_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.yml")"
-# Overridable so a hardware fixture can be pointed at; the hardware decision
-# runs at source time, so that is the only way to test it.
-BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(first_existing \
-    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/Docker/docker-compose.hardware.yml" \
-    "$DOCKERS_DIR/APK:BareMetal/Docker/docker-compose.hardware.yml")}"
-# NOT A COMPOSE FILE AND STILL LOAD-BEARING: test-gates.sh runs the node's own
-# checks out of here, and a stale spelling turned the broker-candidate gate into
-# `[Gate ABSENT]` — a gate that cannot find itself is a gate that stops testing
-# and says so in a colour nobody stops for.
-BAREMETAL_ROOT="$(first_existing \
-    "$DOCKERS_DIR/POD:APK_THICK/APK:BareMetal/SRC" \
-    "$DOCKERS_DIR/APK:BareMetal/SRC")"
-MQTT_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/Server:Broker:MQTT/Docker/docker-compose.yml")"
-# THE PORTAL STACK'S ROOT FILE IS THE BUS POD'S NOW. APK:audio:WebPortal became
-# APK:web:Frontend-Assets (content only, its own container), and the file that declared
-# Portal-Broker and `include:`d the four web stacks moved to the broker stack as
-# docker-compose.portal-broker.yml. Same project, same containers.
-PORTAL_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:databus/DATABUS:Broker:MQTT/Docker/docker-compose.portal-broker.yml" \
-    "$DOCKERS_DIR/POD:APK_THIN/APK:audio:WebPortal/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/APK:audio:WebPortal/Docker/docker-compose.yml")"
-# EVERY PLUGIN CONTAINER, by node role: APK:plugins:Build `include:`s each
-# APK:plugin:* stack at the pod root. NOT in for_each_stack: nothing starts
-# without COMPOSE_PROFILES naming a role, and the build is the whole plugin
-# workspace — a verb that mounts "everything" should not also compile that.
-# Reached by `compose.sh plugins …` and validated by verify.sh.
-PLUGINS_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:APK_THICK/APK:plugins:Build/Docker/docker-compose.yml")"
-# THE PLUGIN ROLES THIS NODE RUNS. stacks.sh counts a plugin in one of these as
-# expected (so the page and the watchdog bring it back) and one outside them as
-# idle — drawn grey, with a start button, never remounted on its own.
-# NOT EVERY ROLE BY DEFAULT: `sound` needs a capture card ALSA can open, `puck`
-# a SpaceNavigator plugged in, `switches` NETGEAR_PASSWORD, `netbox-sync`
-# NETBOX_API_TOKEN_WRITE. Without them those containers exit at once, and an
-# expected container that exits is one the watchdog remounts every 30s.
-# Export this with the extra roles on a node that has them.
-: "${APKAUDIO_PLUGIN_ROLES:=discovery,l2,vendors,control,instruments}"
-export APKAUDIO_PLUGIN_ROLES
-NMOS_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:protocols/PROTOCOL:discovery:NMOS/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/Server:Discovery:NMOS/Docker/docker-compose.yml")"
-AES70_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:protocols/PROTOCOL:DEV:AES70/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/PROTOCOL:DEV:AES70/Docker/docker-compose.yml")"
-NETBOX_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:database/DATABASE:server:NETBOX/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/DATABASE:server:NETBOX/Docker/docker-compose.yml")"
-EMBER_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:protocols/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/PROTOCOL:DEV:EMBER/Docker/docker-compose.yml")"
-# LOGGER STORAGE — owns the apk-audio-logs volume (APK:Documentation/LOGS) that
-# every other stack mounts at /logs. The space in the folder name is real; every
-# expansion of this path is quoted. THE TYPO IS ALSO A SPELLING: the folder was
-# `DATABSE:volume:Log STORAGE` and is now `DATABASE:volume:Log STORAGE`, so both
-# are listed rather than either being assumed corrected.
-LOGGER_COMPOSE_FILE="$(first_existing \
-    "$DOCKERS_DIR/POD:databus/DATABASE:volume:Log STORAGE/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/POD:databus/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml" \
-    "$DOCKERS_DIR/DATABSE:volume:Log STORAGE/Docker/docker-compose.yml")"
+# stack_compose_file <stack-name> [compose-filename]
+# Dynamically resolves a compose file for any stack.
+stack_compose_file() {
+    local want="$1" file="${2:-}" sdir
+    sdir="$(stack_dir "$want")"
+    if [ -n "$file" ]; then
+        if [ -f "$sdir/Docker/$file" ]; then printf '%s' "$sdir/Docker/$file"; return 0; fi
+        if [ -f "$sdir/$file" ]; then printf '%s' "$sdir/$file"; return 0; fi
+    else
+        if [ -f "$sdir/Docker/docker-compose.yml" ]; then printf '%s' "$sdir/Docker/docker-compose.yml"; return 0; fi
+        if [ -f "$sdir/docker-compose.yml" ]; then printf '%s' "$sdir/docker-compose.yml"; return 0; fi
+        local cand
+        cand="$(find "$sdir" -maxdepth 2 -type f -name "docker-compose*.yml" 2>/dev/null | head -n 1)"
+        if [ -n "$cand" ]; then printf '%s' "$cand"; return 0; fi
+    fi
+    return 1
+}
+
+# Dynamically resolve legacy stack variables
+SQLCLUSTER_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:SQL")"
+COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"
+BAREMETAL_COMPOSE_FILE="$(stack_compose_file "APK:BareMetal")"
+BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(stack_compose_file "APK:BareMetal" "docker-compose.hardware.yml")}"
+BAREMETAL_ROOT="$(stack_dir "APK:BareMetal")/SRC"
+MQTT_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT")"
+PORTAL_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT" "docker-compose.portal-broker.yml")"
+PLUGINS_COMPOSE_FILE="$(stack_compose_file "APK:plugins:Build")"
+NMOS_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:discovery:NMOS")"
+AES70_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:DEV:AES70")"
+NETBOX_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:NETBOX")"
+EMBER_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:DEV:EMBER")"
+LOGGER_COMPOSE_FILE="$(stack_compose_file "DATABASE:volume:Log STORAGE")"
 LOG_VOLUME_NAME="apk-audio-logs"
 
 # ── DOCKTOR OWN PERSISTENT STORAGE. The same shape as the log volume above and
@@ -556,15 +515,13 @@ for_each_stack() {
 
     # ⚠️ DOCKTOR IS FIRST UP AND LAST DOWN, and neither is a preference:
     #    · FIRST, because it is the only stack that can SHOW you the other
-    #      nine mounting. Mounted second (it was, behind the logger) the
-    #      dashboard arrived after the thing it exists to watch.
+    #      stacks mounting.
+    #    · MQTT MOSQUITTO (DATABUS:Broker:MQTT) IS SECOND UP (FIRST AFTER DOCKTOR),
+    #      so the central message bus is alive before any storage, baremetal,
+    #      or protocol services attempt to announce or connect.
     #    · LAST DOWN, for the same reason read backwards: the tool that reports
-    #      the teardown should not be the first thing to stop reporting.
-    # The logger moving to second is safe and was checked: every other stack
-    # declares apk-audio-logs `external: true` and needs LOGGER STORAGE first,
-    # but docker-compose.manager.yml deliberately declares it itself — the
-    # manager is what brings the logger back, so it must be able to start on a
-    # bench where that volume does not exist yet.
+    #      the teardown should not be the first thing to stop reporting, and the
+    #      bus remains available for teardown telemetry until right before DockTor.
     if [ "$direction" = "reverse" ]; then
         order=("${DOCKTOR_STACKS_REVERSE[@]}")
     else
@@ -575,7 +532,7 @@ for_each_stack() {
     # an `else` would turn a typo into a silent fall-through to the last array.
     local -a compose
     for stack in "${order[@]}"; do
-        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; } && [ -f "/.dockerenv" ]; then
+        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ] || [ "$stack" = "APK:Docktor" ]; } && [ -f "/.dockerenv" ]; then
             log_warn "Skipping '$stack' (running inside manager container)"
             continue
         fi
@@ -590,34 +547,13 @@ for_each_stack() {
             continue
         fi
         echo -e "\n── ${stack} ──"
-        case "$stack" in
-            docktor|manager) compose=("${COMPOSE_MANAGER[@]}");;
-            logger) compose=("${COMPOSE_LOGGER[@]}");;
-            sqlcluster) compose=("${COMPOSE_SQLCLUSTER[@]}");;
-            core)   compose=("${COMPOSE_CORE[@]}");;
-            mqtt)   compose=("${COMPOSE_MQTT[@]}");;
-            portal) compose=("${COMPOSE_PORTAL[@]}");;
-            nmos)   compose=("${COMPOSE_NMOS[@]}");;
-            aes70)  compose=("${COMPOSE_AES70[@]}");;
-            netbox) compose=("${COMPOSE_NETBOX[@]}");;
-            ember)  compose=("${COMPOSE_EMBER[@]}");;
-            node)   compose=("${COMPOSE_NODE[@]}");;
-            plugins) compose=("${COMPOSE_PLUGINS[@]}");;
-            *)
-                clean_stack_name="${stack//:/_}"
-                clean_stack_name="${clean_stack_name//-/_}"
-                clean_stack_name="${clean_stack_name// /_}"
-                array_name="COMPOSE_BY_NAME_${clean_stack_name}[@]"
-                # If the array exists (has length), use it
-                if [ -n "${!array_name:-}" ]; then
-                    compose=("${!array_name}")
-                else
-                    log_error "for_each_stack: no such stack '$stack'"
-                    worst=2
-                    continue
-                fi
-                ;;
-        esac
+        if compose_for_stack "$stack"; then
+            compose=("${STACK_COMPOSE[@]}")
+        else
+            log_error "for_each_stack: no such stack '$stack'"
+            worst=2
+            continue
+        fi
         "${compose[@]}" "$@"
         status=$?
         [ $status -ne 0 ] && worst=$status
@@ -644,48 +580,54 @@ for_each_stack() {
 # Returns 1 with STACK_COMPOSE empty for an unknown name: callers must refuse
 # rather than default to remounting something nobody asked for.
 compose_for_stack() {
-    local want="$1" entry name file dir
+    local want="$1"
     STACK_COMPOSE=()
-    for entry in \
-        "COMPOSE_SQLCLUSTER|$SQLCLUSTER_COMPOSE_FILE" \
-        "COMPOSE_CORE|$COMPOSE_FILE" \
-        "COMPOSE_NODE|$BAREMETAL_COMPOSE_FILE" \
-        "COMPOSE_MQTT|$MQTT_COMPOSE_FILE" \
-        "COMPOSE_PORTAL|$PORTAL_COMPOSE_FILE" \
-        "COMPOSE_NMOS|$NMOS_COMPOSE_FILE" \
-        "COMPOSE_AES70|$AES70_COMPOSE_FILE" \
-        "COMPOSE_NETBOX|$NETBOX_COMPOSE_FILE" \
-        "COMPOSE_EMBER|$EMBER_COMPOSE_FILE" \
-        "COMPOSE_LOGGER|$LOGGER_COMPOSE_FILE" \
-        "COMPOSE_MANAGER|$MANAGER_COMPOSE_FILE"; do
-        name="${entry%%|*}"
-        file="${entry#*|}"
-        dir="$(basename "$(dirname "$(dirname "$file")")")"
-        if [ "$dir" = "$want" ]; then
-            eval "STACK_COMPOSE=(\"\${${name}[@]}\")"
-            STACK_COMPOSE_FILE="$file"
-            return 0
-        fi
-    done
 
-    # THE POD-ROOT STACKS HAVE NO ARRAY, AND MUST NOT NEED ONE. Every container
-    # is its own repository at APK:PODS/POD:<pod>/<Stack>/ (Docker/ + SRC/), and
-    # there are thirty of them — a hand-kept array per stack is the table that
-    # goes stale the day a plugin is split. Without this, stacks.sh listed
-    # APK:web:Traffic-Router and up-stack.sh answered "No compose file … is named by the
-    # stack" for the very name it printed (2026-09-17).
-    # Only the stack's own docker-compose.yml: an overlay (*.host.yml) is a choice
-    # the caller makes, not something a name implies.
+    # 1. If want is an existing compose file path on disk
+    if [ -f "$want" ]; then
+        STACK_COMPOSE=("${COMPOSE_BASE[@]}" -f "$want")
+        STACK_COMPOSE_FILE="$want"
+        return 0
+    fi
+
+    # 2. Check dynamic COMPOSE_BY_NAME variable from config_helper.py
+    local clean_name="${want//:/_}"
+    clean_name="${clean_name//-/_}"
+    clean_name="${clean_name// /_}"
+    clean_name="${clean_name//./_}"
+    local array_name="COMPOSE_BY_NAME_${clean_name}[@]"
+    local file_var="${clean_name}_COMPOSE_FILE"
+    if declare -p "COMPOSE_BY_NAME_${clean_name}" &>/dev/null; then
+        eval "STACK_COMPOSE=(\"\${${array_name}}\")"
+        STACK_COMPOSE_FILE="${!file_var:-$(stack_compose_file "$want")}"
+        return 0
+    fi
+
+    # 3. Check legacy aliases
+    case "$want" in
+        core)       STACK_COMPOSE=("${COMPOSE_CORE[@]}"); STACK_COMPOSE_FILE="$COMPOSE_FILE"; return 0;;
+        node)       STACK_COMPOSE=("${COMPOSE_NODE[@]}"); STACK_COMPOSE_FILE="$BAREMETAL_HARDWARE_COMPOSE_FILE"; return 0;;
+        sqlcluster) STACK_COMPOSE=("${COMPOSE_SQLCLUSTER[@]}"); STACK_COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"; return 0;;
+        mqtt)       STACK_COMPOSE=("${COMPOSE_MQTT[@]}"); STACK_COMPOSE_FILE="$MQTT_COMPOSE_FILE"; return 0;;
+        portal)     STACK_COMPOSE=("${COMPOSE_PORTAL[@]}"); STACK_COMPOSE_FILE="$PORTAL_COMPOSE_FILE"; return 0;;
+        plugins)    STACK_COMPOSE=("${COMPOSE_PLUGINS[@]}"); STACK_COMPOSE_FILE="$PLUGINS_COMPOSE_FILE"; return 0;;
+        nmos)       STACK_COMPOSE=("${COMPOSE_NMOS[@]}"); STACK_COMPOSE_FILE="$NMOS_COMPOSE_FILE"; return 0;;
+        aes70)      STACK_COMPOSE=("${COMPOSE_AES70[@]}"); STACK_COMPOSE_FILE="$AES70_COMPOSE_FILE"; return 0;;
+        netbox)     STACK_COMPOSE=("${COMPOSE_NETBOX[@]}"); STACK_COMPOSE_FILE="$NETBOX_COMPOSE_FILE"; return 0;;
+        ember)      STACK_COMPOSE=("${COMPOSE_EMBER[@]}"); STACK_COMPOSE_FILE="$EMBER_COMPOSE_FILE"; return 0;;
+        logger)     STACK_COMPOSE=("${COMPOSE_LOGGER[@]}"); STACK_COMPOSE_FILE="$LOGGER_COMPOSE_FILE"; return 0;;
+        manager|docktor) STACK_COMPOSE=("${COMPOSE_MANAGER[@]}"); STACK_COMPOSE_FILE="$MANAGER_COMPOSE_FILE"; return 0;;
+    esac
+
+    # 4. Dynamic discovery under DOCKERS_DIR
     local found
-    for found in "$DOCKERS_DIR"/POD:*/"$want"/Docker/docker-compose.yml \
-                 "$DOCKERS_DIR"/"$want"/Docker/docker-compose.yml; do
-        [ -f "$found" ] || continue
+    found="$(stack_compose_file "$want")"
+    if [ -z "$found" ]; then
+        found="$(find "$DOCKERS_DIR" -maxdepth 5 -type f \( -name "$want" -o -name "$want.yml" -o -name "docker-compose.${want}.yml" \) 2>/dev/null | head -n 1)"
+    fi
+    if [ -n "$found" ] && [ -f "$found" ]; then
         STACK_COMPOSE=("${COMPOSE_BASE[@]}" -f "$found")
         STACK_COMPOSE_FILE="$found"
-        # A PLUGIN STACK DECLARES ITS SERVICE UNDER A NODE ROLE (profiles:), so a
-        # bare `up` would start nothing and report success. Naming the stack IS
-        # the request for it: switch on that file's own roles, unless the caller
-        # already chose some.
         if [ -z "${COMPOSE_PROFILES:-}" ]; then
             local roles
             roles="$(grep -oE '^[[:space:]]*profiles:[[:space:]]*\[[^]]*\]' "$found" \
@@ -693,7 +635,7 @@ compose_for_stack() {
             [ -n "$roles" ] && export COMPOSE_PROFILES="$roles"
         fi
         return 0
-    done
+    fi
     return 1
 }
 

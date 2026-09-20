@@ -525,18 +525,19 @@ function renderDarkStacks(snapshot) {
   // greys this one with the rest.
   // The stranded rows get a command instead: no verb here drives those compose
   // files, so a button would be one that cannot work.
-  const rowHTML = (row) => `
+  const rowHTML = (row) => {
+    const target = row.compose_file || row.stack;
+    return `
     <div class="dark-stack${row.restorable ? " driven" : ""}">
       <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
           <small>${row.declared} declared, none present</small></h3>
       <p class="absent">${escapeHTML(row.absent.join("  ·  "))}</p>
-      ${row.restorable
-        ? `<p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
-               data-stack="${escapeAttr(row.stack)}"></button>
-             <span>builds the image if it is missing and brings up
-             <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>`
-        : `<code>docker compose -f '${escapeHTML(row.compose_file)}' up -d --build</code>`}
+      <p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
+             data-stack="${escapeAttr(target)}"></button>
+           <span>builds the image if it is missing and brings up
+           <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>
     </div>`;
+  };
 
   host.innerHTML = [
     stranded.length ? `

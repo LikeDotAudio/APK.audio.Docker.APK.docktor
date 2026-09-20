@@ -113,6 +113,7 @@ ROLE_EMOJI = (
     ("postgres", "\U0001F5C4"),
     ("redis", "\U0001F5C4"),
     ("portal", "\U0001F310"),      # something serving a page
+    ("apk", "\U0001F310"),
     ("web", "\U0001F310"),
     ("nginx", "\U0001F310"),
     ("registry", "\U0001F9ED"),    # discovery / lookup
@@ -201,10 +202,23 @@ def group_of(name):
 
     A name with none is its own group of one.
     """
-    for index, character in enumerate(name or ""):
+    n = name or ""
+    lowered = n.lower()
+    if any(k in lowered for k in ("gateway", "heartbeat", "osapi", "webstatic", "traffic-router")):
+        return "APK"
+    if any(k in lowered for k in ("broker", "mosquitto", "sqlcapture", "databus")):
+        return "DataBus"
+    if n.startswith("Node-") or n.startswith("Plugin-") or "baremetal" in lowered:
+        return "BareMetal"
+    for index, character in enumerate(n):
         if character in GROUP_SEPARATORS and index:
-            return name[:index]
-    return name or ""
+            grp = n[:index]
+            if grp.upper() in ("PORTAL", "API", "APK"):
+                return "APK"
+            return grp
+    if n.upper() in ("PORTAL", "API", "APK"):
+        return "APK"
+    return n
 
 
 def leaf_of(name):
@@ -214,8 +228,12 @@ def leaf_of(name):
     is that heading said again per card. A name that IS its group keeps all of
     itself: `mariadb` must not render as an empty card.
     """
-    group = group_of(name)
-    return (name or "")[len(group):].lstrip(GROUP_SEPARATORS) or (name or "")
+    if name == "Portal-Broker":
+        return "Portal-Broker"
+    for index, character in enumerate(name or ""):
+        if character in GROUP_SEPARATORS and index:
+            return (name[index:]).lstrip(GROUP_SEPARATORS) or (name or "")
+    return name or ""
 
 
 def group_hue(label):

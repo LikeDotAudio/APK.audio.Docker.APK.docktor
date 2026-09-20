@@ -98,7 +98,7 @@ gather_baremetal() {
 # the connection, the broker row from $SYS, and they may disagree: that is
 # exactly "up, but it will not tell you".
 gather_mqtt() {
-    local container=Storage-Broker
+    local container=Broker-Mosquitto
     wanted "$container" || return 0
     container_is_up "$container" || return 0
 
@@ -574,7 +574,7 @@ def duration(seconds):
 
 
 def mqtt_document():
-    container = "Storage-Broker"
+    container = "Broker-Mosquitto"
     listeners_raw = env("APK_PLANE_MQTT_LISTENERS")
     sys_raw = env("APK_PLANE_MQTT_SYS")
     absent = env("APK_PLANE_MQTT_SYS_ABSENT")

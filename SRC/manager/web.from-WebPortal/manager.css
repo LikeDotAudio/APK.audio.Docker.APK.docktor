@@ -83,6 +83,7 @@ body {
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .4; cursor: not-allowed; filter: none; }
 .btn.small { padding: 5px 8px; font-size: 11px; }
+.btn.micro { padding: 2px 6px; font-size: 10px; border-radius: 4px; }
 
 /* THE ONE BUTTON THAT WAS PRESSED, WHILE EVERY OTHER ONE IS DIMMED. The server
  * runs one action at a time, so the whole bar is disabled for the length of a
@@ -230,6 +231,48 @@ body {
 .pane-head > .btn ~ .btn { margin-left: 0; }
 .scan-state { color: var(--dimmer); font-size: 11px; }
 
+/* POD TOGGLES, one row under the pane head. Checkboxes and not buttons, so each
+ * one says its state to a screen reader; the hue edge matches its lasso. */
+.pod-filter {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+  padding: 6px 9px; border-bottom: 1px solid var(--edge);
+  color: var(--dim); font-size: 12px;
+}
+.pod-filter[hidden] { display: none; }
+.pod-filter-lead { white-space: nowrap; margin-right: 2px; }
+.pod-filter > label { display: inline-flex; cursor: pointer; }
+.pod-filter input {
+  position: absolute; width: 1px; height: 1px;
+  margin: 0; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+.pod-filter input + span {
+  border: 1px solid color-mix(in srgb, var(--group, #6f7480) 45%, transparent);
+  border-radius: 5px; background: #333; color: var(--dimmer);
+  font: 600 11.5px var(--sans); white-space: nowrap; padding: 4px 8px;
+  text-decoration: line-through;
+}
+.pod-filter input:checked + span {
+  border-color: var(--group, #6f7480); color: var(--ink); text-decoration: none;
+  background: color-mix(in srgb, var(--group, #6f7480) 22%, #333);
+}
+.pod-filter input:not(:checked) + span:hover { color: var(--ink); }
+.pod-filter input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pod-filter .btn { padding: 3px 8px; font-size: 11px; margin-left: 0; }
+.pod-filter .btn:first-of-type { margin-left: auto; }
+.lasso[hidden] { display: none; }
+.lasso.has-issues { border-color: var(--tone-warm); }
+.lasso-issues { display: grid; gap: 6px; margin: 0 0 8px; cursor: default; }
+.lasso-issues .dark-stack { margin: 0; }
+.detail .lasso-issues { margin: 8px 0 0; }
+.pod-issue { margin-bottom: 8px; }
+.pod-issue .lasso-head { margin-bottom: 4px; }
+.pod-runtime { width: 100%; border-collapse: collapse; font-size: 11px; }
+.pod-runtime th { text-align: left; color: var(--dim); font-weight: 600; padding: 3px 6px; border-bottom: 1px solid var(--edge); }
+.pod-runtime td { padding: 3px 6px; border-bottom: 1px solid var(--edge); color: var(--ink); vertical-align: top; }
+.pod-runtime a { color: #00e5ff; text-decoration: none; }
+.pod-runtime a:hover { text-decoration: underline; }
+
 /* ------------------------------------------------------- what is NOT here
  * ABOVE the grid and not in it, because it is not a card: a card is a container
  * and every row here is the absence of several. Between the pane head and the
@@ -238,6 +281,26 @@ body {
  * NO COLOUR LITERAL FOR A STATE: --tone-hot and --tone-warm arrive at boot and
  * mean here what they mean on a card. */
 .dark-stacks { padding: 8px 8px 0; background: var(--ground); }
+/* On the right the three bands are ONE scrollport above the detail: three
+ * scrollbars stacked in half a pane was three things to drag. The detail keeps
+ * a floor, so a long issue list cannot squeeze the inspector to nothing, and
+ * the wrapper goes when every band in it is hidden. */
+.bench-bands {
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  border-bottom: 1px solid var(--edge); background: var(--ground);
+}
+.bench-bands:not(:has(> :not([hidden]))) { display: none; }
+.detail-pane > .detail { min-height: 35%; }
+/* THE POD ISSUES IN AS MANY COLUMNS AS FIT — three at a normal pane width, one
+ * on a narrow one. min(…, 100%) keeps a single column from overflowing. */
+#pod-issues {
+  display: grid; gap: 8px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  padding-bottom: 8px;
+}
+#pod-issues .pod-issue { margin: 0; min-width: 0; }
+/* A compose command in a third of a pane: wrap it rather than scroll it. */
+#pod-issues .dark-stack code { white-space: pre-wrap; word-break: break-all; overflow-x: visible; }
 /* The reason, once, above the rows it applies to. */
 .dark-lead {
   margin: 0 0 5px; font: 11px/1.45 var(--sans); color: var(--dim);
@@ -262,7 +325,12 @@ body {
  * running perfectly on the wrong code — borrowing one puts two unrelated
  * faults in one bucket. The band reuses the dark-stack box so the two read as
  * one family; only the accent separates them. */
-.stale-images { padding: 8px 8px 0; background: var(--ground); }
+.stale-images { background: var(--ground); }
+/* The band is a body row of its own between the top bar and the panes; the
+ * row only exists while the band is shown, so a clean bench costs no gap. */
+body:has(> #stale-images:not([hidden])) {
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(140px, 32vh);
+}
 .dark-lead.stale b { color: var(--tone-stale); }
 .dark-stack.stale { border-color: var(--tone-stale); }
 .dark-stack.stale h3 { color: var(--tone-stale); }
@@ -338,14 +406,31 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 .group-head.ours { color: var(--accent); }
 .group-head:first-child { margin-top: 0; }
+
+.group-pill {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--group, rgba(255, 255, 255, 0.2));
+  color: var(--group, #ffffff);
+  white-space: nowrap;
+}
+
 .group {
   display: grid; gap: 6px;
-  /* Four across is the layout of record: the roster is read as a wall of rigs,
-   * and a reflowing count made every window width a different picture. The
-   * cards shrink to the column instead — minmax(0,1fr) is what lets them. */
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
-@media (max-width: 1100px) { .group { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.group.group-all {
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 8px;
+}
+@media (max-width: 1100px) { .group { grid-template-columns: repeat(3, minmax(0, 1fr)); } .group.group-all { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
 @media (max-width: 820px)  { .group { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px)  { .group { grid-template-columns: 1fr; } }
 
@@ -432,39 +517,48 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * auto-fill is what turns saved height into saved scrolling. High stays four
  * across. These carry .cards so they outrank the width media queries. */
 .cards.density-low .group {
-  /* 136px was the track for 10.5px type and a `Netbox-` on every name. The
-   * name is bigger and shorter now, and the column is sized to the longest one
-   * the bench actually has. */
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
 }
 .cards.density-low .group-head { margin: 7px 2px 3px; }
-/* One line tall and still the biggest type on the card: the name is the ONLY
- * thing this level draws, so the pixels the hidden rows gave back belong to it.
- * Dropping the prefix the group heading already carries is what paid for the
- * size. The left edge keeps its 3px: a hairline of a hue is not a colour. */
-/* AND THE EMOJI IS THE WHOLE STATUS ROW HERE, BESIDE THE NAME. This level draws
- * names and nothing else, so the only health signal on a folded tile used to be
- * the dot — which is why the status row is KEPT here with its sentence dropped
- * and its emoji doubled. Two columns, emoji then name. */
+
 .cards.density-low .card {
-  padding: 4px 6px; border-width: 1px; border-left-width: 3px;
-  display: grid; grid-template-columns: auto minmax(0, 1fr);
-  align-items: center; column-gap: 6px;
+  padding: 6px 10px;
+  border-width: 1px;
+  border-left-width: 4px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-height: unset;
 }
-.cards.density-low .card .name { font-size: 12.5px; }
+.cards.density-low .card .head {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  padding-right: 18px;
+}
+.cards.density-low .card .name { font-size: 13px; font-weight: 700; color: #ffffff; }
 .cards.density-low .card .status {
-  grid-column: 1; grid-row: 1; margin: 0; font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 11.5px;
 }
-.cards.density-low .card .status .status-text { display: none; }
-.cards.density-low .card .status .status-emoji { font-size: 2em; }
-.cards.density-low .card .head { grid-column: 2; grid-row: 1; }
-/* The emoji says it, in colour, at twice the type size. A dot beside it is the
- * same fact drawn twice and a narrower column to draw it in. */
-.cards.density-low .card .dot { display: none; }
-/* The ✕ sits over the name once the card is one line tall. */
-.cards.density-low .card .head { padding-right: 15px; }
-.cards.density-low .card .kill { top: 2px; right: 2px; font-size: 12px; }
+/* NAME AND STATE EMOJI, NOTHING ELSE: the emoji sits first on the one row
+ * and the sentence beside it goes, as the comment in cardHTML() promises. */
+.cards.density-low .card .status { order: -1; }
+.cards.density-low .card .status .status-emoji { font-size: 1.3em; }
+.cards.density-low .card .dot { display: inline-block; }
+.cards.density-low .card .kill { top: 4px; right: 4px; font-size: 12px; }
+
+.cards.density-low .card .status .status-text,
+.cards.density-low .card .card-num-badges,
 .cards.density-low .card .stale-row,
 .cards.density-low .card .stale-fix,
 .cards.density-low .card .meters,
@@ -472,7 +566,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .cards.density-low .card .detail-lines,
 .cards.density-low .card .apps { display: none; }
 
-.cards.density-med .group { grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); }
+.cards.density-med .group { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .cards.density-med .card .meters,
 .cards.density-med .card .net { display: none; }
 .cards.density-med .card .status { margin-bottom: 3px; }
@@ -484,7 +578,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * the [hidden] rule at the top of this file.
  * A SLICE COLOUR IS THE STACK AND ARRIVES INLINE: nothing here spells a hue.
  * This file supplies the greys, the geometry and the weight only. */
-.donuts, .ports {
+.donuts, .ports, .volumes {
   overflow: auto; padding: 10px; background: var(--ground); flex: 1;
 }
 /* THE PANE IS HALF A WINDOW AND THE TABLE HAS FIVE COLUMNS. Below this width
@@ -591,6 +685,101 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 
 /* ------------------------------------------------------------ detail pane */
+.topbar .verbs.right { flex-wrap: nowrap; gap: 8px; margin-left: auto; }
+
+/* Live System Telemetry Bar */
+.system-telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #090c10;
+  border-bottom: 1px solid var(--edge);
+  padding: 6px 16px;
+  font-size: 11.5px;
+  user-select: none;
+}
+
+.telemetry-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  padding: 4px 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.pill-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 0%;
+  z-index: 1;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  pointer-events: none;
+}
+
+.pill-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+.telemetry-label {
+  color: var(--dimmer);
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.telemetry-val {
+  color: #ffffff;
+  font-weight: 800;
+  font-family: var(--mono);
+}
+
+.card-num-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.num-badge {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e0e0e0;
+}
+
+.num-badge.cpu-badge {
+  color: #81c784;
+  border-color: rgba(129, 199, 132, 0.3);
+}
+
+.num-badge.ram-badge {
+  color: #64b5f6;
+  border-color: rgba(100, 181, 246, 0.3);
+}
+
+.num-badge.disk-badge {
+  color: #ffb74d;
+  border-color: rgba(255, 183, 77, 0.3);
+}
+
 .launchers {
   display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 9px;
   border-bottom: 1px solid var(--edge);
@@ -673,16 +862,111 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * quarter of a minute. Spelled once here, read by both the dial and the log, so
  * the legend cannot drift from the thing it is a legend for. */
 :root {
-  --lane-red:    #e53935;
+  --lane-orange: rgb(244, 144, 44);
   --lane-yellow: #fdd835;
   --lane-green:  #43a047;
   --lane-blue:   #1e88e5;
 }
 
-.log-body { display: flex; flex: 1; min-height: 0; }
-.log-body .log { flex: 1; }
+.log-body { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 4px; background: #080a0d; }
 
-.log .l.q0 { color: var(--lane-red); }
+.swimlane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #0d0d0d;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.swimlane .log {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+}
+
+.swimlane-header {
+  background: rgba(244, 144, 44, 0.12);
+  border-bottom: 1px solid rgba(244, 144, 44, 0.25);
+  color: #ffffff;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+
+.swimlane-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swimlane-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swimlane-header.recovery-header {
+  background: rgba(230, 81, 0, 0.22);
+  border-bottom: 1px solid rgba(255, 87, 34, 0.4);
+  color: #ffab40;
+}
+
+.swimlane-header.errors-header {
+  background: rgba(198, 40, 40, 0.25);
+  border-bottom: 1px solid rgba(239, 83, 80, 0.4);
+  color: #ff8a80;
+}
+
+.swimlane-badge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.swimlane-badge.recovery-badge {
+  background: rgba(255, 87, 34, 0.25);
+  color: #ffd180;
+  border: 1px solid rgba(255, 87, 34, 0.4);
+}
+
+.swimlane-badge.errors-badge {
+  background: rgba(198, 40, 40, 0.3);
+  color: #ff8a80;
+  border: 1px solid rgba(239, 83, 80, 0.5);
+}
+
+.rec-tag {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 5px;
+  background: rgba(255, 171, 64, 0.2);
+  color: #ffab40;
+  border: 1px solid rgba(255, 171, 64, 0.4);
+}
+
+.log .l.err .rec-tag {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ff5252;
+  border-color: #ff5252;
+}
+
+.recovery-log {
+  background: #0d0907 !important;
+}
+
+.log .l.q0 { color: var(--lane-orange); }
 .log .l.q1 { color: var(--lane-yellow); }
 .log .l.q2 { color: var(--lane-green); }
 .log .l.q3 { color: var(--lane-blue); }
@@ -690,7 +974,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 /* AFTER the quarters, and the order is the whole rule: the two selectors weigh
  * the same, so this line is the only thing keeping a failure the colour of a
  * failure. A quarter is when a line arrived; `err` is what it says. */
-.log .l.err { color: var(--tone-hot); }
+.log .l.err { color: #ff3333 !important; font-weight: 600; }
 
 .pace {
   flex: 0 0 auto;
@@ -730,7 +1014,7 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .pace .sweep  { animation: pace-sweep 60s linear infinite; stroke: #0d0d0d; stroke-width: 1; }
 .pace .minute { animation: pace-sweep 3600s linear infinite; fill: var(--ink); stroke: var(--ground); stroke-width: 1.5; }
 
-.pace .sweep.red    { fill: var(--lane-red); }
+.pace .sweep.orange, .pace .sweep.red { fill: var(--lane-orange); }
 .pace .sweep.yellow { fill: var(--lane-yellow); }
 .pace .sweep.green  { fill: var(--lane-green); }
 .pace .sweep.blue   { fill: var(--lane-blue); }
@@ -788,3 +1072,260 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
   background: #0d0d0d; color: var(--ink); border: 0; resize: vertical;
   font: 11.5px/1.5 var(--mono); padding: 10px 12px;
 }
+
+/* ------------------------------------------------------- a working card
+ * A CONTAINER THAT IS UP IS THE WHOLE TILE, NOT A GLYPH ON IT: renderCard()
+ * adds `.up` for tone ok (healthcheck passing) and live (up, no healthcheck),
+ * so a bench read from across the room is green where it works and dark where
+ * it does not. The fill is --tone-ok itself, so it stays the palette green.
+ * BLACK TEXT, EVERY ROW: #00e676 is a light green, and each state or meter
+ * colour on a dark card (.t-ok, the cpu badge) vanishes against it. :is()
+ * carries the weight of its heaviest argument, which is what outranks the
+ * `.cards.density-*` overrides without !important. Borders are untouched, so
+ * the group edge, stale, hover and selection still read. Last in the file on
+ * purpose: it must follow the .t-* rules it overrides. */
+.cards .card.up { background: var(--tone-ok); }
+.cards .card.up :is(.name, .status, .status-text, .dot, .kill, .group-pill,
+  .num-badge, .meter b, .meter span, .net, .net small, .detail-lines,
+  .stale-row, .stale-newest, .apps-head, .app, .app-name, .app-state, [class^="t-"]) {
+  color: #000;
+}
+.cards .card.up .num-badge,
+.cards .card.up .group-pill {
+  background: rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.35);
+}
+.cards .card.up .apps { border-top-color: rgba(0, 0, 0, 0.25); }
+
+
+/* ------------------------------------------------------- the volumes tab
+ * THE FOURTH READING, AND THE ONLY ONE WITH A TIME AXIS. Three blocks stacked
+ * down the pane, in the order the questions get asked: where does this tool
+ * keep its own state, what has the disk been doing, and which volume is it.
+ * The pane is half a window, so nothing here is a column layout — a graph
+ * beside a table at 600px is two things too narrow to read. */
+.vol-pointer {
+  background: var(--card); border: 1px solid var(--edge); border-left-width: 3px;
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+}
+/* THE BORDER IS THE STATE, because this block is a POINTER and a pointer at
+ * nothing is the one thing worth seeing from across the room. */
+.vol-pointer.ok      { border-left-color: var(--tone-ok); }
+.vol-pointer.warn    { border-left-color: var(--tone-warm); }
+.vol-pointer.missing { border-left-color: var(--tone-hot); }
+.vol-pointer h3 {
+  margin: 0 0 8px; font: 700 12.5px var(--sans); color: var(--ink);
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.vol-pointer .tag {
+  font: 600 10px var(--sans); color: var(--dimmer); text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.vol-pointer .rows { display: grid; gap: 3px; }
+.vol-pointer .rows > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; }
+.vol-pointer .k { color: var(--dimmer); font-size: 11px; }
+.vol-pointer .v { font-size: 11.5px; color: var(--dim); overflow-wrap: anywhere; }
+.vol-pointer .v small { display: block; color: var(--dimmer); font-size: 10px; }
+.vol-pointer .mono { font-family: var(--mono); }
+.vol-pointer button { margin-top: 9px; }
+
+.vol-graph {
+  background: var(--card); border: 1px solid var(--edge); border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 12px;
+}
+.vol-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.vol-head h3 { margin: 0; font: 700 12.5px var(--sans); color: var(--ink); }
+.vol-head h3 small { display: block; font: 400 10.5px var(--sans); color: var(--dimmer); margin-top: 2px; }
+.vol-windows { margin-left: auto; display: flex; gap: 4px; }
+.vol-windows .on { color: var(--accent); border-color: var(--accent); }
+
+/* ONE AXIS, EVERY SERIES FROM THE SAME ZERO. The areas are faint on purpose:
+ * thirteen of them at any real opacity is a wash, and the LINE is the reading —
+ * the fill is only there to say which side of it is the volume. */
+.vol-chart { display: block; width: 100%; height: auto; }
+.vol-chart .grid { stroke: var(--edge); stroke-width: 1; }
+.vol-chart .axis { fill: var(--dimmer); font: 400 11px var(--mono); }
+.vol-chart .vol-area { fill-opacity: .1; stroke: none; }
+.vol-chart .vol-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+
+/* THE LEGEND IS THE CONTROL. It reuses .legend for the geometry and adds the
+ * two states a key does not have: `off` (something else is isolated, or this
+ * one was switched off) and `isolated` (this one is the only line drawn). */
+.vol-legend { margin-top: 8px; columns: 2; column-gap: 18px; }
+.vol-legend li { break-inside: avoid; }
+.vol-legend li.off { opacity: .38; }
+.vol-legend li.isolated { background: #22222a; outline: 1px solid var(--edge); }
+.vol-legend .share.up { color: var(--tone-warm); }
+.vol-legend .share.down { color: var(--tone-ok); }
+
+/* ------------------------------------------------------------ volume table */
+.vol-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 620px; }
+.vol-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; padding: 6px 8px; background: var(--panel);
+  border-bottom: 1px solid var(--edge); color: var(--dim);
+  font: 700 10.5px var(--sans); letter-spacing: .5px; text-transform: uppercase;
+}
+.vol-table td { padding: 5px 8px; border-bottom: 1px solid #1f1f27; vertical-align: top; }
+.vol-table tr:hover td { background: #1c1c23; }
+.vol-table .name { font: 600 11.5px var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+/* THE SIZE IS WHAT THIS TABLE IS SORTED BY and therefore what an eye runs down. */
+.vol-table .size { font: 700 12.5px var(--mono); color: var(--accent); white-space: nowrap; }
+.vol-table .size small { font: 400 9.5px var(--sans); color: var(--dimmer); margin-left: 3px; }
+.vol-table .role { font-size: 10.5px; color: var(--dimmer); text-transform: uppercase; letter-spacing: .4px; }
+.vol-table .where { font-size: 10.5px; color: var(--dimmer); overflow-wrap: anywhere; }
+.vol-table .down { color: var(--dimmer); }
+/* DockTor's own storage first among equals: it is the row a person came here to
+ * check, and it is otherwise a small volume near the bottom of a table sorted
+ * by size. */
+.vol-table tr.role-storage .name { color: var(--accent); }
+.vol-table tr.role-anonymous .name { color: var(--dimmer); }
+
+/* ------------------------------------------------------------- the lasso
+ * 🪢 ONE ENCLOSURE PER POD. Before this, cards flowed edge to edge across the
+ * whole pane in one continuous matrix — which fills width beautifully and
+ * answers the wrong question: five NETBOX cards came out four on one row and
+ * one on the next, with nothing but a small badge saying they were one pod.
+ * THE BORDER IS THE POD'S OWN HUE at low alpha, the same `--group` the cards
+ * inside take on their left edge, so the enclosure and its contents are
+ * obviously the same claim. Nothing here spells a colour: renderGrid sets
+ * `--group` from /api/palette.
+ * IT IS A CONTROL: `.selected` is a pod somebody clicked, and it brightens the
+ * border rather than moving anything — a layout that reflows on selection
+ * makes the next click land somewhere else. */
+.lasso {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--group, #6f7480) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--group, #6f7480) 5%, transparent);
+  padding: 8px; margin: 0 0 10px;
+  cursor: pointer;
+}
+.lasso:hover { border-color: color-mix(in srgb, var(--group, #6f7480) 70%, transparent); }
+.lasso.selected {
+  border-color: var(--group, #6f7480);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--group, #6f7480) 45%, transparent);
+  background: color-mix(in srgb, var(--group, #6f7480) 9%, transparent);
+}
+/* PODS SIT IN THIRDS. Packing each enclosure to its own card count made every
+ * row a different ragged width; three equal columns make the wall read as a
+ * grid of pods, and a big pod's cards wrap inside its own border. A pod with
+ * issue bands takes the full row: the bands are sentences and do not read in
+ * a third of the pane. */
+.cards { --card-w: 215px; --card-gap: 8px; }
+.cards.density-low { --card-w: 220px; --card-gap: 6px; }
+.cards:has(> .lasso) {
+  display: block;
+  column-count: 3;
+  column-gap: 10px;
+}
+@media (max-width: 1200px) { .cards:has(> .lasso) { column-count: 2; } }
+@media (max-width: 760px)  { .cards:has(> .lasso) { column-count: 1; } }
+.cards > .lasso {
+  display: inline-block;
+  width: 100%;
+  vertical-align: top;
+  margin: 0 0 10px;
+  box-sizing: border-box;
+  min-width: 0;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+.lasso .group.group-all,
+.cards.density-low .lasso .group {
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-w), 100%), 1fr));
+  gap: var(--card-gap);
+}
+
+.lasso-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 2px 7px;
+}
+.lasso-count {
+  font: 600 10.5px var(--mono); color: var(--dimmer); white-space: nowrap;
+}
+/* THE POD VERBS LIVE IN A RIGHT-CLICK MENU (openPodMenu), not in the header:
+ * the header is the name, the directory and the count, and nothing fades in
+ * over them. */
+.pod-menu { position: fixed; top: 0; left: 0; min-width: 220px; max-width: 380px; }
+.pod-menu[hidden] { display: none; }
+.pod-menu .note code { font: 500 10.5px var(--mono); }
+.menu-items button:disabled { opacity: .45; cursor: not-allowed; background: transparent; }
+/* A HINT THAT THE BOX DOES SOMETHING, for the pods nobody has hovered yet. It
+ * is the only decoration on the enclosure and it goes once it is selected. */
+.lasso:not(.selected)::after {
+  content: "right-click for pod actions";
+  position: absolute; right: 10px; bottom: 4px;
+  font: 400 9.5px var(--sans); color: var(--dimmer);
+  opacity: 0; transition: opacity .12s ease; pointer-events: none;
+}
+.lasso:not(.selected):hover::after { opacity: .75; }
+@media (max-width: 820px) { .cards, .cards.density-low { --card-w: 180px; } }
+
+/* ------------------------------------------------- the pid box in the dialog
+ * ONE VERB ASKS FOR A VALUE (🔪 kill a pid) and this is where it is typed. It
+ * sits in the same dialog as the confirmations, under the sentence, because
+ * the number and what it is about to happen to are one question. */
+.ask-prompt { display: block; margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+.ask-prompt input {
+  display: block; width: 100%; margin-top: 5px; padding: 6px 8px;
+  background: var(--ground); color: var(--ink);
+  border: 1px solid var(--edge); border-radius: 4px;
+  font: 600 13px var(--mono);
+}
+.ask-prompt input:focus { outline: none; border-color: var(--accent); }
+.ask-prompt small { display: block; margin-top: 4px; color: var(--dimmer); font-size: 10.5px; }
+/* THE DIRECTORY THE BUTTONS ACT ON, beside the name the grid groups by — they
+ * are different strings ("Storage" is DATABASE:server:SQL), and a button that
+ * says "Stop This Pod" should not leave which pod to inference. */
+.lasso-stack { font: 500 10px var(--mono); color: var(--dimmer); }
+.lasso-nostack { font: 400 10px var(--sans); color: var(--dimmer); font-style: italic; }
+
+/* IDLE PODS: declared, deliberately not started on this node. Grey and quiet —
+ * present so discovery is visible, never styled as a fault. */
+.cards > .lasso.idle { opacity: .55; border-style: dashed; }
+.cards > .lasso.idle:hover { opacity: .9; }
+.lasso.idle .idle-names { margin: 0 2px 6px; font: 10.5px var(--mono); color: var(--dimmer); }
+.lasso.idle .dark-fix { margin: 0; }
+
+/* 💲 THE COST PILL AND ITS PANEL. The pill is a button; the panel drops under
+ * the telemetry strip and is the only place the price is typed. */
+.cost-pill { cursor: pointer; }
+.cost-pill:hover, .cost-pill:focus-visible { border-color: var(--accent, #f59e0b); outline: none; }
+/* TWO ROWS OF TWO, NOT A COLUMN OF FOUR. The strip sits in the toolbar, where
+ * height is what there is least of; four stacked pills pushed the bar to twice
+ * the height of every button beside it. Each column is as wide as its widest
+ * pill, so CPU lines up over disk and RAM over cost. The cost panel is
+ * absolutely placed and takes no cell. */
+.system-telemetry-strip {
+  position: relative;
+  display: grid; grid-template-columns: repeat(2, max-content);
+  gap: 3px 4px; align-items: stretch;
+}
+.cost-panel {
+  position: absolute; z-index: 40; top: 100%; right: 0; margin-top: 6px;
+  width: min(340px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 10px 12px; border: 1px solid var(--edge); border-radius: 6px;
+  background: var(--panel); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font: 12px/1.45 var(--sans); color: var(--ink);
+}
+.cost-panel label { display: grid; gap: 4px; font-weight: 700; }
+.cost-input { display: flex; align-items: center; gap: 4px; }
+.cost-input input {
+  flex: 1; min-width: 0; padding: 5px 7px; border-radius: 4px;
+  border: 1px solid var(--edge); background: var(--ground); color: var(--ink); font: inherit;
+}
+.cost-note { margin: 6px 0; color: var(--dimmer); font-size: 11px; }
+.cost-lines { margin: 6px 0; font-size: 11px; color: var(--dim); }
+.cost-verbs { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------ sortable heads
+ * Every <th> sorts (manager.js wireTableSorting). The arrow is the column the
+ * table is ordered by; a bare head shows a faint one on hover only. */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--ink); }
+th.sortable::after { content: " ↕"; opacity: 0; font-size: .9em; }
+th.sortable:hover::after { opacity: .45; }
+th.sortable[data-dir="asc"]::after  { content: " ▲"; opacity: 1; color: var(--accent); }
+th.sortable[data-dir="desc"]::after { content: " ▼"; opacity: 1; color: var(--accent); }

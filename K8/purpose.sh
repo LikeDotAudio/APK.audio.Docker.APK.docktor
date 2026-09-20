@@ -62,15 +62,10 @@ PURPOSE = {
         "hardware -- which is why its open config and a narrow bind are a pair."),
 
     "Storage-MariaDB": (
-        "The SQL database of record",
-        "MariaDB 11.4 holding the `apkaudio` database on the pinned `mariadb-data` "
-        "volume: the Scanalyzer corpus tables and the bus_delta history live in it. Its "
-        "healthcheck asks --innodb_initialized rather than the port, because a server "
-        "still replaying InnoDB logs is listening and not yet usable.",
-        "It is the only durable store on the bench. The corpus endpoints the portal "
-        "serves read from it and the delta capture writes to it, so a bench without it "
-        "has a Scanalyze tab that reports offline and a bus whose history goes "
-        "nowhere."),
+        "Decommissioned (Consolidated into SQL-Proxy in DATABASE:server:SQL)",
+        "The standalone MariaDB instance has been retired. SQL database services are consolidated "
+        "into DATABASE:server:SQL behind SQL-Proxy:3306, supporting both 'PROXY 1 server' and 'PROXY 3 cluster' modes.",
+        "Clients now connect through SQL-Proxy on port 3306."),
 
     "Storage-PHP": (
         "The interpreter behind /api/*",
@@ -107,20 +102,17 @@ PURPOSE = {
         "to apk.audio mirrors. Everything else on the bench is something this page "
         "talks to."),
 
-    # --- DATABASE:cluster:SQL -- the redundant SQL server ------------------------
+    # --- DATABASE:server:SQL -- consolidated SQL server (1 server / 3 cluster) ---
     "SQL-Node-1": (
-        "Galera node 1 of 3, and the one the cluster forms around",
-        "MariaDB 11.4 with Galera replication on its own `sql-node-1-data` volume, "
-        "reachable only on the compose network. galera-start.sh decides at boot "
-        "whether this node founds the cluster or joins it; nodes 2 and 3 start after "
-        "it, and compose stops it last so it is the one marked safe_to_bootstrap.",
-        "The database of record lives on all three nodes at once. With this one gone "
-        "the other two keep a Primary and keep writing; without any node SQL-Proxy has "
-        "no writer, Broker-SqlCapture cannot open its session and Storage-PHP answers "
-        "every corpus endpoint with an error."),
+        "Primary MariaDB node (1 server mode seed, and Galera cluster founder)",
+        "MariaDB 11.4 on its own `sql-node-1-data` volume, reachable only on the compose network. "
+        "In 'PROXY 1 server' mode, it serves all traffic behind SQL-Proxy. In 'PROXY 3 cluster' "
+        "mode, it founds the Galera cluster that nodes 2 and 3 join.",
+        "The database of record. Behind SQL-Proxy, whether running as a single server or "
+        "as a 3-node Galera cluster, all clients connect transparently to sql-proxy:3306."),
 
     "SQL-Node-2": (
-        "Galera node 2 of 3",
+        "Galera node 2 of 3 (enabled in 'PROXY 3 cluster' mode)",
         "MariaDB 11.4 with Galera replication on its own `sql-node-2-data` volume, "
         "started after SQL-Node-1 (service_started, never service_healthy -- a joiner "
         "cannot be healthy until a Primary exists) and joining it by state transfer.",
@@ -129,7 +121,7 @@ PURPOSE = {
         "node the cluster loses quorum and stops accepting writes."),
 
     "SQL-Node-3": (
-        "Galera node 3 of 3",
+        "Galera node 3 of 3 (enabled in 'PROXY 3 cluster' mode)",
         "MariaDB 11.4 with Galera replication on its own `sql-node-3-data` volume, "
         "joining the cluster after SQL-Node-2, and the first node compose stops.",
         "The third vote. Galera needs a majority to stay Primary, and three nodes is "
@@ -137,9 +129,9 @@ PURPOSE = {
 
     "SQL-Proxy": (
         "The one database address: sql-proxy:3306",
-        "ProxySQL in front of the three Galera nodes. It sends every query to a single "
-        "writer and moves the writer when that node dies; healthy means it has one. "
-        "Published to the host only on loopback, 127.0.0.1:3307.",
+        "ProxySQL in front of the SQL server tier (1 server or 3 Galera nodes). It sends every query "
+        "to a single writer and moves the writer when that node dies; healthy means it has one. "
+        "Published to the host only on loopback, 127.0.0.1:3306.",
         "Clients name one host and never learn which node is alive. Without it "
         "Broker-SqlCapture fails name resolution on sql-proxy and exits, "
         "Storage-PHP loses the database, and a node failure becomes every client's "

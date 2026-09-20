@@ -2,6 +2,10 @@ import os
 import sys
 import glob
 
+import re
+
+PROJECT = re.compile(r'^name:\s*["\']?([^"\'\s#]+)', re.M)
+
 # Hardcoded legacy variable names so old scripts don't break
 LEGACY_MAPPINGS = {
     "APK:BareMetal": ("CORE", "COMPOSE_FILE"),
@@ -23,13 +27,16 @@ def cmd_bash_eval(project_name, dockers_dir):
 
     # Find all docker-compose files
     patterns = [
-        os.path.join(dockers_dir, "*", "*", "Docker", "docker-compose.yml"),
-        os.path.join(dockers_dir, "*", "Docker", "docker-compose.yml")
+        os.path.join(dockers_dir, "*", "*", "*", "*", "Docker", "docker-compose*.yml"),
+        os.path.join(dockers_dir, "*", "*", "*", "Docker", "docker-compose*.yml"),
+        os.path.join(dockers_dir, "*", "*", "Docker", "docker-compose*.yml"),
+        os.path.join(dockers_dir, "*", "Docker", "docker-compose*.yml")
     ]
     
     seen_paths = set()
+    seen_folders = set()
     for pattern in patterns:
-        for path in glob.glob(pattern):
+        for path in sorted(glob.glob(pattern)):
             real_path = os.path.realpath(path)
             if real_path in seen_paths:
                 continue
@@ -37,38 +44,56 @@ def cmd_bash_eval(project_name, dockers_dir):
             
             # Extract folder name
             folder_name = os.path.basename(os.path.dirname(os.path.dirname(path)))
+            file_base = os.path.basename(path)
+
+            if folder_name.startswith("APK:plugin:"):
+                continue
+
+            # Only primary compose files represent standalone stacks
+            if file_base not in ("docker-compose.yml", "docker-compose.manager.yml"):
+                continue
+
+            if folder_name in seen_folders:
+                continue
+            seen_folders.add(folder_name)
+
+            try:
+                with open(real_path, "r", encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+            except OSError:
+                continue
+            if not PROJECT.search(text):
+                continue
             
-            # Priority logic
+            # Priority logic: DockTor is 1, MQTT Mosquitto is 2 (first to launch after DockTor)
             up_order = 50
-            if folder_name == "APK:Docktor": up_order = 1
-            elif "Log STORAGE" in folder_name: up_order = 2
-            elif "SQL" in folder_name: up_order = 3
-            elif folder_name == "APK:BareMetal": up_order = 4
-            elif folder_name == "DATABUS:Broker:MQTT": up_order = 5
+            if folder_name == "APK:Docktor" or "manager" in file_base: up_order = 1
+            elif folder_name == "DATABUS:Broker:MQTT": up_order = 2
+            elif "Log STORAGE" in folder_name: up_order = 3
+            elif "server:SQL" in folder_name or "cluster:SQL" in folder_name: up_order = 4
+            elif folder_name == "APK:BareMetal": up_order = 6
+            elif folder_name == "APK:plugins:Build": up_order = 7
             
             stack_info = {
                 "name": folder_name,
                 "compose_path": real_path,
+                "file_base": file_base,
                 "up_order": up_order
             }
             stacks.append(stack_info)
             
-    # Include hardware overlay for backwards compatibility
-    hw_path = os.path.join(dockers_dir, "POD:APK_THICK", "APK:BareMetal", "Docker", "docker-compose.hardware.yml")
-    if os.path.exists(hw_path):
-        stacks.append({
-            "name": "node",
-            "compose_path": hw_path,
-            "up_order": 11
-        })
-        LEGACY_MAPPINGS["node"] = ("NODE", "BAREMETAL_COMPOSE_FILE")
+    LEGACY_MAPPINGS["node"] = ("NODE", "BAREMETAL_COMPOSE_FILE")
 
-    forward_stacks = sorted(stacks, key=lambda s: s["up_order"])
-    forward_names = " ".join(s["name"] for s in forward_stacks)
+    forward_stacks = sorted([s for s in stacks if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"])
+    docktor_stacks = [s for s in stacks if s["name"] == "APK:Docktor" or "manager" in s.get("file_base", "")]
+    
+    forward_final = docktor_stacks + forward_stacks
+    forward_names = " ".join(f'"{s["name"]}"' for s in forward_final)
     bash_lines.append(f"DOCKTOR_STACKS_FORWARD=({forward_names})")
     
-    reverse_stacks = sorted(stacks, key=lambda s: s["up_order"], reverse=True)
-    reverse_names = " ".join(s["name"] for s in reverse_stacks)
+    reverse_stacks = sorted([s for s in stacks if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"], reverse=True)
+    reverse_final = reverse_stacks + docktor_stacks
+    reverse_names = " ".join(f'"{s["name"]}"' for s in reverse_final)
     bash_lines.append(f"DOCKTOR_STACKS_REVERSE=({reverse_names})")
     
     all_driven = []
@@ -76,10 +101,15 @@ def cmd_bash_eval(project_name, dockers_dir):
     for s in stacks:
         name = s["name"]
         full_path = s["compose_path"]
+        file_base = s.get("file_base", "")
         all_driven.append(full_path)
         
         # Legacy mapping or dynamic name
-        if name in LEGACY_MAPPINGS:
+        if file_base == "docker-compose.portal-broker.yml":
+            var_suffix, file_var = ("PORTAL", "PORTAL_COMPOSE_FILE")
+        elif file_base == "docker-compose.manager.yml":
+            var_suffix, file_var = ("MANAGER", "MANAGER_COMPOSE_FILE")
+        elif name in LEGACY_MAPPINGS:
             var_suffix, file_var = LEGACY_MAPPINGS[name]
         else:
             # Sanitize name for bash variable
@@ -92,7 +122,12 @@ def cmd_bash_eval(project_name, dockers_dir):
         
         # In for_each_stack it checks stack name
         # We also want an eval rule for the dynamic names
-        safe_name = name.replace(':', '_').replace('-', '_').replace(' ', '_')
+        if file_base == "docker-compose.portal-broker.yml":
+            safe_name = "PORTAL"
+        elif file_base == "docker-compose.manager.yml":
+            safe_name = "MANAGER"
+        else:
+            safe_name = name.replace(':', '_').replace('-', '_').replace(' ', '_')
         bash_lines.append(f"COMPOSE_BY_NAME_{safe_name}=(\"${{COMPOSE_BASE[@]}}\" -f \"{full_path}\")")
         
     # Export all driven files for stacks.sh

@@ -170,11 +170,11 @@ emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
 emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
     "Portal status page" "http://{host}:{port}/status.html"
 
-emit_endpoint Storage-Broker          1883/tcp 1883 copy \
-    "MQTT broker" "mqtt://{host}:{port}"
+emit_endpoint Broker-Mosquitto        1883/tcp 1883 copy \
+    "MQTT broker (DATABUS:Broker:MQTT)" "mqtt://{host}:{port}"
 
-emit_endpoint Storage-Broker          9001/tcp 9001 copy \
-    "MQTT over WebSockets" "ws://{host}:{port}"
+emit_endpoint Broker-Mosquitto        9001/tcp 9001 copy \
+    "MQTT over WebSockets (DATABUS:Broker:MQTT)" "ws://{host}:{port}"
 
 # THE DATABASE CLIENTS USE: the cluster, through ProxySQL, on loopback 3307.
 emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3307}" copy \
@@ -185,23 +185,6 @@ emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3307}" copy \
 emit_endpoint Storage-MariaDB 3306/tcp 3306 copy \
     "MariaDB" \
     "mysql://${MARIADB_USER:-apkaudio}:${MARIADB_PASSWORD:-DEV.DB}@{host}:{port}/${MARIADB_DATABASE:-apkaudio}"
-
-# --- the second and third brokers -----------------------------------------
-# Three mosquittos, three addresses. Numbered off Storage-Broker (1884/9002 and
-# 1885/9003, in the compose files that own them) so all three can run; a bare
-# port number in the fallback launcher would not say WHICH bus it opens.
-# `copy` for all: mqtt:// and ws:// are not things a browser opens.
-emit_endpoint Broker-Mosquitto 1883/tcp 1884 copy \
-    "MQTT broker (Server:Broker:MQTT)" "mqtt://{host}:{port}"
-
-emit_endpoint Broker-Mosquitto 9001/tcp 9002 copy \
-    "MQTT over WebSockets (Server:Broker:MQTT)" "ws://{host}:{port}"
-
-emit_endpoint Portal-Broker 1883/tcp 1885 copy \
-    "MQTT broker (Portal-Broker)" "mqtt://{host}:{port}"
-
-emit_endpoint Portal-Broker 9001/tcp 9003 copy \
-    "MQTT over WebSockets (Portal-Broker)" "ws://{host}:{port}"
 
 # --- the NMOS bench, from 'Server:Discovery:NMOS/docker-compose.yml' ------
 # WHICH ROWS EXIST AND WHY NOT ALL OF THEM. That stack is the specification

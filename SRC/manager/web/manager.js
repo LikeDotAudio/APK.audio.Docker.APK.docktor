@@ -908,27 +908,26 @@ function renderDarkStacks(snapshot) {
  * in a band above the whole grid: the fix is a pod verb, and it belongs where
  * the pod is. The bands above keep only the bench-wide countdowns. */
 function darkRowHTML(row) {
+  const target = row.compose_file || row.stack;
   return `
     <div class="dark-stack${row.restorable ? " driven" : ""}">
       <h3>${row.restorable ? "⚠" : "🚧"} ${escapeHTML(row.stack)}
           <small>${row.declared} declared, none present</small></h3>
       <p class="absent">${escapeHTML(row.absent.join("  ·  "))}</p>
-      ${row.restorable
-        ? `<p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
-               data-stack="${escapeAttr(row.stack)}"></button>
-             <span>builds the image if it is missing and brings up
-             <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>`
-        : `<p>Nothing on this page restarts this stack — run:</p>
-           <code>docker compose -f '${escapeHTML(row.compose_file)}' up -d --build</code>`}
+      <p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
+             data-stack="${escapeAttr(target)}"></button>
+           <span>builds the image if it is missing and brings up
+           <b>${escapeHTML(row.stack)}</b> — that stack alone, none of the others.</span></p>
     </div>`;
 }
 
 function stoppedRowHTML(row) {
+  const target = row.compose_file || row.stack;
   return `
     <div class="dark-stack driven">
       <h3>🛑 ${escapeHTML(row.container)} <small>exited and was not restarted</small></h3>
       <p class="dark-fix"><button class="btn small accent" data-saction="up-stack"
-           data-stack="${escapeAttr(row.stack)}"></button>
+           data-stack="${escapeAttr(target)}"></button>
          <span>brings <b>${escapeHTML(row.stack)}</b> back up and nothing else;
          the per-container Restart does just this one.</span></p>
     </div>`;
@@ -1338,7 +1337,14 @@ function renderGrid(snapshot) {
   // THE ISSUE ROWS ARE DRAWN ON THE RIGHT (renderPodIssues), so a pod that has
   // nothing BUT issues has nothing to draw here. It stays in `groups` for the
   // pod filter, whose ⚠ pill is how it is still found from this side.
-  const lassoHtml = groups.filter((group) => group.containers.length).map((group) => {
+  const paneWidth = host.clientWidth || window.innerWidth;
+  const numCols = paneWidth <= 760 ? 1 : (paneWidth <= 1200 ? 2 : (paneWidth <= 1700 ? 3 : 4));
+  const colWidth = paneWidth / numCols;
+  const cardW = state.density === "low" ? 220 : 215;
+  const cardsPerRow = Math.max(1, Math.floor((colWidth - 20) / (cardW + 8)));
+
+  const allLassos = [];
+  groups.filter((group) => group.containers.length).forEach((group) => {
     const hue = group.hue || "";
     const groupName = group.label;
     const cards = group.containers.map((c) => {
@@ -1349,21 +1355,15 @@ function renderGrid(snapshot) {
     }).join("");
 
     const total = group.containers.length;
-    // RUNNING IS READ OFF THE SAME WORD THE CARD DRAWS, not off a second
-    // rule: `tone` is the server's verdict and `live` is what a green card is.
     const live = group.containers.filter(isRunning).length;
     const selected = state.selectedStack === groupName;
     const problems = issues.get(groupName) || [];
-    // THE VERBS TAKE THE STACK DIRECTORY AND THE HEADING SHOWS THE GROUP NAME,
-    // and they are different strings on nearly every pod — "Storage" is
-    // `DATABASE:server:SQL`. The server decides which stack a group belongs to
-    // (see _group_stack); a group it could not place gets no buttons rather
-    // than buttons aimed at a name no compose file answers to.
     const stack = group.stack || "";
-    return `
+    const muted = podMuted(groupName);
+    const html = `
       <section class="lasso${group.ours ? " ours" : ""}${selected ? " selected" : ""}${problems.length ? " has-issues" : ""}"
                style="--group: ${escapeAttr(hue || "#6f7480")}"
-               data-lasso="${escapeAttr(groupName)}" data-stack="${escapeAttr(stack)}"${podMuted(groupName) ? " hidden" : ""}>
+               data-lasso="${escapeAttr(groupName)}" data-stack="${escapeAttr(stack)}"${muted ? " hidden" : ""}>
         <header class="lasso-head">
           <span class="group-pill">${escapeHTML(groupName)}</span>
           ${stack ? `<span class="lasso-stack" title="The directory under APK:PODS/ that the buttons on this pod act on">${escapeHTML(stack)}</span>` : ""}
@@ -1371,11 +1371,13 @@ function renderGrid(snapshot) {
         </header>
         ${cards ? `<div class="group group-all">${cards}</div>` : ""}
       </section>`;
-  }).join("");
+    const cardRows = Math.ceil(total / cardsPerRow);
+    allLassos.push({ html, weight: muted ? 0 : (cardRows + 1.2) });
+  });
 
-  const idleHtml = idle.map((row) => {
+  idle.forEach((row) => {
     const roles = [...new Set(row.idle.flatMap((c) => c.roles))].join(", ");
-    return `
+    const html = `
       <section class="lasso idle" style="--group: #6f7480" data-stack="${escapeAttr(row.stack)}">
         <header class="lasso-head">
           <span class="group-pill">${escapeHTML(row.stack.replace(/^APK:plugin:/, ""))}</span>
@@ -1386,9 +1388,26 @@ function renderGrid(snapshot) {
         <p class="dark-fix"><button class="btn small" data-saction="up-stack"
              data-stack="${escapeAttr(row.stack)}"></button></p>
       </section>`;
-  }).join("");
+    allLassos.push({ html, weight: 2.0 });
+  });
 
-  host.innerHTML = lassoHtml + idleHtml;
+  // Longest-Processing-Time first (LPT) bin packing: sort descending so largest pods place first
+  const sortedLassos = [...allLassos].sort((a, b) => b.weight - a.weight);
+  const cols = Array.from({ length: numCols }, () => []);
+  const colWeights = new Array(numCols).fill(0);
+
+  sortedLassos.forEach((item) => {
+    let minIdx = 0;
+    for (let i = 1; i < numCols; i++) {
+      if (colWeights[i] < colWeights[minIdx]) minIdx = i;
+    }
+    cols[minIdx].push(item.html);
+    colWeights[minIdx] += item.weight;
+  });
+
+  host.innerHTML = `<div class="lasso-columns">` +
+    cols.map((c) => `<div class="lasso-col">${c.join("")}</div>`).join("") +
+    `</div>`;
   renderPodFilter(groups, issues);
   state.pods = { groups, issues };
 
@@ -3100,7 +3119,7 @@ async function runContainerAction(key, name, button) {
  * eviction to its own file. One at a time: the server refuses a second action
  * while one runs, and each post returns only when its script has. */
 async function remountStacks(rows, button, origin) {
-  const stacks = [...new Set((rows || []).map((row) => row.stack).filter(Boolean))];
+  const stacks = [...new Set((rows || []).map((row) => row.compose_file || row.stack).filter(Boolean))];
   const row = state.actions.stack_actions?.["up-stack"];
   if (!row || !stacks.length) return;
   markRunning(button, true);
@@ -3117,14 +3136,13 @@ async function remountStacks(rows, button, origin) {
   }
 }
 
-/* ONE STACK, AND THE NAME IS THE DIRECTORY UNDER APK:PODS/. The bands hold
- * it already, so nothing here maps a stack to a compose file — up-stack.sh does
- * that, through the same arrays the bench-wide verbs expand. */
+/* ONE STACK, AND THE NAME IS THE DIRECTORY UNDER APK:PODS/ OR A COMPOSE FILE. */
 async function runStackAction(key, stack, button) {
   const row = state.actions.stack_actions?.[key];
   if (!row || !stack) return;
-  if (row.confirm && !(await ask(`${row.label} — ${stack}`,
-                                 row.confirm.replace(/\{name\}/g, stack)))) return;
+  const displayName = stack.includes("/") ? (stack.split("/").slice(-3, -2)[0] || stack) : stack;
+  if (row.confirm && !(await ask(`${row.label} — ${displayName}`,
+                                 row.confirm.replace(/\{name\}/g, displayName)))) return;
   markRunning(button, true);
   follow(true);
   try {
@@ -3642,7 +3660,13 @@ async function boot() {
     $("#sheet-body").value = logText(event.target.checked, activeSheetBox);
   };
   $("#sheet-copy").onclick = () => navigator.clipboard.writeText($("#sheet-body").value);
-  $("#sheet-close").onclick = () => $("#sheet").close();
+  let resizeTimer;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (state.snapshot && state.view === "cards") renderGrid(state.snapshot);
+    }, 150);
+  });
 
   scan();
 }

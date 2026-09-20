@@ -35,8 +35,8 @@ WANT="${1:-}"
 
 # The broker address, from the one file that holds it. No port here, for the
 # same reason api.sh has none.
-APK_BROKER_URI="$("$MANAGEMENT_SCRIPTS_DIR/endpoints.sh" Storage-Broker 2>/dev/null \
-    | awk -F'\t' '$3 == "MQTT broker" { print $4; exit }')"
+APK_BROKER_URI="$("$MANAGEMENT_SCRIPTS_DIR/endpoints.sh" Broker-Mosquitto 2>/dev/null \
+    | awk -F'\t' '$3 ~ /MQTT broker/ { print $4; exit }')"
 
 APK_RUNNING="$(docker ps --format '{{.Names}}' 2>/dev/null)"
 
@@ -174,12 +174,12 @@ def document_for(container):
 
 
 # The broker is the bus: every topic is filed under it, attributed or not.
-if "Storage-Broker" in RUNNING:
-    document_for("Storage-Broker")
+if "Broker-Mosquitto" in RUNNING:
+    document_for("Broker-Mosquitto")
 
 if error:
     for container in RUNNING:
-        if container in ("Storage-Broker",) or container in documents:
+        if container in ("Broker-Mosquitto",) or container in documents:
             document_for(container)
 else:
     for topic in sorted(grains):
