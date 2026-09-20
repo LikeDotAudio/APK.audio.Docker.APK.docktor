@@ -2941,6 +2941,10 @@ async function scan({ apps = true, quiet = false } = {}) {
       get(`/api/container/${encodeURIComponent(state.selected)}?live=1`)
         .then(renderDetail).catch(() => {});
     }
+    const webPagesEl = $("#web-pages");
+    if (state.view === "ports" || (webPagesEl && !webPagesEl.hidden)) {
+      loadWebPages();
+    }
   } catch (err) {
     $("#scan-state").textContent = String(err.message || err);
   } finally {
@@ -3349,6 +3353,9 @@ function wireMenus() {
       const wasOpen = !items.hidden;
       $$(".menu-items").forEach((other) => { other.hidden = true; });
       items.hidden = wasOpen;
+      if (!wasOpen && items.id === "web-pages") {
+        loadWebPages();
+      }
     };
     items.onclick = () => { items.hidden = true; };
   });
@@ -3581,7 +3588,7 @@ async function boot() {
   // and endpoints.sh re-reads what answers on it.
   $("#refresh").onclick = () => {
     scan();
-    if (state.view === "ports") loadWebPages();
+    loadWebPages();
     // 🔄 MEANS THIS READING, WHICHEVER IT IS. The volume tab is the one view a
     // scan does not touch — it has a script of its own — so a refresh pressed
     // over it used to repaint the cards behind it and nothing else.

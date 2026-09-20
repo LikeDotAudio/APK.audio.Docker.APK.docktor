@@ -176,14 +176,9 @@ emit_endpoint Broker-Mosquitto        1883/tcp 1883 copy \
 emit_endpoint Broker-Mosquitto        9001/tcp 9001 copy \
     "MQTT over WebSockets (DATABUS:Broker:MQTT)" "ws://{host}:{port}"
 
-# THE DATABASE CLIENTS USE: the cluster, through ProxySQL, on loopback 3307.
-emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3307}" copy \
-    "SQL cluster (ProxySQL → 3 Galera nodes)" \
-    "mysql://${MARIADB_USER:-apkaudio}:${MARIADB_PASSWORD:-DEV.DB}@{host}:{port}/${MARIADB_DATABASE:-apkaudio}"
-
-# The single pre-cluster server, kept running for rollback.
-emit_endpoint Storage-MariaDB 3306/tcp 3306 copy \
-    "MariaDB" \
+# THE DATABASE CLIENTS USE: the database through ProxySQL on port 3306.
+emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3306}" copy \
+    "SQL database (ProxySQL → MariaDB)" \
     "mysql://${MARIADB_USER:-apkaudio}:${MARIADB_PASSWORD:-DEV.DB}@{host}:{port}/${MARIADB_DATABASE:-apkaudio}"
 
 # --- the NMOS bench, from 'Server:Discovery:NMOS/docker-compose.yml' ------
