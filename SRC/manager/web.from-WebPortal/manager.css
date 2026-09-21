@@ -445,11 +445,10 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * "which card am I on" and must always win. Not border-left: that channel
  * already carries the group hue and one channel cannot carry two answers. */
 .card.stale { border-color: var(--tone-stale); }
-/* Hover and selection stay whole-border so they outrank the stack edge: which
- * card the pointer is on is an answer about THIS card, the hue about forty. */
 .card:hover { border-color: #3b3b47; }
 .card.selected { border-color: #ffd54f; }
 .card .head { display: flex; align-items: baseline; gap: 5px; }
+.card .head .group-pill { display: none; }
 /* 9px until 2026-09-10, smaller than the smallest type on the card: the dot is
  * one of the two things that answer "how is this doing", and at that size it
  * read as punctuation before the name. It is now the name own size;
@@ -540,8 +539,9 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
   gap: 6px;
   font-size: 13px;
   font-weight: 700;
-  padding-right: 18px;
+  padding-right: 0;
 }
+.cards.density-low .card:has(.kill) .head { padding-right: 18px; }
 .cards.density-low .card .name { font-size: 13px; font-weight: 700; color: #ffffff; }
 .cards.density-low .card .status {
   display: flex;
@@ -554,7 +554,8 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * and the sentence beside it goes, as the comment in cardHTML() promises. */
 .cards.density-low .card .status { order: -1; }
 .cards.density-low .card .status .status-emoji { font-size: 1.3em; }
-.cards.density-low .card .dot { display: inline-block; }
+.cards.density-low .card .dot { display: none; }
+.cards.density-low .card .group-pill { display: none; }
 .cards.density-low .card .kill { top: 4px; right: 4px; font-size: 12px; }
 
 .cards.density-low .card .status .status-text,

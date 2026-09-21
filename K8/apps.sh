@@ -404,11 +404,27 @@ gather_netbox() {
            APK_PLANE_NETBOX_STATUS APK_PLANE_NETBOX_CODE
 }
 
+gather_discovery() {
+    local container=APK-Discovery-Engine
+    wanted "$container" || return 0
+    container_is_up "$container" || return 0
+
+    APK_PLANE_DISCOVERY_URL="$(endpoint_uri "$container" 'Discovery REST API / Status')"
+    if [ -z "$APK_PLANE_DISCOVERY_URL" ]; then
+        APK_PLANE_DISCOVERY_URL="http://127.0.0.1:8120/status"
+    fi
+    if [ -n "$APK_PLANE_DISCOVERY_URL" ]; then
+        APK_PLANE_DISCOVERY="$(curl -fsS --max-time 3 "http://127.0.0.1:8120/api/status" 2>/dev/null)"
+    fi
+    export APK_PLANE_DISCOVERY_URL APK_PLANE_DISCOVERY
+}
+
 gather_baremetal
 gather_mqtt
 gather_portal
 gather_nmos
 gather_netbox
+gather_discovery
 
 # ==============================================================================
 # THE RENDERER. One document per plane, then rows out of the documents.
@@ -892,12 +908,66 @@ def netbox_rows(document):
     return rows
 
 
+# -- discovery engine ----------------------------------------------------------
+def discovery_document():
+    container = "APK-Discovery-Engine"
+    raw = env("APK_PLANE_DISCOVERY")
+    url = env("APK_PLANE_DISCOVERY_URL")
+    if not raw and not url:
+        return None
+
+    doc = {"container": container, "plane": "discovery", "source": url or "http://127.0.0.1:8120/api/status"}
+    if not raw:
+        doc["error"] = "no answer from discovery status endpoint"
+        return doc
+    try:
+        data = json.loads(raw)
+        doc["data"] = data
+    except Exception as e:
+        doc["error"] = f"invalid JSON: {e}"
+    return doc
+
+
+def discovery_rows(document):
+    container = document["container"]
+    if document.get("error"):
+        return [(container, "engine", "down", document["error"])]
+    data = document.get("data", {})
+    engine = data.get("engine", {})
+    counters = data.get("counters", {})
+    devices = data.get("devices", [])
+    deaths = data.get("deaths", [])
+
+    rows = []
+    # 1. Engine status
+    status = engine.get("status", "unknown")
+    state = "running" if status == "online" else "down"
+    uptime = engine.get("uptime_secs", 0)
+    rows.append((container, "engine", state, f"Discovery Engine online · uptime {uptime}s · circle {engine.get('circling_interval_secs', 30)}s · TTL {engine.get('presence_ttl_secs', 120)}s"))
+
+    # 2. Devices
+    live_devices = [d for d in devices if d.get("is_online")]
+    rows.append((container, "devices", "running", f"{len(live_devices)} device(s) online ({len(devices)} identified in cache)"))
+
+    # 3. Supervised Plugins
+    plugins = data.get("plugins", [])
+    active_plugins = [p for p in plugins if p.get("is_active")]
+    rows.append((container, "plugins", "running", f"{len(active_plugins)} active / {len(plugins)} supervised plugins auto-launching on demand"))
+
+    # 4. Deaths
+    deaths_total = counters.get("deaths_total", len(deaths))
+    rows.append((container, "deaths", "running", f"{deaths_total} death(s) recorded · active killer sentinel armed (2s probe)"))
+
+    return rows
+
+
 PLANES = (
     (baremetal_document, baremetal_rows),
     (mqtt_document, mqtt_rows),
     (portal_document, portal_rows),
     (nmos_document, nmos_rows),
     (netbox_document, netbox_rows),
+    (discovery_document, discovery_rows),
 )
 
 rows = []

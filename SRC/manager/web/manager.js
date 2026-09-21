@@ -555,7 +555,7 @@ function cardHTML(container) {
     <article class="card${container.ours ? " ours" : ""}${isStale ? " stale" : ""}${container.tone === "ok" || container.tone === "live" ? " up" : ""}${state.selected === container.name ? " selected" : ""}"${hueStyle}
              data-container="${escapeAttr(container.name)}">
       ${kill}
-      <div class="head">${groupTag}${dot}<span class="name" title="${escapeAttr(container.name)}"
+      <div class="head">${dot}<span class="name" title="${escapeAttr(container.name)}"
         >${container.role} ${escapeHTML(container.leaf || container.name)}</span></div>
       <div class="status t-${container.tone}"><span class="status-emoji">${container.emoji}</span> <span
         class="status-text">${escapeHTML(container.status || "unknown")}</span></div>

@@ -315,6 +315,40 @@ if [ -z "$WANT" ] || [ "$WANT" = "Node-BareMetal" ]; then
         "http://127.0.0.1:${node_port}/protocols" "$node_state"
 fi
 
+# --- Discovery Engine, from 'APK:discovery/Docker/docker-compose.yml' ---------
+# Host-networked container: listens on APK_DISCOVERY_HTTP_PORT (default 8120).
+if [ -z "$WANT" ] || [ "$WANT" = "APK-Discovery-Engine" ]; then
+    disc_port="${APK_DISCOVERY_HTTP_PORT:-8120}"
+    disc_url="http://127.0.0.1:${disc_port}"
+
+    if [ "$(docker inspect APK-Discovery-Engine --format '{{.State.Running}}' 2>/dev/null)" != true ]; then
+        disc_state="down"
+    else
+        disc_health="$(docker inspect APK-Discovery-Engine \
+            --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null)"
+        case "$disc_health" in
+            healthy) disc_state="up" ;;
+            ?*)      disc_state="declared" ;;
+            *)       if curl -fsS --max-time 2 "$disc_url/status" >/dev/null 2>&1; then
+                         disc_state="up"
+                     else
+                         disc_state="declared"
+                     fi ;;
+        esac
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        APK-Discovery-Engine open "Discovery Status & Equipment Dashboard" "${disc_url}/" "$disc_state"
+
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        APK-Discovery-Engine open "Discovery Activity & Event Log" \
+        "${disc_url}/api/events" "$disc_state"
+
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        APK-Discovery-Engine open "Discovery REST API / Status" \
+        "${disc_url}/status" "$disc_state"
+fi
+
 # --- Plugins (APK:PODS/POD:APK_THICK/APK:plugin:*) ----------------------
 # For each running plugin container, emit its socket and public bus API.
 mapfile -t plugin_containers < <(docker ps --filter "name=^Plugin-" --format '{{.Names}}' 2>/dev/null)
