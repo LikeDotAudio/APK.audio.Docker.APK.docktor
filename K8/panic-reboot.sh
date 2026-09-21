@@ -63,7 +63,11 @@ if [ "$DRY_RUN" = "1" ]; then
     echo ""
     log_step "3/3. Rehearsal: Stack images and services that rebuild-all.sh would build (--no-cache)"
 
-    order=(logger sqlcluster core mqtt portal nmos aes70 ember netbox node)
+    # `protocols`, not `nmos aes70 ember`: the three are CONTAINERS in the
+    # POD:protocols stack now, and rebuild-all.sh walks the pod, so a
+    # rehearsal that listed them separately would describe three builds
+    # where one happens.
+    order=(logger sqlcluster core mqtt portal protocols netbox node)
     for stack in "${order[@]}"; do
         case "$stack" in
             logger) compose=("${COMPOSE_LOGGER[@]}");;
@@ -71,10 +75,8 @@ if [ "$DRY_RUN" = "1" ]; then
             core)   compose=("${COMPOSE_CORE[@]}");;
             mqtt)   compose=("${COMPOSE_MQTT[@]}");;
             portal) compose=("${COMPOSE_PORTAL[@]}");;
-            nmos)   compose=("${COMPOSE_NMOS[@]}");;
-            aes70)  compose=("${COMPOSE_AES70[@]}");;
+            protocols) compose=("${COMPOSE_PROTOCOLS[@]}");;
             netbox) compose=("${COMPOSE_NETBOX[@]}");;
-            ember)  compose=("${COMPOSE_EMBER[@]}");;
             node)   compose=("${COMPOSE_NODE[@]}");;
         esac
 

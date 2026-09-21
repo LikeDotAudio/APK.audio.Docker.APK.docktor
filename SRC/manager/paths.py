@@ -61,6 +61,12 @@ def _find_first_existing_dir(candidates):
     return candidates[0]
 
 BAREMETAL_SRC_CANDIDATES = [
+    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal'),
+    os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'BareMetal'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal', 'SRC'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal'),
     os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'SRC'),
@@ -75,6 +81,9 @@ BAREMETAL_ROOT = _find_first_existing_dir(BAREMETAL_SRC_CANDIDATES)
 # the two BareMetal spellings stay for a checkout that still carries its own.
 BRAND_TOKENS_CANDIDATES = [
     os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal', 'contracts', 'tokens', 'brand.json'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'contracts', 'tokens', 'brand.json'),
+    os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
 ]

@@ -55,9 +55,9 @@ WORKDIR /app
 #    existed, while the in-image spellings below (APK:DOCKERS, APK:docktor) are
 #    fine BECAUSE nothing outside the image resolves them — the runner puts
 #    that directory on sys.path by walking, not by name.
-COPY ["APK:PODS/APK:Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
-COPY ["APK:PODS/APK:Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
-COPY ["APK:PODS/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
+COPY ["PODS/Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
+COPY ["PODS/Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
+COPY ["PODS/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
 
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
 # DELIBERATELY HAS NO FALLBACK, so the token is not optional decoration here:
@@ -66,7 +66,7 @@ COPY ["contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/contracts/t
 
 # The broker order comes from this one module and there is no fallback list — a
 # guess at the order is the defect that removes.
-COPY ["APK:PODS/POD:APK_THICK/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
+COPY ["PODS/POD:THICK/BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
 
 RUN chmod +x "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts/"*.sh
 

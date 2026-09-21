@@ -132,6 +132,20 @@ ROLE_DEFAULT = "\U0001F433"
 # read the same way here.
 GROUP_SEPARATORS = "-_:"
 
+# POD:protocols — THREE CONTAINERS, ONE POD. The pod-root compose file puts
+# AES70, EMBER and NMOS in one project (`protocols`); this is the same fact said
+# where the grid can see it, because a group here is read off the container NAME
+# and these five names share no prefix.
+# PREFIXES, NOT SUBSTRINGS: `ember` anywhere in a name would also catch a
+# hypothetical `Remember-*`, and `nmos` alone would swallow Plugin-NMOS — which
+# is a plugin on the node, not a protocol bench, and is caught by the Plugin-
+# rule ABOVE this one. Keep this test after that one.
+# A container added to the pod needs its prefix here; the alternative — grouping
+# on the compose project — is not available, since group_of() is handed a name
+# and nothing else.
+PROTOCOL_PREFIXES = ("AES70-", "Ember-", "NMOS-", "APK-NMOS-")
+PROTOCOL_GROUP = "Protocols"
+
 # ---------------------------------------------------------------------------
 # A COLOUR FOR THE STACK, AND IT IS NOT A STATE. The tones above each mean one
 # thing about health, so this ring is confined by rule to the two surfaces no
@@ -204,20 +218,39 @@ def group_of(name):
     """
     n = name or ""
     lowered = n.lower()
+    # APK-Discovery-Engine belongs in BareMetal
+    if "discovery-engine" in lowered:
+        return "BareMetal"
+    # Discovered devices live in their own Discovered pod
+    if lowered.startswith("apk-"):
+        return "Discovered"
+
+    # Gateway, Heartbeat, OsApi, WebStatic and BareMetal core/plugins live under BareMetal
     if any(k in lowered for k in ("gateway", "heartbeat", "osapi", "webstatic", "traffic-router")):
-        return "APK"
+        return "BareMetal"
     if any(k in lowered for k in ("broker", "mosquitto", "sqlcapture", "databus")):
         return "DataBus"
-    if n.startswith("Node-") or n.startswith("Plugin-") or "baremetal" in lowered:
+    # All plugins belong in their own Plugins pod
+    if n.startswith("Plugin-"):
+        return "Plugins"
+    if n.startswith("Node-") or "baremetal" in lowered:
         return "BareMetal"
+    # AFTER the Plugin- test above, never before: Plugin-NMOS and
+    # Plugin-NMOS_CONTROL are plugins on the node and must keep going there.
+    if n.startswith(PROTOCOL_PREFIXES):
+        return PROTOCOL_GROUP
     for index, character in enumerate(n):
         if character in GROUP_SEPARATORS and index:
             grp = n[:index]
-            if grp.upper() in ("PORTAL", "API", "APK"):
-                return "APK"
+            if grp.upper() in ("PORTAL", "API"):
+                return "BareMetal"
+            if grp.upper() == "APK":
+                return "Discovered"
             return grp
-    if n.upper() in ("PORTAL", "API", "APK"):
-        return "APK"
+    if n.upper() in ("PORTAL", "API"):
+        return "BareMetal"
+    if n.upper() == "APK":
+        return "Discovered"
     return n
 
 
@@ -230,6 +263,12 @@ def leaf_of(name):
     """
     if name == "Portal-Broker":
         return "Portal-Broker"
+    # A PROTOCOL CARD KEEPS ALL OF ITS NAME. The rule below strips the first
+    # segment because it repeats the heading — true for `Plugin-DANTE` under
+    # `BareMetal`, false here: the heading is `Protocols` and the first segment
+    # is WHICH protocol. Stripped, AES70-Dev and NMOS-Dev both render as `Dev`.
+    if (name or "").startswith(PROTOCOL_PREFIXES):
+        return name
     for index, character in enumerate(name or ""):
         if character in GROUP_SEPARATORS and index:
             return (name[index:]).lstrip(GROUP_SEPARATORS) or (name or "")

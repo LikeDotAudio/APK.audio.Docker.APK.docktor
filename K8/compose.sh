@@ -4,6 +4,7 @@
 # 🧰 The escape hatch: any compose action, against one stack or all.
 #   ./compose.sh both logs -f
 #   ./compose.sh core ps            ./compose.sh nmos ps
+#   ./compose.sh protocols ps       # the whole pod: AES70 + EMBER + NMOS
 #   ./compose.sh ember logs -f      ./compose.sh node exec baremetal bash
 #   ./compose.sh netbox exec netbox-postgres psql -U netbox
 #   COMPOSE_PROFILES=discovery,l2 ./compose.sh plugins up -d
@@ -30,10 +31,13 @@ case "$TARGET" in
     aes70)     "${COMPOSE_AES70[@]}" "$@";;
     netbox)    "${COMPOSE_NETBOX[@]}" "$@";;
     ember)     "${COMPOSE_EMBER[@]}" "$@";;
+    # THE WHOLE POD: AES70 + EMBER + NMOS in one project. The three above still
+    # work and act on one container each -- this is the pod `up.sh` mounts.
+    protocols) "${COMPOSE_PROTOCOLS[@]}" "$@";;
     logger)    "${COMPOSE_LOGGER[@]}" "$@";;
     both|all)  for_each_stack forward "$@";;
     *)
-        log_error "usage: compose.sh {logger|sqlcluster|core|mqtt|portal|plugins|nmos|aes70|ember|netbox|node|both} <compose args...>"
+        log_error "usage: compose.sh {logger|sqlcluster|core|mqtt|portal|plugins|protocols|nmos|aes70|ember|netbox|node|both} <compose args...>"
         exit 2
         ;;
 esac

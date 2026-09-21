@@ -578,7 +578,7 @@ def snapshot(quiet=True, with_apps=True):
     repo_root = os.environ.get("APKAUDIO_REPO") or REPOSITORY_ROOT
     for s in stacks:
         stk = s["stack"]
-        abs_stack_path = os.path.join(repo_root, "APK:PODS", stk)
+        abs_stack_path = os.path.join(DOCKERS_DIRECTORY, stk)
         file_uri = f"file://{abs_stack_path}"
         repo_info = {"name": stk, "path": file_uri}
         if s.get("compose_file") and os.path.exists(s["compose_file"]):
@@ -590,6 +590,50 @@ def snapshot(quiet=True, with_apps=True):
                 pass
         if s.get("project") and s["project"] not in stack_repo_map:
             stack_repo_map[s["project"]] = repo_info
+
+    # ── SECOND PASS: A POD THAT ONLY `include:`s CLAIMS ITS MEMBERS' CARDS.
+    # POD:protocols/Docker/docker-compose.yml declares no container of its own;
+    # it names three files that each declare one. Without this, every protocol
+    # card points at its own stack folder, the Protocols group is a three-way
+    # tie in _group_stack(), and `max` breaks it alphabetically — so the pod
+    # verbs would quietly act on PROTOCOL:discovery:NMOS and leave the other two
+    # standing. The verbs take a DIRECTORY, and the directory for these cards is
+    # the pod.
+    # ⚠️ ONLY A FILE THAT DECLARES NO `container_name:` OF ITS OWN, which is what
+    #    makes this safe next to APK:discovery: that file `include:`s the twenty
+    #    plugins AND declares APK-Discovery-Engine, so it is a stack that happens
+    #    to include, not a pod root, and the plugin cards keep pointing at their
+    #    own folders exactly as before.
+    # SECOND, so it OVERWRITES the first pass: `stacks` is sorted by name and
+    # `POD:protocols` sorts before `PROTOCOL:*`, so a single pass would let the
+    # members win.
+    for s in stacks:
+        compose_file = s.get("compose_file")
+        if not compose_file or not os.path.exists(compose_file):
+            continue
+        try:
+            with open(compose_file, encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+        except OSError:
+            continue
+        if re.search(r'^\s*container_name:', text, re.M):
+            continue                      # a stack, not a pod root
+        included = re.findall(r'^\s*-\s*path:\s*["\']?([^"\'\s#]+)', text, re.M)
+        if not included:
+            continue
+        stk = s["stack"]
+        repo_info = {"name": stk,
+                     "path": f"file://{os.path.join(DOCKERS_DIRECTORY, stk)}"}
+        base = os.path.dirname(compose_file)
+        for relative in included:
+            member = os.path.normpath(os.path.join(base, relative))
+            try:
+                with open(member, encoding="utf-8", errors="replace") as handle:
+                    member_text = handle.read()
+            except OSError:
+                continue
+            for cname in re.findall(r'container_name:\s*["\']?([^"\'\s#]+)', member_text):
+                stack_repo_map[cname] = repo_info
 
     cards = []
     for container in containers:

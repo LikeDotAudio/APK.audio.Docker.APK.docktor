@@ -24,10 +24,26 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 DRY_RUN=0
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
 
-# */Docker/, one rung down. THIS IS THE ONE READER OF THE COMPOSE FILES THAT
-# SAYS SO WHEN IT FINDS NONE — the guard below is why.
-compose_files=("$DOCKERS_DIR"/*/Docker/docker-compose.yml)
-if [ ! -e "${compose_files[0]}" ]; then
+# EVERY RUNG A STACK LIVES ON, which is four of them and not one:
+#   APK:Docktor/Docker/                         the manager, at the top
+#   POD:<pod>/Docker/                           a POD ROOT that only include:s
+#   POD:<pod>/<stack>/Docker/                   the ordinary stack
+#   POD:<pod>/<group>/<stack>/Docker/           APK:plugin:* under APK:plugin/
+# ⚠️ THIS GLOB WAS ONE RUNG AND STAYED ONE RUNG AFTER THE PODS LANDED, so for
+#    months it matched NOTHING and the sweep refused on the guard below — which
+#    read as "the repo is broken" rather than "the glob is". It became dangerous
+#    the day POD:protocols/Docker/docker-compose.yml appeared: suddenly the one
+#    rung matched exactly ONE file, the first guard passed, and the keep-set was
+#    one project. Only the SECOND guard (no container_name: in it) stood between
+#    a --dry-run and a sweep that read the whole bench as strangers.
+# A KEEP-SET BUILT FROM A GLOB MUST BE BUILT FROM ALL OF THEM. stacks.sh walks
+# two rungs for the same reason; this walks four because it is the file that
+# DELETES, and being short here is the expensive direction to be wrong in.
+# THIS IS THE ONE READER OF THE COMPOSE FILES THAT SAYS SO WHEN IT FINDS NONE —
+# the two guards below are why.
+mapfile -t compose_files < <(find "$DOCKERS_DIR" -mindepth 3 -maxdepth 5 \
+    -type f -name 'docker-compose.yml' -path '*/Docker/*' 2>/dev/null | sort)
+if [ ${#compose_files[@]} -eq 0 ]; then
     log_error "No */Docker/docker-compose.yml under $DOCKERS_DIR."
     echo "  Refusing to sweep: with nothing parsed the keep-set is empty, and every"
     echo "  container on this host would read as a stranger."

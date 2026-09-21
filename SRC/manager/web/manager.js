@@ -3667,6 +3667,22 @@ async function boot() {
     $("#sheet-body").value = logText(event.target.checked, activeSheetBox);
   };
   $("#sheet-copy").onclick = () => navigator.clipboard.writeText($("#sheet-body").value);
+  if ($("#sheet-close")) {
+    $("#sheet-close").onclick = () => $("#sheet").close();
+  }
+  const sheetDialog = $("#sheet");
+  if (sheetDialog) {
+    sheetDialog.addEventListener("click", (event) => {
+      const rect = sheetDialog.getBoundingClientRect();
+      const inDialog = (
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width
+      );
+      if (!inDialog) sheetDialog.close();
+    });
+  }
   let resizeTimer;
   addEventListener("resize", () => {
     clearTimeout(resizeTimer);

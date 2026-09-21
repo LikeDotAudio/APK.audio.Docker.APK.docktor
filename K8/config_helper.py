@@ -17,10 +17,23 @@ LEGACY_MAPPINGS = {
     "PROTOCOL:DEV:AES70": ("AES70", "AES70_COMPOSE_FILE"),
     "PROTOCOL:DEV:EMBER": ("EMBER", "EMBER_COMPOSE_FILE"),
     "DATABASE:server:NETBOX": ("NETBOX", "NETBOX_COMPOSE_FILE"),
+    "POD:protocols": ("PROTOCOLS", "PROTOCOLS_COMPOSE_FILE"),
     "APK:discovery": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:plugins:Build": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:Docktor": ("MANAGER", "MANAGER_COMPOSE_FILE")
 }
+
+# WHICH STACKS ARE CONTAINERS IN SOMEONE ELSE'S POD. A member declares a
+# compose file of its own and is `include:`d by its parent's, so the parent is
+# what `up`/`down`/`rebuild-all` walk -- see "member_of" below.
+# ⚠️ THE PARENT MUST BE A STACK HERE TOO, or its members become unreachable:
+#    POD:protocols/Docker/docker-compose.yml is what makes this table true.
+MEMBER_OF = {
+    "PROTOCOL:discovery:NMOS": "POD:protocols",
+    "PROTOCOL:DEV:AES70": "POD:protocols",
+    "PROTOCOL:DEV:EMBER": "POD:protocols",
+}
+
 
 def cmd_bash_eval(project_name, dockers_dir):
     bash_lines = []
@@ -74,25 +87,38 @@ def cmd_bash_eval(project_name, dockers_dir):
             elif "server:SQL" in folder_name or "cluster:SQL" in folder_name: up_order = 4
             elif folder_name == "APK:BareMetal": up_order = 6
             elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
-            
+            elif folder_name == "POD:protocols": up_order = 8
+
             stack_info = {
                 "name": folder_name,
                 "compose_path": real_path,
                 "file_base": file_base,
-                "up_order": up_order
+                "up_order": up_order,
+                # A MEMBER IS DECLARED BUT NOT WALKED. Its compose variables are
+                # still emitted (compose.sh nmos, verify.sh and panic-reboot.sh
+                # all name them, and stacks.sh calls a file in ALL_DRIVEN_FILES
+                # `driven`), and up-stack.sh still finds it by folder name --
+                # it is only kept out of DOCKTOR_STACKS_FORWARD/REVERSE, because
+                # the pod root `include:`s it and `up.sh` would otherwise mount
+                # the same three containers twice.
+                # APK:plugin:* is the other shape of this and takes the harder
+                # road: skipped entirely above, then re-declared `driven` by name
+                # in stacks.sh. Membership belongs here, where the parent is.
+                "member_of": MEMBER_OF.get(folder_name)
             }
             stacks.append(stack_info)
             
     LEGACY_MAPPINGS["node"] = ("NODE", "BAREMETAL_COMPOSE_FILE")
 
-    forward_stacks = sorted([s for s in stacks if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"])
-    docktor_stacks = [s for s in stacks if s["name"] == "APK:Docktor" or "manager" in s.get("file_base", "")]
+    walked = [s for s in stacks if not s.get("member_of")]
+    forward_stacks = sorted([s for s in walked if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"])
+    docktor_stacks = [s for s in walked if s["name"] == "APK:Docktor" or "manager" in s.get("file_base", "")]
     
     forward_final = docktor_stacks + forward_stacks
     forward_names = " ".join(f'"{s["name"]}"' for s in forward_final)
     bash_lines.append(f"DOCKTOR_STACKS_FORWARD=({forward_names})")
     
-    reverse_stacks = sorted([s for s in stacks if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"], reverse=True)
+    reverse_stacks = sorted([s for s in walked if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"], reverse=True)
     reverse_final = reverse_stacks + docktor_stacks
     reverse_names = " ".join(f'"{s["name"]}"' for s in reverse_final)
     bash_lines.append(f"DOCKTOR_STACKS_REVERSE=({reverse_names})")

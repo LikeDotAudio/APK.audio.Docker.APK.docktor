@@ -39,7 +39,7 @@ services:
       # remount button on the dashboard's own row. The CONTEXT above is right as
       # it stands: this file is one rung under APK:PODS, so `../../..` is the
       # checkout root, which is what the dockerfile path below is relative to.
-      dockerfile: "APK:PODS/APK:Docktor/Docker/Dockerfile.manager"
+      dockerfile: "PODS/Docktor/Docker/Dockerfile.manager"
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped
@@ -124,6 +124,14 @@ services:
       # in as well as mounted: _common.sh prefers it over the walk, and every
       # path it gives the daemon is a host path the daemon can resolve.
       APKAUDIO_REPO: "${APKAUDIO_REPO}"
+      # THE NODE'S ROLE HAS TO CROSS THE BOUNDARY TOO. Every plugin container
+      # is behind a compose profile named for its role, and the buttons on the
+      # dashboard run up-stack.sh IN HERE — so a role narrowed at the terminal
+      # that stopped at the container door would leave the page starting a
+      # different set of plugins than the same verb does from a host shell.
+      # Blank is not "no roles": _common.sh reads an empty value as unset and
+      # falls back to its own default, the README's "the lot".
+      APKAUDIO_PLUGIN_ROLES: "${APKAUDIO_PLUGIN_ROLES:-}"
       APKAUDIO_UID: "${APKAUDIO_UID:-1000}"
       APKAUDIO_GID: "${APKAUDIO_GID:-1000}"
       APKAUDIO_LOG_DIR: /logs/DockTor
@@ -158,7 +166,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: "${APKAUDIO_REPO}/APK:Documentation/LOGS"
+      device: "${APKAUDIO_REPO}/Documentation/LOGS"
   # THE SAME CONSTRUCTION, ONE FOLDER ACROSS — and the colons in the path are
   # fine HERE for the reason they are fine above: `device` is a string handed
   # to the local driver, not a mount spec compose splits on. The folder is
@@ -173,4 +181,4 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: "${APKAUDIO_REPO}/APK:Documentation/STORAGE/DockTor"
+      device: "${APKAUDIO_REPO}/Documentation/STORAGE/DockTor"

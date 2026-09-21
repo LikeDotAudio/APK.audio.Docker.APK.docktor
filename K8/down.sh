@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
-# 🛑 Stop every container stack, node before core.
+# 🛑 Stop every container stack, node before core — AND the containers this
+#    ecosystem started outside compose.
 #   ./down.sh                     stop everything
 #   ./down.sh --remove-orphans    extra compose flags pass through
 # Reverse of up.sh order: the node agents report to the broker the core stack
@@ -16,6 +17,15 @@ announce COMPOSE_RUN "{\"action\":\"down\",\"args\":\"$*\"}"
 for_each_stack reverse down "$@"
 status=$?
 announce COMPOSE_RESULT "{\"action\":\"down\",\"exit_code\":$status}"
+
+# AFTER THE WALK, NEVER BEFORE IT. The instrument containers are created by
+# Node-BareMetal's launcher and re-launched by it within ten seconds of being
+# stopped, so stopping them first only tells it to build them again. The walk
+# above has already taken APK:BareMetal down; with the launcher gone, a stop
+# holds. See stop_unmanaged_containers() in _common.sh for why compose never
+# saw them in the first place.
+# ITS RESULT DOES NOT CHANGE $status: the stacks are what `down` promised.
+stop_unmanaged_containers
 
 if [ $status -ne 0 ]; then
     log_error "Teardown reported errors — compose exited $status."

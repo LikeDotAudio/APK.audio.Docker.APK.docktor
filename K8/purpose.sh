@@ -395,6 +395,15 @@ PURPOSE = {
     # Every plugin runs a binary from apk-plugins:local (or apk-plugins-python:local)
     # built by APK:discovery, and speaks to the broker. The role is its
     # compose profile; APKAUDIO_PLUGIN_ROLES in _common.sh decides which run here.
+    "APK-Discovery-Engine": (
+        "Network discovery engine and dynamic plugin supervisor. Role: discovery",
+        "apk-discovery-engine: passive network sniffer that watches the LAN for PTP clock "
+        "packets, SAP stream announcements, and mDNS service broadcasts. It publishes device "
+        "presence documents and discovery events to MQTT, and auto-launches matching plugin "
+        "containers via the Docker socket on demand.",
+        "Without the discovery engine, hardware and network streams on the LAN are invisible "
+        "until configured by hand, and protocol plugins cannot auto-launch when devices appear."),
+
     "Plugin-AES70": (
         "The AES70 (OCP.1) bridge. Role: control",
         "apk-aes70: one outbound OCP.1 TCP client to the device named in config.ini "

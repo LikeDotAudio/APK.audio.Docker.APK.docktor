@@ -301,6 +301,58 @@ NOT_HTTP = {
                        "thrown away. Nothing is published.",
 }
 
+def plugin_routes(container):
+    proto = container.removeprefix("Plugin-").lower()
+    routes = [
+        route("GET", f"/api/config/{proto}", f"http://127.0.0.1:8100/api/config", "open", f"Configuration for {proto} module"),
+        route("GET", "/protocols", "http://127.0.0.1:8100/protocols", "open", "BareMetal protocol module census"),
+        route("SUB", f"APK.audio/System/Config/{proto}", f"mqtt://127.0.0.1:1883/APK.audio/System/Config/{proto}", "verb", "Retained configuration on bus"),
+        route("PUB", f"APK.audio/Discovery/{proto}/#", f"mqtt://127.0.0.1:1883/APK.audio/Discovery/{proto}/#", "verb", "Live discovery announcement topic"),
+    ]
+    return {
+        "container": container,
+        "how": "declared",
+        "source": f"BareMetal & MQTT ({proto})",
+        "routes": routes,
+    }
+
+
+def instrument_routes(container):
+    import subprocess
+    import urllib.parse
+    labels = {}
+    try:
+        proc = subprocess.run(["docker", "inspect", container, "--format", "{{json .Config.Labels}}"],
+                              capture_output=True, text=True, timeout=3)
+        if proc.returncode == 0:
+            labels = json.loads(proc.stdout) or {}
+    except Exception:
+        labels = {}
+    fam = labels.get("apk.audio.family") or ""
+    mod = labels.get("apk.audio.model") or ""
+    if not mod or mod in ("Unknown", "generic"):
+        parts = container.removeprefix("apk-").split("-")
+        fam = parts[0] if parts else "Instrument"
+        mod = parts[1] if len(parts) > 1 else ""
+
+    routes = []
+    if mod and fam:
+        api_path = f"/api/instrument/api?model={urllib.parse.quote(mod)}&family={urllib.parse.quote(fam)}"
+        spec_path = f"/api/instrument/{fam}/{mod}/{mod}.api.json"
+        routes.append(route("GET", api_path, f"http://localhost:8080{api_path}", "open", f"Public API definition for {fam}/{mod}"))
+        routes.append(route("GET", spec_path, f"http://localhost:8080{spec_path}", "open", f"Raw OpenAPI & SCPI specification for {mod}"))
+        routes.append(route("WS", f"/ws/instrument/{fam}/{mod}", f"ws://localhost:15000/ws/instrument/{fam}/{mod}", "open", "Real-time command & reading WebSocket"))
+        routes.append(route("GET", f"/api/instrument/{fam}/{mod}/health", f"http://localhost:8080/api/instrument/{fam}/{mod}/health", "open", "Instrument health check endpoint"))
+        routes.append(route("POST", f"/api/instrument/{fam}/{mod}/set/<command>", f"http://localhost:8080/api/instrument/{fam}/{mod}/set/<command>", "verb", "Single parameter mutation command"))
+        routes.append(route("GET", f"/api/instrument/{fam}/{mod}/nab/<command>", f"http://localhost:8080/api/instrument/{fam}/{mod}/nab/<command>", "open", "Observation and telemetry query"))
+    return {
+        "container": container,
+        "how": "declared",
+        "source": f"APK:INSTRUMENTS/{fam}/{mod}" if (fam and mod) else "APK:INSTRUMENTS",
+        "routes": routes,
+    }
+
+
 documents = {}
 for build in (baremetal, manager, netbox):
     document = build()
@@ -320,6 +372,16 @@ for container, reason in NOT_HTTP.items():
     if container in RUNNING and container not in documents:
         documents[container] = {"container": container, "how": "not-http",
                                 "routes": [], "reason": reason}
+
+for container in RUNNING:
+    if WANT and container != WANT:
+        continue
+    if container in documents:
+        continue
+    if container.startswith("Plugin-"):
+        documents[container] = plugin_routes(container)
+    elif container.startswith("apk-") and container not in ("apk-discovery-engine",):
+        documents[container] = instrument_routes(container)
 
 if MODE == "json":
     print(json.dumps(documents, indent=2))

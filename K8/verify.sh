@@ -52,6 +52,11 @@ validate_stack "Server:Broker:MQTT"    "${COMPOSE_MQTT[@]}"
 validate_stack "Portal (DATABUS:Broker:MQTT portal-broker)" "${COMPOSE_PORTAL[@]}"
 # Not driven by for_each_stack, and still a file `compose.sh plugins` runs.
 validate_stack "APK:discovery"         "${COMPOSE_PLUGINS[@]}"
+# THE POD ROOT FIRST, because it is what for_each_stack mounts: it `include:`s
+# the three below, so it is the one file whose FAILURE stops the pod. The three
+# are still validated individually -- an include that parses says nothing about
+# whether the child is still mountable on its own, which it must be.
+validate_stack "POD:protocols"         "${COMPOSE_PROTOCOLS[@]}"
 validate_stack "Server:Discovery:NMOS" "${COMPOSE_NMOS[@]}"
 validate_stack "PROTOCOL:DEV:AES70"    "${COMPOSE_AES70[@]}"
 validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"

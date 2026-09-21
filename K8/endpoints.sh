@@ -314,3 +314,93 @@ if [ -z "$WANT" ] || [ "$WANT" = "Node-BareMetal" ]; then
         Node-BareMetal open "BareMetal protocol modules" \
         "http://127.0.0.1:${node_port}/protocols" "$node_state"
 fi
+
+# --- Plugins (APK:PODS/POD:APK_THICK/APK:plugin:*) ----------------------
+# For each running plugin container, emit its socket and public bus API.
+mapfile -t plugin_containers < <(docker ps --filter "name=^Plugin-" --format '{{.Names}}' 2>/dev/null)
+for p_cont in "${plugin_containers[@]}"; do
+    [ -n "$WANT" ] && [ "$WANT" != "$p_cont" ] && continue
+    proto="${p_cont#Plugin-}"
+    proto_lower="$(echo "$proto" | tr '[:upper:]' '[:lower:]')"
+
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$p_cont" copy "Plugin public config API" \
+        "mqtt://127.0.0.1:1883/APK.audio/System/Config/${proto_lower}" "up"
+
+    case "$proto_lower" in
+        aes70)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "AES70 control socket" "tcp://127.0.0.1:6568" "up" ;;
+        ptp)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "PTP event socket" "udp://127.0.0.1:319" "up"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "PTP general socket" "udp://127.0.0.1:320" "up" ;;
+        sap)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "SAP announcement multicast socket" "udp://239.255.255.255:9875" "up" ;;
+        dnssd)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "mDNS multicast socket" "udp://224.0.0.251:5353" "up" ;;
+        osc)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "OSC receive socket" "udp://127.0.0.1:8000" "up" ;;
+        chromecast)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "Cast V2 TLS socket" "tcp://127.0.0.1:8009" "up" ;;
+        appletv)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "AirPlay RTSP socket" "tcp://127.0.0.1:7000" "up" ;;
+        printers)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "IPP print socket" "tcp://127.0.0.1:631" "up" ;;
+        ravenna)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "RTSP streaming socket" "tcp://127.0.0.1:554" "up" ;;
+        midi)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "RTP-MIDI socket" "udp://127.0.0.1:5004" "up" ;;
+        nmos)
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" open "NMOS Node API" "http://127.0.0.1:3212/x-nmos/node/v1.3/self" "up" ;;
+    esac
+done
+
+# --- Discovered Instruments (APK:PODS/POD:APK_THICK/APK:INSTRUMENTS) ---------
+# For each running instrument container (labeled apk.audio.role=instrument or apk-*),
+# link to its public API spec in OsApi and its WebSocket / SCPI sockets.
+mapfile -t inst_containers < <(docker ps --filter "label=apk.audio.role=instrument" --format '{{.Names}}' 2>/dev/null)
+if [ ${#inst_containers[@]} -eq 0 ]; then
+    mapfile -t inst_containers < <(docker ps --filter "name=^apk-" --format '{{.Names}}' 2>/dev/null | grep -vE "^(apk-discovery-engine|apk-audio)" || true)
+fi
+
+for c_inst in "${inst_containers[@]}"; do
+    [ -n "$WANT" ] && [ "$WANT" != "$c_inst" ] && continue
+    fam="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.family"}}' 2>/dev/null)"
+    mod="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.model"}}' 2>/dev/null)"
+    res="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.resource"}}' 2>/dev/null)"
+    if [ -z "$mod" ] || [ "$mod" = "Unknown" ] || [ "$mod" = "generic" ]; then
+        # Fallback to name parsing
+        c_stripped="${c_inst#apk-}"
+        c_stripped="${c_stripped#inst-}"
+        fam="$(echo "$c_stripped" | cut -d'-' -f1)"
+        mod="$(echo "$c_stripped" | cut -d'-' -f2)"
+    fi
+    if [ -n "$mod" ] && [ "$mod" != "Unknown" ] && [ "$mod" != "generic" ]; then
+        api_link="http://localhost:8080/api/instrument/api?model=${mod}&family=${fam}"
+        spec_link="http://localhost:8080/api/instrument/${fam}/${mod}/${mod}.api.json"
+        ws_link="ws://localhost:15000/ws/instrument/${fam}/${mod}"
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$c_inst" open "Public API (${fam}/${mod})" "$api_link" "up"
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$c_inst" open "Public API Spec (${mod}.api.json)" "$spec_link" "up"
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$c_inst" copy "Instrument WebSocket socket" "$ws_link" "up"
+    fi
+    inst_ip="$(echo "$res" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | head -n1 || true)"
+    if [ -n "$inst_ip" ]; then
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$c_inst" copy "SCPI raw socket" "tcp://${inst_ip}:5025" "up"
+    fi
+done
+

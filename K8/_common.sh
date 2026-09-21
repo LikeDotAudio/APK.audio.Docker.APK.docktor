@@ -31,12 +31,17 @@ MANAGEMENT_SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # APKAUDIO_REPO wins when set and valid; otherwise walk up. Dockerfile.manager
 # COPYs this folder to /app, so inside the manager the walk lands outside the
 # checkout (no compose files, no build context).
-if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
+if [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/PODS" ]; then
+    REPO_ROOT="$APKAUDIO_REPO"
+    DOCKERS_DIR="$REPO_ROOT/PODS"
+elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:PODS"
 else
-    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK_THIN" ]; then
+    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:THIN" ] || [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK_THIN" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
+    elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../PODS" ]; then
+        DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../PODS" && pwd)"
     elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../APK:PODS" && pwd)"
     else
@@ -112,13 +117,19 @@ stack_compose_file() {
 # Dynamically resolve legacy stack variables
 SQLCLUSTER_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:SQL")"
 COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"
-BAREMETAL_COMPOSE_FILE="$(stack_compose_file "APK:BareMetal")"
-BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(stack_compose_file "APK:BareMetal" "docker-compose.hardware.yml")}"
-BAREMETAL_ROOT="$(stack_dir "APK:BareMetal")/SRC"
+BAREMETAL_COMPOSE_FILE="$(stack_compose_file "BareMetal")"
+BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(stack_compose_file "BareMetal" "docker-compose.hardware.yml")}"
+BAREMETAL_ROOT="$(stack_dir "BareMetal")/SRC"
 MQTT_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT")"
 PORTAL_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT" "docker-compose.portal-broker.yml")"
-PLUGINS_COMPOSE_FILE="$(stack_compose_file "APK:discovery")"
-[ -z "$PLUGINS_COMPOSE_FILE" ] && PLUGINS_COMPOSE_FILE="$(stack_compose_file "APK:plugins:Build")"
+PLUGINS_COMPOSE_FILE="$(stack_compose_file "discovery")"
+[ -z "$PLUGINS_COMPOSE_FILE" ] && PLUGINS_COMPOSE_FILE="$(stack_compose_file "plugins:Build")"
+# ── POD:protocols IS ONE STACK OF THREE CONTAINERS. Its pod-root compose file
+# `include:`s the three below, and IT is what for_each_stack walks. The three
+# keep their own variables because `compose.sh nmos`, verify.sh and
+# panic-reboot.sh all name them, and because each is still mountable on its own
+# (every one declares `name: protocols`, so it lands in the pod's project).
+PROTOCOLS_COMPOSE_FILE="$(stack_compose_file "POD:protocols")"
 NMOS_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:discovery:NMOS")"
 AES70_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:DEV:AES70")"
 NETBOX_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:NETBOX")"
@@ -142,7 +153,11 @@ LOG_VOLUME_NAME="apk-audio-logs"
 # graphs. A series is only worth drawing if it outlives the container that
 # wrote it, and /var/lib/docker is not somewhere a person can go and read it.
 STORAGE_VOLUME_NAME="docktor-storage"
-STORAGE_HOST_DIR="$REPO_ROOT/APK:Documentation/STORAGE/DockTor"
+if [ -d "$REPO_ROOT/Documentation/STORAGE/DockTor" ] || [ ! -d "$REPO_ROOT/APK:Documentation/STORAGE/DockTor" ]; then
+    STORAGE_HOST_DIR="$REPO_ROOT/Documentation/STORAGE/DockTor"
+else
+    STORAGE_HOST_DIR="$REPO_ROOT/APK:Documentation/STORAGE/DockTor"
+fi
 # Where docker-compose.manager.yml mounts it INSIDE the manager container. The
 # scripts prefer this when it is a real mount, so the same code writes to the
 # same bytes from the host and from inside the container.
@@ -202,15 +217,41 @@ fi
 # Dynamically register stacks from docktor.json
 eval "$(python3 "$MANAGEMENT_SCRIPTS_DIR/config_helper.py" bash_eval apk-audio "$DOCKERS_DIR")"
 
+# THE NODE'S ROLE, AND THE DEFAULT THAT WAS DOCUMENTED BUT NEVER WRITTEN.
+# A terminal node declares its ROLE, not its plugins (APK:discovery/README.md
+# "Node roles"): every plugin container sits behind a `profiles:` naming its
+# role, so an EMPTY role list selects NO profile and starts nothing but the one
+# profile-less service, DESKTOP_MONITOR. Compose still exits 0 — it did
+# everything it was asked — which is how `✅ APK:discovery is mounted.` came to
+# be printed over an APK-Discovery-Engine that was never created, and why
+# stacks.sh then drew the whole stack as `idle` rather than as a fault.
+# AN EXPLICIT COMPOSE_PROFILES WINS, so the compose-native way of saying it
+# still works and stacks.sh reports the same set that actually ran. Otherwise
+# the README's third row, "the lot".
+#     APKAUDIO_PLUGIN_ROLES=discovery,l2 ./up-stack.sh 'APK:discovery'
+# THE THREE OPT-INS ARE DELIBERATELY NOT IN THE DEFAULT — each needs a value
+# before its container does anything: `switches` (APK_NETGEAR_HOST /
+# APK_TRENDNET_HOST), `netbox-sync` (NETBOX_API_TOKEN_WRITE) and `puck` (a
+# SpaceNavigator plugged in). Neither is `build`: those two services exist to
+# be BUILT, and their `command: ["true"]` would leave two exited containers
+# behind every `up`.
+export APKAUDIO_PLUGIN_ROLES="${APKAUDIO_PLUGIN_ROLES:-${COMPOSE_PROFILES:-discovery,l2,sound,control,vendors,instruments}}"
 for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "$_apk_role"); done
+unset _apk_role
 
 # NMOS conformance harness (nmos-testing + the facade that depends on it) is
 # behind `profiles: ["conformance"]` — 732 MB of that stack's 1,087, off by
 # default. Space-separated, unquoted, so a second profile costs no code:
 #     APK_NMOS_PROFILES=conformance ./up.sh
+# ⚠️ BOTH ARRAYS, and that is not belt and braces: COMPOSE_PROTOCOLS is what
+#    for_each_stack mounts (the pod root includes the NMOS file), COMPOSE_NMOS is
+#    what `compose.sh nmos` and verify.sh reach for. A profile added to only one
+#    of them is a conformance suite that comes up under `up.sh` and is invisible
+#    to `compose.sh nmos ps`, or the reverse.
 if [ -n "${APK_NMOS_PROFILES:-}" ]; then
     for _apk_nmos_profile in ${APK_NMOS_PROFILES}; do
         COMPOSE_NMOS+=(--profile "$_apk_nmos_profile")
+        COMPOSE_PROTOCOLS+=(--profile "$_apk_nmos_profile")
     done
     unset _apk_nmos_profile
 fi
@@ -494,6 +535,58 @@ containers_except_manager() {
         | awk -F'\t' -v skip="$MANAGER_CONTAINER" '$2 != skip && length($1) { print $1 }'
 }
 
+# ── CONTAINERS THIS ECOSYSTEM STARTED THAT COMPOSE CANNOT SEE.
+# ⚠️ `docker compose down` STOPS ONLY WHAT A COMPOSE FILE DECLARES, and that is
+#    not the whole bench any more. Node-BareMetal's instrument launcher
+#    (POD:APK_THICK/APK:BareMetal/SRC/Baremetal:Manager/instrument_launcher.py)
+#    creates a container PER DISCOVERED INSTRUMENT straight through
+#    /var/run/docker.sock. Those containers carry `apk.audio.*` labels and NO
+#    `com.docker.compose.project` at all, so every compose verb in this folder
+#    walks straight past them — which is how "🛑 Stop All Containers" came to
+#    leave 44 running and how the bench then looked like something was
+#    restarting them behind a watchdog that was switched off.
+# THEY ALSO RESTART THEMSELVES, TWICE OVER, and neither is DockTor's doing:
+#   · the launcher gives every one `RestartPolicy: unless-stopped`, so the
+#     DAEMON brings a killed one back (instrument_launcher.py:212-215);
+#   · each instrument worker republishes presence every 10 s, and any record
+#     whose status is not `running` is re-launched on the next message
+#     (instrument_launcher.py:489). `docker stop` alone therefore does not hold
+#     WHILE NODE-BAREMETAL IS UP — which is why this is called AFTER the compose
+#     walk has already taken the node down, and never before it.
+# STOP, NOT REMOVE. `unless-stopped` means a stopped container stays stopped
+# across a daemon restart, and leaving it in place is what lets the launcher
+# ADOPT it on the way back up (instrument_launcher.py:589) instead of building
+# a replacement.
+# THE SELECTOR IS THE LABEL THE LAUNCHER SETS, never a name pattern: the names
+# are slugs built from whatever VISA/mDNS handed over, and a `*inst*` glob would
+# be a promise about strangers' names as much as ours.
+APKAUDIO_UNMANAGED_LABEL="${APKAUDIO_UNMANAGED_LABEL:-apk.audio.managed_by=BareMetal-Manager}"
+
+# stop_unmanaged_containers [--dry-run] — stop every running container carrying
+# APKAUDIO_UNMANAGED_LABEL. Never fails the caller: a teardown that already
+# stopped the stacks must not report failure because one instrument was gone by
+# the time we asked. Prints nothing and announces nothing when there are none —
+# the ordinary case on a bench with no instruments on it.
+stop_unmanaged_containers() {
+    local dry=0
+    [ "${1:-}" = "--dry-run" ] && dry=1
+    local -a names=()
+    mapfile -t names < <(docker ps --filter "label=$APKAUDIO_UNMANAGED_LABEL" \
+        --format '{{.Names}}' 2>/dev/null)
+    [ ${#names[@]} -eq 0 ] && return 0
+
+    log_step "Stopping ${#names[@]} container(s) compose does not declare (label $APKAUDIO_UNMANAGED_LABEL)"
+    printf '   • %s\n' "${names[@]}"
+    if [ $dry -eq 1 ]; then
+        log_warn "--dry-run: nothing stopped."
+        return 0
+    fi
+    docker stop "${names[@]}" >/dev/null 2>&1 || true
+    announce UNMANAGED_STOPPED "{\"label\":\"$APKAUDIO_UNMANAGED_LABEL\",\"count\":${#names[@]}}"
+    log_info "Stopped ${#names[@]} launcher-created container(s)."
+    return 0
+}
+
 # The node runs as the invoking host user (`user:` in its compose file) so
 # agent writes through a mount are not root-owned.
 # AN EXPORTED VALUE WINS; `id -u` is the fallback, not the answer. The manager
@@ -572,6 +665,33 @@ for_each_stack() {
     return $worst
 }
 
+# apply_stack_profiles — put THIS stack's `--profile` flags on STACK_COMPOSE.
+# WHY A FUNCTION AND NOT A FIFTH BRANCH: compose_for_stack resolves a name four
+# different ways and only the FOURTH ever selected a profile. `APK:discovery`
+# resolves the SECOND way — COMPOSE_BY_NAME_APK_discovery, registered from
+# docktor.json — whose array is the bare `docker compose -f …`, so up-stack.sh
+# ran the plugin stack profile-less and started the one service that carries no
+# role. Every branch calls this before it returns.
+# ONLY THE PLUGIN STACK. Every other stack's profiles are opt-in on purpose and
+# must not be switched on by being looked at: PROTOCOL:discovery:NMOS keeps the
+# conformance harness behind one (732 MB of that stack's 1,087, off unless
+# APK_NMOS_PROFILES asks), and the plugin file's own `build` profile is two
+# services that exist to be built, never run.
+# THE ROLES ARE NOT IN THIS FILE, which is the other half of why grepping it
+# would not do: the plugin stack `include:`s twenty-two APK:plugin:* files and
+# each one declares its own, so the file itself names `discovery` and `build`
+# and nothing else. APKAUDIO_PLUGIN_ROLES is the list; see its default above.
+# IDEMPOTENT — the `plugins` alias hands over COMPOSE_PLUGINS, which already
+# carries the same flags from the role loop, so a second pass adds none.
+apply_stack_profiles() {
+    [ -n "${PLUGINS_COMPOSE_FILE:-}" ] || return 0
+    [ "${STACK_COMPOSE_FILE:-}" = "$PLUGINS_COMPOSE_FILE" ] || return 0
+    case " ${STACK_COMPOSE[*]} " in *" --profile "*) return 0;; esac
+    local _role
+    for _role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do STACK_COMPOSE+=(--profile "$_role"); done
+    return 0
+}
+
 # compose_for_stack <stack directory name> — fill STACK_COMPOSE with ONE
 # stack's compose command (up-stack.sh's lookup, behind the dashboard's
 # per-stack fix button; up.sh would rebuild the other eight instead).
@@ -588,6 +708,7 @@ compose_for_stack() {
     if [ -f "$want" ]; then
         STACK_COMPOSE=("${COMPOSE_BASE[@]}" -f "$want")
         STACK_COMPOSE_FILE="$want"
+        apply_stack_profiles
         return 0
     fi
 
@@ -601,6 +722,7 @@ compose_for_stack() {
     if declare -p "COMPOSE_BY_NAME_${clean_name}" &>/dev/null; then
         eval "STACK_COMPOSE=(\"\${${array_name}}\")"
         STACK_COMPOSE_FILE="${!file_var:-$(stack_compose_file "$want")}"
+        apply_stack_profiles
         return 0
     fi
 
@@ -611,11 +733,12 @@ compose_for_stack() {
         sqlcluster) STACK_COMPOSE=("${COMPOSE_SQLCLUSTER[@]}"); STACK_COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"; return 0;;
         mqtt)       STACK_COMPOSE=("${COMPOSE_MQTT[@]}"); STACK_COMPOSE_FILE="$MQTT_COMPOSE_FILE"; return 0;;
         portal)     STACK_COMPOSE=("${COMPOSE_PORTAL[@]}"); STACK_COMPOSE_FILE="$PORTAL_COMPOSE_FILE"; return 0;;
-        plugins)    STACK_COMPOSE=("${COMPOSE_PLUGINS[@]}"); STACK_COMPOSE_FILE="$PLUGINS_COMPOSE_FILE"; return 0;;
+        plugins)    STACK_COMPOSE=("${COMPOSE_PLUGINS[@]}"); STACK_COMPOSE_FILE="$PLUGINS_COMPOSE_FILE"; apply_stack_profiles; return 0;;
         nmos)       STACK_COMPOSE=("${COMPOSE_NMOS[@]}"); STACK_COMPOSE_FILE="$NMOS_COMPOSE_FILE"; return 0;;
         aes70)      STACK_COMPOSE=("${COMPOSE_AES70[@]}"); STACK_COMPOSE_FILE="$AES70_COMPOSE_FILE"; return 0;;
         netbox)     STACK_COMPOSE=("${COMPOSE_NETBOX[@]}"); STACK_COMPOSE_FILE="$NETBOX_COMPOSE_FILE"; return 0;;
         ember)      STACK_COMPOSE=("${COMPOSE_EMBER[@]}"); STACK_COMPOSE_FILE="$EMBER_COMPOSE_FILE"; return 0;;
+        protocols)  STACK_COMPOSE=("${COMPOSE_PROTOCOLS[@]}"); STACK_COMPOSE_FILE="$PROTOCOLS_COMPOSE_FILE"; return 0;;
         logger)     STACK_COMPOSE=("${COMPOSE_LOGGER[@]}"); STACK_COMPOSE_FILE="$LOGGER_COMPOSE_FILE"; return 0;;
         manager|docktor) STACK_COMPOSE=("${COMPOSE_MANAGER[@]}"); STACK_COMPOSE_FILE="$MANAGER_COMPOSE_FILE"; return 0;;
     esac
@@ -635,6 +758,7 @@ compose_for_stack() {
                      | sed -E 's/.*\[//; s/\]//; s/[[:space:]"'"'"']//g' | tr '\n' ',' | sed 's/,$//')"
             [ -n "$roles" ] && export COMPOSE_PROFILES="$roles"
         fi
+        apply_stack_profiles
         return 0
     fi
     return 1
