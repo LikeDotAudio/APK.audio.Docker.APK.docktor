@@ -73,31 +73,17 @@ case "${1:-up}" in
         # network_mode: host, so this URL is the bench loopback and a manager
         # started at a terminal answers it identically — this verb printed
         # "API answering" over a restart-looping container for that reason.
-        # `instance` in the payload is who answered.
-        who="$(curl -fsS --max-time 4 "${MANAGER_URL}api/health" 2>/dev/null | python3 -c '
-import json, sys
-try:
-    instance = json.load(sys.stdin).get("instance")
-except Exception:
-    raise SystemExit(0)
-# THREE ANSWERS, NOT TWO: a manager older than the `instance` key answers
-# without saying who it is, and calling that "a terminal" would be a guess
-# printed as a finding.
-if not isinstance(instance, dict):
-    print("unidentified\t?\t?")
-else:
-    print("%s\t%s\t%s" % ("container" if instance.get("containerised") else "terminal",
-                           instance.get("pid", "?"), instance.get("hostname", "?")))
-' 2>/dev/null)"
-        kind="${who%%$'\t'*}"
-        rest="${who#*$'\t'}"
+        # `instance` in the payload is who answered, and manager_instance in
+        # _common.sh is the one reader of it — launch.sh asks the same question
+        # before it hands a verb over.
+        read -r kind pid host <<<"$(manager_instance 4)"
         case "$kind" in
             container)
-                log_info "API answering on $MANAGER_URL — this container (pid ${rest%%$'\t'*})"
+                log_info "API answering on $MANAGER_URL — this container (pid $pid)"
                 ;;
             terminal)
                 log_warn "${MANAGER_URL}api/health is answered by a manager started at a TERMINAL"
-                log_warn "  (pid ${rest%%$'\t'*} on ${rest##*$'\t'}), not by the container above."
+                log_warn "  (pid $pid on $host), not by the container above."
                 log_warn "  It holds the port; the container waits for it. Ctrl+C that process."
                 ;;
             unidentified)

@@ -9,6 +9,10 @@ are given a fixed one; CLI_ACTIONS_WITH_ARGS verbs forward whatever is left,
 because `logs Storage-Portal 500` cannot be expressed by a script name alone.
 `serve` is a verb here because the server is one more thing you can ask this
 file for, not a separate program.
+`launch` IS THE DEFAULT and is the only verb that does not do the work in this
+process: it starts DockTor, raises its page, and hands the verb to the RUNNING
+DockTor over the API, so the build is drawn where everyone can see it instead of
+filling one terminal nobody else has.
 `test` and `up` do not both gate: up.sh runs the gates itself, and `test` is
 the way to run them WITHOUT mounting.
 `logs` READS and `clear-logs` TRUNCATES. It was the other way round, which put
@@ -42,6 +46,14 @@ CLI_ACTIONS = {
 
 # Verb -> (banner, script). Everything after the verb is forwarded verbatim.
 CLI_ACTIONS_WITH_ARGS = {
+    # THE DEFAULT VERB, and the one that does not run the bench itself: it
+    # starts DockTor, raises the page and hands the verb to the RUNNING DockTor
+    # over its API, so the build lands in the web client's swimlanes and this
+    # terminal is free. `up` is what it asks for unless a word follows.
+    # WITH ARGS for that word, and for --wait: `launch rebuild-all` is the same
+    # handover aimed at a different key in the server's action table.
+    ('launch',): ("🚀 Launching APK.audio — DockTor first, then the bench from inside it...",
+                  'launch.sh'),
     ('fetch-and-run', 'sync-repos', 'clone-and-run', 'repos'): ("🐙 Fetching Git repositories and launching Docker stacks...", 'fetch-and-run.sh'),
     ('open', 'open-repo', 'git-open', 'repo'): ("📂 Opening/inspecting microservice Git repository...", 'open-repo.sh'),
     ('sos', 'panic', 'panic-reboot', '--panic', '-p'): ("🚨 Emergency SOS Panic Stop...", 'panic.sh'),
@@ -97,10 +109,22 @@ CLI_ACTIONS_WITH_ARGS = {
 
 USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
 
+  launch [action] [--wait N]
+                       THIS IS THE DEFAULT: a bare invocation runs it. Starts
+                       DockTor if nothing is serving, raises its page in a
+                       browser, hands `up` (or the action named) to the RUNNING
+                       DockTor over its own API, and EXITS. The mount happens
+                       inside DockTor, so every line of it is in the execution
+                       log on the page rather than in this terminal — one
+                       build, every tab, and closing the terminal loses
+                       nothing. A refusal comes back inside --wait seconds and
+                       is printed here.
   serve [--bind H] [--port N] [--open] [--defer]
-                       the HTTP API and its browser client. THIS IS THE
-                       DEFAULT: a bare invocation runs it on
-                       http://127.0.0.1:8765/. The bind is loopback because
+                       the HTTP API and its browser client, IN THIS PROCESS
+                       and in the foreground — the manager as a terminal
+                       program rather than as the container `launch` starts.
+                       Ctrl+C stops it, and while it runs it holds the port
+                       the container wants. The bind is loopback because
                        this API stops containers and has no authentication;
                        the two are a pair. `--open` raises the client in a
                        browser. When the port is ALREADY held by a manager,
@@ -110,7 +134,9 @@ USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
                        serves. `--defer` leaves the incumbent alone.
   status | ps          health of both stacks and the node
   watch                the above on a 3s loop, publishing a resource sample
-  up | down            mount / unmount the ecosystem
+  up | down            mount / unmount the ecosystem IN THIS TERMINAL, with
+                       the whole build printed here. `launch` is the same
+                       mount run inside DockTor, where the page shows it.
   rebuild              delete old, build --no-cache, mount
   test                 the pre-build gates AND the running-bench suite
   gates | verify       one half of `test` each
@@ -269,7 +295,10 @@ def run_cli_mode(argv=None):
         sys.exit(0 if (gates_ok and tests_ok) else 1)
 
     if action == 'serve':
-        # THE DEFAULT VERB — a bare `K8:runner.py` inserts it.
+        # NOT THE DEFAULT ANY MORE — `launch` is, and it starts the
+        # CONTAINER. This verb is the manager as a foreground terminal
+        # program, which is a thing to ask for and no longer a thing to get
+        # by typing nothing.
         # LOOPBACK UNLESS TOLD OTHERWISE, and serve.py header says why: this
         # API stops containers and rebuilds images with no authentication, so
         # the bind is the only control there is. --bind is for the container

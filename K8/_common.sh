@@ -9,6 +9,9 @@
 # 📂 One verb per file beside this one:
 #    STACK      up down rebuild-all rebuild-core panic panic-reboot up-stack
 #               restart-stack rebuild-stack down-stack
+#    LAUNCH     launch -- the front door: starts DockTor, raises its page, hands
+#               the verb to the RUNNING DockTor and lets go, so the output is in
+#               the web client's swimlanes rather than in one terminal
 #    CONTAINER  restart rebuild exec logs inspect config-path
 #    READERS    ps stats status disk host stacks staleness endpoints apps api
 #               topics purpose page-titles
@@ -229,15 +232,78 @@ eval "$(python3 "$MANAGEMENT_SCRIPTS_DIR/config_helper.py" bash_eval apk-audio "
 # still works and stacks.sh reports the same set that actually ran. Otherwise
 # the README's third row, "the lot".
 #     APKAUDIO_PLUGIN_ROLES=discovery,l2 ./up-stack.sh 'APK:discovery'
-# THE THREE OPT-INS ARE DELIBERATELY NOT IN THE DEFAULT — each needs a value
-# before its container does anything: `switches` (APK_NETGEAR_HOST /
-# APK_TRENDNET_HOST), `netbox-sync` (NETBOX_API_TOKEN_WRITE) and `puck` (a
-# SpaceNavigator plugged in). Neither is `build`: those two services exist to
-# be BUILT, and their `command: ["true"]` would leave two exited containers
-# behind every `up`.
-export APKAUDIO_PLUGIN_ROLES="${APKAUDIO_PLUGIN_ROLES:-${COMPOSE_PROFILES:-discovery,l2,sound,control,vendors,instruments}}"
+# ── THE DEFAULT IS READ OFF THE COMPOSE FILES, NOT TYPED HERE. It was a typed
+# list, and a typed list of things declared somewhere else drifts the moment
+# somebody adds one: `switches` (NETGEAR, TRENDNET) and `puck` (SPACENAVIGATOR)
+# were never in it, so those three containers could not be created by any
+# ordinary mount — the dashboard drew them as idle for ever and the reason was
+# a word missing from this line. The same list also carried `instruments`,
+# which NO plugin declares, so a role that selected nothing sat in it looking
+# load-bearing.
+# WHAT IS COLLECTED: every `profiles:` in the discovery compose file and in the
+# files it `include:`s — which IS the set of plugin roles, because a plugin is
+# a service in one of those files and its profile is its role.
+# `build` IS THE ONE EXCLUSION, and it is not a role: plugins-image and
+# plugins-python-image exist to be BUILT, and their `command: ["true"]` would
+# leave two exited containers behind every `up`.
+# ⚠️ SOME ROLES NEED A VALUE BEFORE THEIR CONTAINER CAN DO ANYTHING —
+#    `switches` wants APK_NETGEAR_HOST / APK_TRENDNET_HOST, `netbox-sync` wants
+#    NETBOX_API_TOKEN_WRITE, `puck` wants a SpaceNavigator plugged in. They are
+#    IN the default anyway, because a container that is up and saying it has
+#    nothing to talk to is a thing you can see, and a container that was never
+#    created is a row that reads `idle` with no way to find out why.
+plugin_roles_declared() {
+    [ -f "$PLUGINS_COMPOSE_FILE" ] || return 1
+    local base roles rel
+    local -a files
+    base="$(dirname "$PLUGINS_COMPOSE_FILE")"
+    files=("$PLUGINS_COMPOSE_FILE")
+    # The `- path: "…"` lines of its include: block, resolved against it.
+    while IFS= read -r rel; do
+        [ -n "$rel" ] && [ -f "$base/$rel" ] && files+=("$base/$rel")
+    done < <(sed -n 's/^[[:space:]]*-[[:space:]]*path:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' \
+                    "$PLUGINS_COMPOSE_FILE")
+    roles="$(grep -h -oE '^[[:space:]]*profiles:[[:space:]]*\[[^]]*\]' "${files[@]}" 2>/dev/null \
+             | sed -E 's/.*\[//; s/\]//; s/[[:space:]"'"'"']//g' \
+             | tr ',' '\n' | grep -vx 'build' | grep -v '^$' | sort -u | paste -sd, -)"
+    [ -n "$roles" ] || return 1
+    printf '%s' "$roles"
+}
+
+# The typed list survives ONLY as the answer when the compose file is not on
+# disk to be read — at which point nothing will mount anyway, and a wrong role
+# list is not what went wrong.
+export APKAUDIO_PLUGIN_ROLES="${APKAUDIO_PLUGIN_ROLES:-${COMPOSE_PROFILES:-$(plugin_roles_declared || printf 'discovery,l2,sound,control,vendors,switches,puck,netbox-sync')}}"
 for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "$_apk_role"); done
 unset _apk_role
+
+# ── THE PUCK THAT IS NOT PLUGGED IN. `puck` is in the default role list above,
+# and plugin:SPACENAVIGATOR names a `devices:` entry — so on a bench with no
+# SpaceNavigator on it compose does not skip that container, it REFUSES:
+#   error gathering device information while adding custom device
+#   "/dev/input/by-id/usb-3Dconnexion_SpaceNavigator-event-if00": no such file
+# and takes the whole `up` down with it, exit 1, with the stacks after it in the
+# run unstarted. One absent USB device failing an eleven-stack mount is the
+# wrong shape of failure: nothing is broken, a thing is simply not attached.
+# SO THE ABSENCE IS ANSWERED HERE, WHERE IT CAN BE SEEN. The compose file
+# already reads APK_SPACENAVIGATOR_DEVICE for exactly this; pointed at a node
+# that always exists, the container starts, spacenavigator_probe.py's
+# find_puck() asks that node what it is, gets no puck, and exits CLEAN — which
+# `restart: on-failure` correctly does not restart. The row then reads
+# `Exited (0)`: started, looked, found nothing. That is a fact about the bench,
+# and it is the one an operator wants; a stack that would not mount is not.
+# ⚠️ ONLY WHEN IT IS MISSING. A puck that IS plugged in keeps its real by-id
+#    path, so this line costs nothing on the box the plugin exists for. And an
+#    APK_SPACENAVIGATOR_DEVICE already exported wins over both.
+if [ -z "${APK_SPACENAVIGATOR_DEVICE:-}" ]; then
+    _apk_puck="/dev/input/by-id/usb-3Dconnexion_SpaceNavigator-event-if00"
+    if [ -e "$_apk_puck" ]; then
+        export APK_SPACENAVIGATOR_DEVICE="$_apk_puck"
+    else
+        export APK_SPACENAVIGATOR_DEVICE="/dev/null"
+    fi
+    unset _apk_puck
+fi
 
 # NMOS conformance harness (nmos-testing + the facade that depends on it) is
 # behind `profiles: ["conformance"]` — 732 MB of that stack's 1,087, off by
@@ -480,6 +546,40 @@ manager_answering() {
     fi
 }
 
+# manager_instance — WHICH manager answered, as `kind<TAB>pid<TAB>hostname`.
+#     read -r kind pid host <<<"$(manager_instance)"
+# kind is `container` | `terminal` | `unidentified` | `` (nothing answered).
+# WHY IT IS NOT A CONTAINER LOOKUP: the manager runs network_mode: host, so
+# 127.0.0.1:8765 is the bench loopback and a manager started at a terminal
+# answers it identically to the one in the container — `manager.sh status`
+# printed "API answering" over a restart-looping container for exactly that
+# reason. `instance` in the /api/health payload is who answered, and this is the
+# one place it is read: manager.sh reports it and launch.sh names the hand the
+# verb is being given to.
+# THREE ANSWERS AND NOT TWO: a manager older than the `instance` key answers
+# without saying who it is, and calling that "a terminal" would be a guess
+# printed as a finding.
+# THE FETCH IS PYTHON'S TOO, not curl piped into it: this reader has to be able
+# to tell "nothing answered" (no output) from "answered without saying", and a
+# pipe from a curl that failed and a pipe from a curl that returned a payload
+# with no `instance` key arrive here as the same empty stdin.
+manager_instance() {
+    APK_HEALTH_URL="${MANAGER_URL}api/health" APK_HEALTH_WAIT="${1:-4}" python3 -c '
+import json, os, urllib.request
+try:
+    with urllib.request.urlopen(os.environ["APK_HEALTH_URL"],
+                                timeout=float(os.environ["APK_HEALTH_WAIT"])) as answer:
+        instance = (json.loads(answer.read(200_000)) or {}).get("instance")
+except Exception:
+    raise SystemExit(0)
+if not isinstance(instance, dict):
+    print("unidentified\t?\t?")
+else:
+    print("%s\t%s\t%s" % ("container" if instance.get("containerised") else "terminal",
+                          instance.get("pid", "?"), instance.get("hostname", "?")))
+' 2>/dev/null
+}
+
 # open_manager_site [seconds] — raise the dashboard AS SOON AS IT ANSWERS.
 # THE POINT IS THE MOMENT. up.sh and rebuild-all.sh each opened a browser on
 # their LAST line, which on a clean rebuild is ten minutes after the tool that
@@ -622,32 +722,78 @@ for_each_stack() {
         order=("${DOCKTOR_STACKS_FORWARD[@]}")
     fi
 
+    # APKAUDIO_SKIP_STACKS, RESOLVED TO COMPOSE FILES ONCE, BEFORE THE WALK —
+    # not compared as words inside it. rebuild-all.sh has always exported the
+    # word `docktor` and this walk has carried `Docktor` since the folder was
+    # renamed, so the substring test this replaces never matched and its one
+    # caller's one reason silently stopped working: the manager was built
+    # --no-cache a second time (minutes) and then `up`ed a second time, which is
+    # the dashboard being swapped out from under the page the first pass had
+    # just opened. Resolving both sides through compose_for_stack means a name
+    # is never compared to a name.
+    # Resolved HERE and not per stack because compose_for_stack writes
+    # STACK_COMPOSE, which the loop below is holding by then.
+    local -a skip_files=()
+    local _skip
+    for _skip in ${APKAUDIO_SKIP_STACKS:-}; do
+        if compose_for_stack "$_skip" >/dev/null 2>&1 && [ -n "${STACK_COMPOSE_FILE:-}" ]; then
+            skip_files+=("$STACK_COMPOSE_FILE")
+        else
+            log_warn "APKAUDIO_SKIP_STACKS names '$_skip', which is not a stack; ignored."
+        fi
+    done
+
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
     # an `else` would turn a typo into a silent fall-through to the last array.
     local -a compose
+    local is_manager skipped skip_file
     for stack in "${order[@]}"; do
-        if { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ] || [ "$stack" = "APK:Docktor" ]; } && [ -f "/.dockerenv" ]; then
-            log_warn "Skipping '$stack' (running inside manager container)"
-            continue
-        fi
-        # APKAUDIO_SKIP_STACKS — names this walk leaves alone, space separated.
-        # ONE CALLER AND ONE REASON: rebuild-all.sh builds and mounts DockTor
-        # BEFORE it builds anything else, so the two passes after that must not
-        # do it again — a second --no-cache build of the manager is minutes, and
-        # the second `up` would swap the dashboard out from under the page it
-        # just opened.
-        if [[ " ${APKAUDIO_SKIP_STACKS:-} " == *" $stack "* ]]; then
-            log_warn "Skipping '$stack' (APKAUDIO_SKIP_STACKS)"
-            continue
-        fi
-        echo -e "\n── ${stack} ──"
-        if compose_for_stack "$stack"; then
-            compose=("${STACK_COMPOSE[@]}")
-        else
+        # WHICH FILE THIS NAME IS, BEFORE ANY DECISION IS TAKEN ABOUT IT. The
+        # resolve used to happen AFTER the two guards below, and both guards
+        # therefore compared the NAME against a typed list of spellings —
+        # `docktor`, `manager`, `APK:Docktor`.
+        # ⚠️ THE WALK NOW CARRIES `Docktor`, WHICH IS IN NEITHER LIST, and the
+        #    cost of that miss was the manager mounting ITSELF FROM INSIDE
+        #    ITSELF: `up.sh` in the container ran compose over
+        #    docker-compose.manager.yml, compose renamed the running DockTor
+        #    aside and SIGKILLed it (exit 137) in the middle of serving the very
+        #    request that had asked for the mount — the browser saw
+        #    `TypeError: Failed to fetch` and the page it was drawing went away.
+        #    The second guard missed identically, so open_manager_site() has not
+        #    been called from this loop since the folder was renamed, and the
+        #    "DockTor is first, so the page arrives a minute in" promise in
+        #    up.sh's header quietly stopped being kept.
+        # SO THE TEST IS THE COMPOSE FILE, NOT THE NAME. compose_for_stack
+        # resolves every spelling to one path and _common.sh already holds the
+        # manager's; a rename cannot drift them apart, which is exactly what a
+        # rename did to the list this replaces.
+        if ! compose_for_stack "$stack"; then
             log_error "for_each_stack: no such stack '$stack'"
             worst=2
             continue
         fi
+        compose=("${STACK_COMPOSE[@]}")
+        is_manager=0
+        [ -n "${STACK_COMPOSE_FILE:-}" ] && \
+            [ "$STACK_COMPOSE_FILE" = "$MANAGER_COMPOSE_FILE" ] && is_manager=1
+
+        if [ "$is_manager" = "1" ] && [ -f "/.dockerenv" ]; then
+            log_warn "Skipping '$stack' (running inside manager container)"
+            continue
+        fi
+        # APKAUDIO_SKIP_STACKS — stacks this walk leaves alone, matched by the
+        # file each name resolved to above. ONE CALLER AND ONE REASON:
+        # rebuild-all.sh builds and mounts DockTor BEFORE it builds anything
+        # else, so the two passes after that must not do it again.
+        skipped=0
+        for skip_file in "${skip_files[@]}"; do
+            [ "$skip_file" = "${STACK_COMPOSE_FILE:-}" ] && { skipped=1; break; }
+        done
+        if [ "$skipped" = "1" ]; then
+            log_warn "Skipping '$stack' (APKAUDIO_SKIP_STACKS)"
+            continue
+        fi
+        echo -e "\n── ${stack} ──"
         "${compose[@]}" "$@"
         status=$?
         [ $status -ne 0 ] && worst=$status
@@ -657,8 +803,7 @@ for_each_stack() {
         # mount just succeeded, and the eight stacks after it take minutes.
         # Only for an `up` — a `build` produces no server and a `down` is the
         # opposite of an invitation.
-        if [ $status -eq 0 ] && [ "$1" = "up" ] \
-           && { [ "$stack" = "docktor" ] || [ "$stack" = "manager" ]; }; then
+        if [ $status -eq 0 ] && [ "$1" = "up" ] && [ "$is_manager" = "1" ]; then
             open_manager_site
         fi
     done
@@ -683,9 +828,32 @@ for_each_stack() {
 # and nothing else. APKAUDIO_PLUGIN_ROLES is the list; see its default above.
 # IDEMPOTENT — the `plugins` alias hands over COMPOSE_PLUGINS, which already
 # carries the same flags from the role loop, so a second pass adds none.
+# AND EACH PLUGIN FILE ON ITS OWN, which is the second half and was missing:
+# every `plugin:*` is ALSO a stack in its own right — it is in the walk, and it
+# is the per-stack remount button on the dashboard — and reached that way it
+# came through here, matched nothing, and ran profile-less. Compose then said
+# `no service selected` and exited 0, so a mount printed that line twenty-two
+# times and reported success while creating nothing.
+# HOW A PLUGIN FILE IS RECOGNISED: it `extends` discovery/Docker/plugin-base.yml.
+# That is what a plugin IS — the base service carries the image, the capability
+# floor, the broker variables and the healthcheck — so it is a test of the file
+# rather than of its folder's name, and a plugin renamed or moved still matches.
+# STILL NOT EVERY STACK WITH PROFILES: the rule below admits the plugin files
+# and the discovery file and nothing else, so PROTOCOL:discovery:NMOS keeps its
+# conformance harness off (732 MB of that stack's 1,087, off unless
+# APK_NMOS_PROFILES asks). And only the ROLES are selected, never every profile
+# in the file, so `build` stays off wherever it appears.
+is_plugin_compose_file() {
+    [ -f "$1" ] || return 1
+    grep -q 'plugin-base\.yml' "$1" 2>/dev/null
+}
+
 apply_stack_profiles() {
-    [ -n "${PLUGINS_COMPOSE_FILE:-}" ] || return 0
-    [ "${STACK_COMPOSE_FILE:-}" = "$PLUGINS_COMPOSE_FILE" ] || return 0
+    [ -n "${STACK_COMPOSE_FILE:-}" ] || return 0
+    if [ "$STACK_COMPOSE_FILE" != "${PLUGINS_COMPOSE_FILE:-}" ] \
+       && ! is_plugin_compose_file "$STACK_COMPOSE_FILE"; then
+        return 0
+    fi
     case " ${STACK_COMPOSE[*]} " in *" --profile "*) return 0;; esac
     local _role
     for _role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do STACK_COMPOSE+=(--profile "$_role"); done

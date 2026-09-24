@@ -114,13 +114,54 @@ async function get(path) {
   return response.json();
 }
 
+/* A VERB CAN END THE SERVER THAT IS ANSWERING IT, and several are MEANT to:
+ * `down` stops DockTor last, `panic` and `nuke --include-manager` take it, and
+ * 🔪 Kill a Process is pointed at a pid by hand. A POST that never comes back
+ * is therefore an ordinary ending, not a fault — but fetch() rejects with
+ * `TypeError: Failed to fetch`, and with nothing catching it that surfaced as
+ * an UNHANDLED REJECTION in the devtools console: a report naming manager.js
+ * and a line number, which is the one thing a person cannot act on, on a page
+ * that has a log pane built for saying exactly this.
+ * SO THIS NEVER REJECTS. A request that did not arrive comes back shaped like
+ * every other answer — ok:false and a sentence — with `unreachable` set, and
+ * says so on the log ITSELF.
+ * THE SAYING IS HERE AND NOT AT THE FOUR CALL SITES because this is the only
+ * place that knows a request never landed, and because the server cannot write
+ * that line: the thing that writes the log is the thing that went away. */
 async function post(path, body) {
-  const response = await fetch(at(path), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  return response.json();
+  let response;
+  try {
+    response = await fetch(at(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (err) {
+    const error = `⚠️ ${at(path)} did not answer — ${err.message || err}. `
+                + `The manager is not there any more; if that verb was meant to `
+                + `stop it, this is what that looks like. The page reconnects by `
+                + `itself when it comes back.`;
+    sayLocally(error);
+    const note = $("#stream-state");
+    if (note) note.textContent = "the manager stopped answering";
+    return { ok: false, unreachable: true, error };
+  }
+  try {
+    return await response.json();
+  } catch {
+    // An answer that is not JSON is still an answer, and the status is what it
+    // said. Throwing here would put the same console trace back.
+    return { ok: false, error: `${response.status} ${response.statusText}` };
+  }
+}
+
+/* One line onto this tab's own log, written by the CLIENT. Everything else in
+ * these panes came off the server's stream — which is why this exists: the
+ * cases worth writing locally are the ones where that stream is gone.
+ * `hot` because every one of them is; the record shape is the stream's, so
+ * logRecord() paints it in the quarter-minute colour like any other line. */
+function sayLocally(text) {
+  logRecord({ seq: 0, at: Date.now() / 1000, kind: "line", text, tone: "hot" });
 }
 
 /* ------------------------------------------------------------------- tones */
