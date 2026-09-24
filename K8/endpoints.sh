@@ -349,6 +349,21 @@ if [ -z "$WANT" ] || [ "$WANT" = "APK-Discovery-Engine" ]; then
         "${disc_url}/status" "$disc_state"
 fi
 
+# --- AES67 / ST 2110-30 bridge, from 'plugin:AES67/Docker/docker-compose.yml' --
+# The one plugin with pages of its own: host-networked, APK_AES67_HTTP_PORT (8130).
+if [ -z "$WANT" ] || [ "$WANT" = "Plugin-AES67" ]; then
+    aes_url="http://127.0.0.1:${APK_AES67_HTTP_PORT:-8130}"
+    if [ "$(docker inspect Plugin-AES67 --format '{{.State.Running}}' 2>/dev/null)" != true ]; then
+        aes_state="down"
+    elif curl -fsS --max-time 2 "$aes_url/api/settings" >/dev/null 2>&1; then
+        aes_state="up"
+    else
+        aes_state="declared"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' Plugin-AES67 open "AES67 / ST 2110-30 status" "${aes_url}/status" "$aes_state"
+    printf '%s\t%s\t%s\t%s\t%s\n' Plugin-AES67 open "AES67 / ST 2110-30 configuration" "${aes_url}/config" "$aes_state"
+fi
+
 # --- Plugins (APK:PODS/POD:APK_THICK/APK:plugin:*) ----------------------
 # For each running plugin container, emit its socket and public bus API.
 mapfile -t plugin_containers < <(docker ps --filter "name=^Plugin-" --format '{{.Names}}' 2>/dev/null)

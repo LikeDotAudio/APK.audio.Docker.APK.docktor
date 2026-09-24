@@ -404,6 +404,15 @@ PURPOSE = {
         "Without the discovery engine, hardware and network streams on the LAN are invisible "
         "until configured by hand, and protocol plugins cannot auto-launch when devices appear."),
 
+    "Plugin-AES67": (
+        "AES67 / SMPTE ST 2110-30 senders and receivers on a sound card. Role: sound",
+        "apk-aes67 on host networking with /dev/snd: 16 senders and 16 receivers of up to "
+        "8 channels each, a user-space PTPv2 slave on UDP 319/320 (NET_BIND_SERVICE), SAP "
+        "announce and browse, and its own pages at :8130/status and :8130/config. Settings "
+        "live on the apk-audio-aes67-state volume.",
+        "It puts this machine's sound card on the AES67 / ST 2110 network: capture channels "
+        "out as multicast streams, and other devices' streams out of its outputs."),
+
     "Plugin-AES70": (
         "The AES70 (OCP.1) bridge. Role: control",
         "apk-aes70: one outbound OCP.1 TCP client to the device named in config.ini "
