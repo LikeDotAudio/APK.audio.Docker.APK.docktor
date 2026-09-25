@@ -262,6 +262,17 @@ emit_endpoint Netbox-App 8080/tcp 8081 open \
 emit_endpoint Ember-Provider 9000/tcp 9000 copy \
     "Ember+ provider (S101)" "ember+s101://{host}:{port}"
 
+# --- Switch-GUI, the MIB-driven switch configuration console --------------
+# `apkaudio-mib`'s switch-gui binary: it parses a switch's SNMP MIB into a UI
+# and serves an APK-branded page that reads and writes the switch over SNMP.
+# One `open` row — the whole console is one page at /. It is DECLARED here so
+# DockTor holds the URL now; the row reads `down` until the container runs and
+# `open ↗` the moment it binds 8140. See
+# LIBRARY/lib:MIB/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
+# container is given decides which switch it configures (first: TEG-240WS).
+emit_endpoint Switch-GUI 8140/tcp 8140 open \
+    "Switch Config (MIB-driven)" "http://{host}:{port}/"
+
 # --- the node, from 'APK:BareMetal/docker-compose.yml' --------------------
 # NOT emit_endpoint: docker port returns nothing for a host-networked container,
 # so the published-port lookup would print down against a healthy node for ever.

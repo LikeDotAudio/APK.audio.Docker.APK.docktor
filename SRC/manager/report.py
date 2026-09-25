@@ -539,11 +539,70 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
             emit("STATUS_PUBLISH_FAILED", {"broker": f"{host}:{port}", "error": str(err)})
             if say:
                 say(f"⚠️ Failed to reach MQTT server {host}:{port} — {err}")
+            launch_broker_if_refused(host, port, err, say=say)
     return {"topic": STATUS_TOPIC, "phase": phase, "posture": posture,
             "brokers": [f"{b[0]}:{b[1]}" for b in candidate_brokers],
             "published_to": reached, "containers": len(containers_info),
             "topics": len(messages), "per_container": len(sending),
             "apps": published_apps, "retired": len(retired)}
+
+
+# ── A REFUSED BENCH BROKER IS A BROKER TO START, NOT A LINE TO LOG.
+# `Connection refused` from 127.0.0.1:1883 means nothing is listening: the
+# broker container is stopped or gone. Every plugin on the bench is deaf until
+# it is back, so the doctor mounts its stack rather than reporting the same
+# failure every beat. up-stack.sh starts the container if it exists and makes
+# it if it does not.
+# ONLY FOR A REFUSAL, ONLY ON OUR OWN BROKER: a timeout or a DNS failure says
+# nothing about whether the broker is down, and a public broker is not ours to
+# launch. Once per BROKER_LAUNCH_COOLDOWN at most, on its own thread, so a
+# broker that will not start is not hammered and the status beat never waits
+# on a mount.
+BROKER_STACK = "DATABUS:Broker:MQTT"
+BROKER_LAUNCH_COOLDOWN = 120
+_broker_launch_lock = threading.Lock()
+_broker_launch_at = 0.0
+
+
+def _is_refused(err):
+    return isinstance(err, ConnectionRefusedError) or getattr(err, "errno", None) == 111
+
+
+def _is_public(host):
+    try:
+        import mqtt_broker_discovery
+        return host in {h for h, _, _ in mqtt_broker_discovery.PUBLIC_MQTT_BROKERS}
+    except Exception:
+        return False
+
+
+def launch_broker_if_refused(host, port, err, say=None):
+    """Mount the broker stack when our broker refused the connection.
+
+    Returns True when a launch was started by this call."""
+    global _broker_launch_at
+    if not _is_refused(err) or _is_public(host):
+        return False
+    with _broker_launch_lock:
+        now = time.monotonic()
+        if _broker_launch_at and now - _broker_launch_at < BROKER_LAUNCH_COOLDOWN:
+            return False
+        _broker_launch_at = now
+
+    emit("BROKER_LAUNCH", {"broker": f"{host}:{port}", "stack": BROKER_STACK,
+                           "reason": str(err)})
+    if say:
+        say(f"\U0001f6d1 MQTT broker {host}:{port} refused the connection — launching {BROKER_STACK}")
+
+    def _mount():
+        code, _output = run_management_script("up-stack.sh", [BROKER_STACK], quiet=True)
+        emit("BROKER_LAUNCH_RESULT", {"broker": f"{host}:{port}", "stack": BROKER_STACK,
+                                      "exit_code": code})
+        if say:
+            say(f"{'✅' if code == 0 else '❌'} {BROKER_STACK} mount exited {code}")
+
+    threading.Thread(target=_mount, name="broker-launch", daemon=True).start()
+    return True
 
 
 def run_reported(name, args=(), on_line_callback=None, ordered_by=None):

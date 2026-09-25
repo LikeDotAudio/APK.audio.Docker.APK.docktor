@@ -38,7 +38,22 @@ if [ -n "$labelled" ] && [ "$labelled" != "<no value>" ]; then
     done
 fi
 
-# 2. The name table. The compose path comes from _common.sh; the two Dockerfile
+# 2. What the BareMetal Manager recorded. The per-device `apk-*` containers
+#    are started by its launcher through the Docker API, not by compose, so
+#    they carry no config_files label — and the file that built one is the
+#    launcher that wrote its `docker run`. Asked by label, not by the `apk-`
+#    prefix, so a container that merely shares the prefix is not claimed.
+managed_by="$(docker inspect --format \
+    '{{index .Config.Labels "apk.audio.managed_by"}}' "$container" 2>/dev/null)"
+if [ "$managed_by" = "BareMetal-Manager" ]; then
+    path="$(stack_dir 'BareMetal')/SRC/Baremetal:Manager/instrument_launcher.py"
+    if [ -f "$path" ]; then
+        printf '%s\n' "$path"
+        exit 0
+    fi
+fi
+
+# 3. The name table. The compose path comes from _common.sh; the two Dockerfile
 #    paths are spelled here because nothing else in the shell needs them. The
 #    [ -f ] below is what makes a wrong rung cost nothing visible — it falls
 #    through to the compose file and then to an empty answer.
@@ -53,7 +68,7 @@ case "$lowered" in
     # that HAVE one resolved to a file that is not there — and the button that
     # exists to show you what built a container showed nothing.
     *baremetal*)
-        path="$(stack_dir 'APK:BareMetal')/Docker/Dockerfile" ;;
+        path="$(stack_dir 'BareMetal')/Docker/Dockerfile" ;;
     *portal*|*web*)
         path="$(stack_dir 'DATABASE:server:SQL')/Docker/Dockerfile" ;;
     *mariadb*|*maria*|*broker*|*mqtt*)
