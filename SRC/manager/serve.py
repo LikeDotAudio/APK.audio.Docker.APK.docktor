@@ -286,6 +286,9 @@ class ManagerHandler(BaseHTTPRequestHandler):
             if route.startswith("/api/surface/"):
                 name = urllib.parse.unquote(route[len("/api/surface/"):])
                 return self._json(api.surface(name))
+            if route.startswith("/api/ping/"):
+                name = urllib.parse.unquote(route[len("/api/ping/"):])
+                return self._json(api.ping(name))
             if route.startswith("/api/config-script/"):
                 name = urllib.parse.unquote(route[len("/api/config-script/"):])
                 return self._json(api.config_script(name))

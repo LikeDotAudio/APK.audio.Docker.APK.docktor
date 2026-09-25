@@ -2828,6 +2828,7 @@ function renderLaunchers(detail) {
     .filter(([key]) => key !== "logs")
     .map(([key, row]) => `<button class="btn plain small" data-cverb="${key}">${escapeHTML(row.label)}</button>`);
   verbs.push(`<button class="btn plain small" data-cverb="logs">📜 Logs</button>`);
+  verbs.push(`<button class="btn plain small ping" id="ping-device" title="Find the device behind this card and knock on the wire">📡 Ping</button>`);
 
   if (detail.name === "Netbox-App") {
     buttons.unshift(`<span class="btn plain small" style="border-color: #ffb74d; color: #ffb74d; font-weight: bold;">🔑 Dev Login: APKaudio / APKaudio1234!</span>`);
@@ -2843,6 +2844,48 @@ function renderLaunchers(detail) {
   $$("[data-cverb]", host).forEach((button) => {
     button.onclick = () => runContainerAction(button.dataset.cverb, detail.name, button);
   });
+  const pingButton = $("#ping-device", host);
+  pingButton.onclick = () => pingDevice(detail.name, pingButton);
+  // The detail pane repaints on a clock; the last answer outlives the repaint.
+  const last = (state.pings ||= {})[detail.name];
+  if (last) paintPing(pingButton, last);
+}
+
+/* 📡 PING THE DEVICE, NOT THE CONTAINER. The server works out where the device
+ * lives — labels, a MAC through the neighbour table, mDNS — and knocks there, so
+ * this answers the same for a running card, an exited one, or a bare address.
+ * Green: it answered. Red: it has an address and did not. Grey: no address. */
+async function pingDevice(name, button) {
+  button.classList.remove("alive", "dead", "unknown");
+  button.classList.add("running");
+  button.disabled = true;
+  button.textContent = "📡 Pinging…";
+  let answer;
+  try {
+    answer = await get(`/api/ping/${encodeURIComponent(name)}`);
+  } catch (err) {
+    answer = { verdict: "unknown", target: null, tried: [String(err.message || err)] };
+  }
+  (state.pings ||= {})[name] = answer;
+  // A repaint during the knock replaced the button; paint the one on screen.
+  if (state.selected === name) paintPing($("#ping-device") || button, answer);
+}
+
+function paintPing(button, answer) {
+  button.classList.remove("running", "alive", "dead", "unknown");
+  button.disabled = false;
+  button.classList.add(answer.verdict);
+  const rtt = answer.rtt_ms != null ? ` ${Number(answer.rtt_ms).toFixed(1)} ms` : "";
+  button.textContent = {
+    alive: `🟢 ${answer.target}${rtt}`,
+    dead: `🔴 ${answer.target} dead`,
+  }[answer.verdict] || "⚪ No address";
+  button.title = [
+    answer.target ? `${answer.target} — found by ${answer.source}` : "No address could be found for this device.",
+    answer.method ? `Probe: ${answer.method}` : "",
+    ...(answer.tried || []).map((line) => `· ${line}`),
+    answer.checked_at ? `Checked ${answer.checked_at} — click to ping again` : "",
+  ].filter(Boolean).join("\n");
 }
 
 /* ------------------------------------------------------------- the pod pane

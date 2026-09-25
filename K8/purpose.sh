@@ -413,6 +413,14 @@ PURPOSE = {
         "It puts this machine's sound card on the AES67 / ST 2110 network: capture channels "
         "out as multicast streams, and other devices' streams out of its outputs."),
 
+    "Plugin-AES67-Loopback": (
+        "One-shot: loads the host's snd-aloop virtual sound card for AES67. Role: sound",
+        "aes67-loopback runs once before Plugin-AES67 with CAP_SYS_MODULE, no network and "
+        "the host's /lib/modules read-only: modprobe snd-aloop id=AES67 unless that card "
+        "exists. Always exits 0 — Exited (0) is its healthy state.",
+        "It is what makes the AES67 network appear in the desktop's sound settings as "
+        "'Loopback'. Without it the plugin still runs, on physical cards only."),
+
     "Plugin-AES70": (
         "The AES70 (OCP.1) bridge. Role: control",
         "apk-aes70: one outbound OCP.1 TCP client to the device named in config.ini "

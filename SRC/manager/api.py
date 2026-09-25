@@ -44,6 +44,7 @@ from .diagnose import (diagnose_state, health_status, port_mappings,
 from .report import publish_status_report, publish_refresh_status, run_reported
 from .provenance import container_provenance
 from .readers import watchdog_active
+from .ping import ping as ping_device
 
 
 # ---------------------------------------------------------------------------
@@ -1059,6 +1060,8 @@ ROUTES = (
      "what": "one container in full — diagnosis, ports, networks, app plane, inspect"},
     {"method": "GET", "path": "/api/surface/<name>",
      "what": "one container's HTTP routes and the bus topics it is publishing"},
+    {"method": "GET", "path": "/api/ping/<name>",
+     "what": "locate the device behind a card and knock on the wire: alive, dead or unknown"},
     {"method": "GET", "path": "/api/config-script/<name>",
      "what": "the compose file or Dockerfile that built it, and its text"},
     {"method": "POST", "path": "/api/broadcast", "what": "publish the inventory to every broker"},
@@ -1078,6 +1081,15 @@ def routes():
     """What this manager answers on, in the shape api.sh reads."""
     return {"component": "APK.audio DockTor API",
             "routes": [dict(row) for row in ROUTES]}
+
+
+def ping(name):
+    """Is the device behind a card on the wire? ping.py decides; the container's
+    own state is never consulted, so this answers for exited and absent ones too."""
+    answer = ping_device(name)
+    emit("DEVICE_PING", {"container": name, "target": answer["target"],
+                         "verdict": answer["verdict"], "method": answer["method"]})
+    return answer
 
 
 def surface(name, quiet=True):
