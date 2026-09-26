@@ -76,8 +76,17 @@ fi
 
 log_step "Mounting $STACK on the fresh images..."
 announce COMPOSE_RUN "{\"action\":\"up --force-recreate\",\"stack\":\"$STACK\"}"
-"${STACK_COMPOSE[@]}" up -d --force-recreate
-status=$?
+if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
+    # Rebuilt, the stack-mates are recreated; the broker is not (a pulled image,
+    # nothing to rebuild) — ensure_broker only raises it if it is down.
+    ensure_broker || log_warn "The broker ($BROKER_CONTAINER) did not come up."
+    mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
+    status=0
+    [ ${#others[@]} -gt 0 ] && { "${STACK_COMPOSE[@]}" up -d --force-recreate --no-deps "${others[@]}"; status=$?; }
+else
+    "${STACK_COMPOSE[@]}" up -d --force-recreate
+    status=$?
+fi
 announce COMPOSE_RESULT "{\"action\":\"up --force-recreate\",\"stack\":\"$STACK\",\"exit_code\":$status}"
 if [ $status -ne 0 ]; then
     log_error "$STACK rebuilt, but the replacement would not come up (exit $status)."

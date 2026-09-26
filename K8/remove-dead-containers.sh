@@ -81,6 +81,13 @@ fi
 worst=0
 removed=()
 for name in "${targets[@]}"; do
+    # PROTECTED (_common.sh): the manager and the broker are never removed
+    # here, named or swept, --force or not.
+    if is_protected_container "$name"; then
+        log_warn "$name is protected — not removed."
+        announce CONTAINER_REMOVE_REFUSED "{\"container\":\"$name\",\"state\":\"protected\"}"
+        continue
+    fi
     echo "   • Removing $name..."
     # -f covers the container named with --force and the sweep losing a race to
     # something that started between the listing and here. Never -v.

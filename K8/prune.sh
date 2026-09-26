@@ -19,7 +19,9 @@ ALL=0
 [ "${1:-}" = "--all" ] && ALL=1
 
 log_step "Stopped containers"
-docker container prune -f
+# The protected label (_common.sh) keeps a stopped broker for ensure_broker to
+# restart, rather than a missing one it has to recreate.
+docker container prune -f --filter "label!=$PROTECTED_LABEL"
 
 # THE CACHE SWEEP IS clean-build-cache.sh, not a second `docker builder prune`
 # here: every build path ends with that file too, and two spellings of the same

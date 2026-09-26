@@ -84,10 +84,26 @@ fi
 # Every stack mounts the external log volume; LOGGER STORAGE owns it.
 [ "$STACK_COMPOSE_FILE" = "$LOGGER_COMPOSE_FILE" ] || ensure_log_storage
 
+# THE BUS FIRST, whatever the stack: everything mounted from here announces
+# on it, and an agent that starts before it spends its first minute retrying.
+ensure_broker || log_warn "The broker ($BROKER_CONTAINER) is not up; $STACK will retry until it is."
+
 log_step "Starting $STACK..."
 announce COMPOSE_RUN "{\"action\":\"up-stack\",\"stack\":\"$STACK\"}"
-"${STACK_COMPOSE[@]}" up -d --build
-status=$?
+if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
+    # The broker is up (above) and is never rebuilt or recreated from here; its
+    # stack-mates build on their own, so their failure cannot hold the bus.
+    mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
+    status=0
+    if [ ${#others[@]} -gt 0 ]; then
+        "${STACK_COMPOSE[@]}" up -d --build --no-deps "${others[@]}"
+        status=$?
+        [ $status -ne 0 ] && log_warn "The broker is up; ${others[*]} failed (exit $status)."
+    fi
+else
+    "${STACK_COMPOSE[@]}" up -d --build
+    status=$?
+fi
 
 announce COMPOSE_RESULT "{\"action\":\"up-stack\",\"stack\":\"$STACK\",\"exit_code\":$status}"
 if [ $status -ne 0 ]; then

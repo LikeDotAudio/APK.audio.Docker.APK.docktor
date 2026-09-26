@@ -610,6 +610,64 @@ if [ -z "$MANAGER_CONTAINER" ]; then
 fi
 [ -z "$MANAGER_IMAGE" ] && MANAGER_IMAGE="docktor:local"
 
+# ── THE BROKER IS PROTECTED, AS THE MANAGER IS. Every plugin, the discovery
+# engine and this dashboard's own telemetry talk over it; with it gone the
+# bench reads as a page of zeros and every agent logs "not connected". It went
+# twice on 2026-09-26: once swept up by a bulk `rm -f` of the apk-audio project,
+# and once left down because its stack-mate Broker-SqlCapture failed a Rust
+# build — `up` of the stack failed, so Mosquitto (a PULLED image, nothing to
+# build) never started, and the watchdog retried the same failing build forever.
+# So: no verb here stops, kills or removes it, and it comes up on its own,
+# before and apart from anything that builds. `docker restart` is still
+# allowed — a blip, not an outage.
+BROKER_CONTAINER="${APKAUDIO_BROKER_CONTAINER:-Broker-Mosquitto}"
+BROKER_SERVICE="${APKAUDIO_BROKER_SERVICE:-mosquitto}"
+BROKER_STACK_NAME="${APKAUDIO_BROKER_STACK:-DATABUS:Broker:MQTT}"
+# Set on the service in its compose file, so a bare `docker container prune`
+# or anything else that filters by label can leave it alone too.
+PROTECTED_LABEL="apk.audio.protected=true"
+
+# is_protected_container <name> — the manager and the broker.
+is_protected_container() {
+    [ "$1" = "$MANAGER_CONTAINER" ] || [ "$1" = "$BROKER_CONTAINER" ]
+}
+
+# broker_compose_file — the broker stack's compose file, resolved like any
+# other stack (compose_for_stack), without disturbing the caller's STACK_*.
+broker_compose_file() {
+    local saved_file="${STACK_COMPOSE_FILE:-}"
+    local -a saved=("${STACK_COMPOSE[@]}")
+    local out=""
+    compose_for_stack "$BROKER_STACK_NAME" >/dev/null 2>&1 && out="${STACK_COMPOSE_FILE:-}"
+    STACK_COMPOSE=("${saved[@]}"); STACK_COMPOSE_FILE="$saved_file"
+    printf '%s' "$out"
+}
+
+# ensure_broker — bring Mosquitto up ALONE if it is not running: its own
+# service, --no-deps, no build (it is a pulled image). Nothing else in its
+# stack can hold it hostage. Returns non-zero only if it is still not running.
+ensure_broker() {
+    [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ] && return 0
+    local file
+    file="$(broker_compose_file)"
+    if [ -z "$file" ]; then
+        log_error "ensure_broker: no compose file for $BROKER_STACK_NAME"
+        return 2
+    fi
+    log_step "The broker ($BROKER_CONTAINER) is not running — bringing it up first, alone"
+    announce BROKER_ENSURE "{\"container\":\"$BROKER_CONTAINER\",\"service\":\"$BROKER_SERVICE\"}"
+    docker compose -f "$file" up -d --no-deps --no-build "$BROKER_SERVICE"
+    local status=$?
+    announce BROKER_ENSURE_RESULT "{\"container\":\"$BROKER_CONTAINER\",\"exit_code\":$status}"
+    [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ]
+}
+
+# broker_stack_others <compose...> — the broker stack's services other than
+# the broker, one per line. What a down/up of that stack may touch freely.
+broker_stack_others() {
+    "$@" config --services 2>/dev/null | grep -vx "$BROKER_SERVICE"
+}
+
 COMPOSE_MANAGER=("${COMPOSE_BASE[@]}" -f "$MANAGER_COMPOSE_FILE")
 
 # ── THE ADDRESS DOCKTOR ANSWERS ON, read off its compose file rather than
@@ -716,9 +774,13 @@ open_manager_site() {
 # manager (`docker ps -q` includes it, and panic.sh killed its own process).
 # Matched on NAME: the manager shares the `apk-audio` project with the stacks
 # it manages, and NMOS is outside that project, so no label separates them.
+# THE BROKER IS SPARED WITH IT (see is_protected_container): panic and nuke
+# both walk this list, and a bench whose bus is gone cannot report its own
+# recovery.
 containers_except_manager() {
     docker ps "$@" --format '{{.ID}}\t{{.Names}}' 2>/dev/null \
-        | awk -F'\t' -v skip="$MANAGER_CONTAINER" '$2 != skip && length($1) { print $1 }'
+        | awk -F'\t' -v skip="$MANAGER_CONTAINER" -v broker="$BROKER_CONTAINER" \
+            '$2 != skip && $2 != broker && length($1) { print $1 }'
 }
 
 # ── CONTAINERS THIS ECOSYSTEM STARTED THAT COMPOSE CANNOT SEE.
@@ -832,7 +894,7 @@ for_each_stack() {
     # Name-indexed lookup, not an if-chain: an unmatched name must ERROR, and
     # an `else` would turn a typo into a silent fall-through to the last array.
     local -a compose
-    local is_manager skipped skip_file
+    local is_manager is_broker skipped skip_file
     for stack in "${order[@]}"; do
         # WHICH FILE THIS NAME IS, BEFORE ANY DECISION IS TAKEN ABOUT IT. The
         # resolve used to happen AFTER the two guards below, and both guards
@@ -880,8 +942,44 @@ for_each_stack() {
             continue
         fi
         echo -e "\n── ${stack} ──"
-        "${compose[@]}" "$@"
-        status=$?
+        is_broker=0
+        [ -n "${STACK_COMPOSE_FILE:-}" ] && \
+            [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ] && is_broker=1
+        if [ "$is_broker" = "1" ]; then
+            # THE BROKER'S STACK IS WALKED IN TWO HALVES. Mosquitto first and on
+            # its own; the rest (SqlCapture, which builds Rust) after, so its
+            # failure is ITS failure and never the bus's.
+            local -a others=()
+            mapfile -t others < <(broker_stack_others "${compose[@]}")
+            case "$1" in
+                down|stop|kill|rm)
+                    log_warn "$BROKER_CONTAINER is protected — ${1} leaves it running; its stack-mates go."
+                    if [ ${#others[@]} -gt 0 ]; then
+                        "${compose[@]}" rm -s -f "${others[@]}"
+                        status=$?
+                    else
+                        status=0
+                    fi
+                    ;;
+                up)
+                    ensure_broker
+                    status=$?
+                    if [ ${#others[@]} -gt 0 ]; then
+                        "${compose[@]}" "$@" --no-deps "${others[@]}"
+                        local rest=$?
+                        [ $rest -ne 0 ] && log_warn "$BROKER_STACK_NAME: the broker is up; ${others[*]} failed (exit $rest)."
+                        [ $status -eq 0 ] && status=$rest
+                    fi
+                    ;;
+                *)
+                    "${compose[@]}" "$@"
+                    status=$?
+                    ;;
+            esac
+        else
+            "${compose[@]}" "$@"
+            status=$?
+        fi
         [ $status -ne 0 ] && worst=$status
 
         # THE SITE OPENS THE MOMENT THE THING THAT SERVES IT IS UP, which is

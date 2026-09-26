@@ -25,7 +25,13 @@ log_step "1/6. Unmounting Old Container Stacks & Cleaning Orphans..."
 for_each_stack reverse down || log_warn "Compose down completed with warnings."
 
 # By label, because a container compose has lost track of still owns the name.
-docker rm -f $(docker ps -aq --filter label=com.docker.compose.project=apk-audio) 2>/dev/null || true
+# THE BROKER AND THE MANAGER ARE NOT SWEPT (is_protected_container): this line
+# is how Broker-Mosquitto disappeared, and its volume's retained topics with it.
+docker ps -a --filter label=com.docker.compose.project=apk-audio --format '{{.ID}}\t{{.Names}}' 2>/dev/null \
+    | while IFS=$'\t' read -r id name; do
+        is_protected_container "$name" || docker rm -f "$id" >/dev/null 2>&1
+    done
+ensure_broker || log_warn "The broker did not come up; the rebuild carries on and every agent will retry."
 
 log_step "2/6. Synchronizing Ecosystem Skills & Metadata..."
 synch_skills

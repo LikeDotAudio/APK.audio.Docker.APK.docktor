@@ -46,6 +46,18 @@ fi
 
 export APKAUDIO_REPO="${APKAUDIO_REPO:-$REPO_ROOT}"
 
+# THE BROKER CANNOT BE STOPPED FROM HERE (_common.sh, is_protected_container).
+# Its stack-mates can: down of this pod removes them and leaves the bus up.
+if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
+    mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
+    log_warn "$BROKER_CONTAINER is protected and stays up; stopping only: ${others[*]:-nothing}"
+    announce COMPOSE_RUN "{\"action\":\"down-stack\",\"stack\":\"$STACK\",\"spared\":\"$BROKER_CONTAINER\"}"
+    status=0
+    [ ${#others[@]} -gt 0 ] && { "${STACK_COMPOSE[@]}" rm -s -f "${others[@]}"; status=$?; }
+    announce COMPOSE_RESULT "{\"action\":\"down-stack\",\"stack\":\"$STACK\",\"exit_code\":$status}"
+    exit $status
+fi
+
 log_step "Stopping $STACK..."
 announce COMPOSE_RUN "{\"action\":\"down-stack\",\"stack\":\"$STACK\",\"volumes\":$WITH_VOLUMES}"
 if [ $WITH_VOLUMES -eq 1 ]; then

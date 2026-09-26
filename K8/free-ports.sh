@@ -65,6 +65,7 @@ EMBER_COMPOSE_FILE="$EMBER_COMPOSE_FILE" \
 LOGGER_COMPOSE_FILE="$LOGGER_COMPOSE_FILE" \
 SQLCLUSTER_COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE" \
 ONLY_STACK_FILE="${ONLY_STACK:+$STACK_COMPOSE_FILE}" \
+MANAGER_CONTAINER="$MANAGER_CONTAINER" BROKER_CONTAINER="$BROKER_CONTAINER" \
 python3 - "${ARGS[@]}" <<'PY'
 import os
 import re
@@ -136,6 +137,9 @@ def _ancestor_chain():
 ORDERED_BY = os.environ.get('APKAUDIO_ORDERED_BY') or 'nobody named (run by hand)'
 CHAIN = _ancestor_chain()
 ORDER = f"received command from {ORDERED_BY} via {CHAIN}"
+# The manager and the broker (_common.sh is_protected_container).
+PROTECTED = {n for n in (os.environ.get('MANAGER_CONTAINER', 'DockTor'),
+                         os.environ.get('BROKER_CONTAINER', 'Broker-Mosquitto')) if n}
 
 
 def port_is_free(port, host='127.0.0.1'):
@@ -344,6 +348,11 @@ def free_the_port(port):
                 time.sleep(0.1)
 
     for identifier, name in containers_publishing(port):
+        # PROTECTED (_common.sh): the manager and the broker are never evicted
+        # for a port — a stack that wants 1883 is the one that is wrong.
+        if name in PROTECTED:
+            print(f"    port {port} is held by protected {name} -- never evicted", flush=True)
+            continue
         attempted = True
         print(f"    \U0001f4a5 {name} ({identifier}) {ORDER} to shut down "
               f"-- it publishes port {port}", flush=True)
