@@ -12,7 +12,11 @@
 # sample, and a meter built by summing instants misses everything between them.
 # One stats call per container over the daemon socket, one-shot so it does not
 # wait the second a streaming sample needs; forty containers is forty short calls.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+# NO _common.sh, ON PURPOSE (PLAN-3319.01). Nothing below reads a variable or
+# calls a function from it, and sourcing it cost ~60 ms of CPU — more than the
+# work itself — on a script the manager runs on a clock: the cost meter every
+# 30 s, the resource sampler every minute, the live meters every 5 s. Source
+# it again the day this script needs something from it.
 
 python3 - <<'PY'
 import calendar

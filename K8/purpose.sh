@@ -562,6 +562,16 @@ PURPOSE = {
         "SAP is how AES67 senders advertise a stream. Without it those streams exist on "
         "the wire and nowhere on the bus."),
 
+    "Plugin-SERIAL_COM": (
+        "This machine's serial ports on the bus. Role: instruments",
+        "serial_com.py on apk-plugins-python:local, reading /sys for every real serial "
+        "port (USB adapters, CDC-ACM, onboard UARTs) and publishing each one retained "
+        "under APK.audio/System/Protocols/serial_com/incoming/, with the alias SERIAL.py "
+        "gave it. It never opens a port.",
+        "The Discovery Engine raises it when a serial port is present and executes it "
+        "when the last one is unplugged; its Serial tab shows the same ports beside "
+        "every USB device."),
+
     "Plugin-SOUNDCARD_IN": (
         "Sound card capture offered over WebRTC. Role: sound",
         "soundcard-to-webrtc on host networking with /dev/snd, capturing the ALSA "

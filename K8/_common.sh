@@ -85,10 +85,36 @@ first_existing() {
 
 # stack_dir <folder-name> — where a stack folder actually IS under APK:PODS.
 # Dynamically finds the folder regardless of pod nesting depth.
+# ONE WALK, NOT ONE PER STACK (PLAN-3319.01). Every script sources this file,
+# and the legacy variables below resolved a dozen stacks with a `find` over the
+# whole PODS tree EACH — about half of the ~0.12 s CPU this file cost every
+# script, on a dashboard that runs five to twenty scripts a minute. The tree is
+# now walked once, into _STACK_DIRS (first match wins, in the same traversal
+# order `find -name … | head -n 1` used), before the first lookup. A name the
+# index lacks — a folder made after the walk — still gets the old `find`.
+declare -gA _STACK_DIRS=()
+_STACK_DIRS_BUILT=""
+# awk keeps the first path per name and writes the assignments; ONE eval sets
+# them. Not a `while read` loop: bash reads a pipe a byte at a time, and ~100 KB
+# of paths was 100 000 read() calls — more than the finds it replaced.
+index_stack_dirs() {
+    _STACK_DIRS=()
+    # Plain `find` + awk's last `/` field, not `find -printf`: the DockTor image
+    # is Alpine, and BusyBox find has no -printf.
+    eval "$(find "$DOCKERS_DIR" -maxdepth 4 -type d 2>/dev/null \
+        | awk -F/ 'function q(s) { gsub(/\047/, "\047\\\047\047", s); return "\047" s "\047" }
+                  $NF != "" && !seen[$NF]++ { print "_STACK_DIRS[" q($NF) "]=" q($0) }')"
+    _STACK_DIRS_BUILT=1
+}
+
 stack_dir() {
     local want="$1" found
     if [ -d "$DOCKERS_DIR/$want" ]; then
         printf '%s' "$DOCKERS_DIR/$want"
+        return 0
+    fi
+    if [ -n "$_STACK_DIRS_BUILT" ] && [ -n "${_STACK_DIRS[$want]+x}" ] && [ -d "${_STACK_DIRS[$want]}" ]; then
+        printf '%s' "${_STACK_DIRS[$want]}"
         return 0
     fi
     found="$(find "$DOCKERS_DIR" -maxdepth 4 -type d -name "$want" 2>/dev/null | head -n 1)"
@@ -101,6 +127,33 @@ stack_dir() {
 
 # stack_compose_file <stack-name> [compose-filename]
 # Dynamically resolves a compose file for any stack.
+# stack_compose_file_into VAR <stack-name> [compose-filename] — the same answer,
+# written into VAR instead of printed. The legacy block below resolved a dozen
+# stacks through `$( )`, a fork each, which with the stack index built was the
+# largest thing left in sourcing this file (PLAN-3319.01).
+stack_compose_file_into() {
+    local __var="$1"; shift
+    local want="$1" file="${2:-}" sdir cand
+    if [ -d "$DOCKERS_DIR/$want" ]; then
+        sdir="$DOCKERS_DIR/$want"
+    elif [ -n "$_STACK_DIRS_BUILT" ] && [ -n "${_STACK_DIRS[$want]+x}" ] && [ -d "${_STACK_DIRS[$want]}" ]; then
+        sdir="${_STACK_DIRS[$want]}"
+    else
+        sdir="$(stack_dir "$want")"
+    fi
+    if [ -n "$file" ]; then
+        if [ -f "$sdir/Docker/$file" ]; then printf -v "$__var" '%s' "$sdir/Docker/$file"; return 0; fi
+        if [ -f "$sdir/$file" ]; then printf -v "$__var" '%s' "$sdir/$file"; return 0; fi
+    else
+        if [ -f "$sdir/Docker/docker-compose.yml" ]; then printf -v "$__var" '%s' "$sdir/Docker/docker-compose.yml"; return 0; fi
+        if [ -f "$sdir/docker-compose.yml" ]; then printf -v "$__var" '%s' "$sdir/docker-compose.yml"; return 0; fi
+        cand="$(find "$sdir" -maxdepth 2 -type f -name "docker-compose*.yml" 2>/dev/null | head -n 1)"
+        if [ -n "$cand" ]; then printf -v "$__var" '%s' "$cand"; return 0; fi
+    fi
+    printf -v "$__var" '%s' ""
+    return 1
+}
+
 stack_compose_file() {
     local want="$1" file="${2:-}" sdir
     sdir="$(stack_dir "$want")"
@@ -117,27 +170,28 @@ stack_compose_file() {
     return 1
 }
 
-# Dynamically resolve legacy stack variables
-SQLCLUSTER_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:SQL")"
+# Dynamically resolve legacy stack variables — off ONE walk of the tree.
+index_stack_dirs
+stack_compose_file_into SQLCLUSTER_COMPOSE_FILE "DATABASE:server:SQL"
 COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"
-BAREMETAL_COMPOSE_FILE="$(stack_compose_file "BareMetal")"
-BAREMETAL_HARDWARE_COMPOSE_FILE="${BAREMETAL_HARDWARE_COMPOSE_FILE:-$(stack_compose_file "BareMetal" "docker-compose.hardware.yml")}"
+stack_compose_file_into BAREMETAL_COMPOSE_FILE "BareMetal"
+[ -n "${BAREMETAL_HARDWARE_COMPOSE_FILE:-}" ] || stack_compose_file_into BAREMETAL_HARDWARE_COMPOSE_FILE "BareMetal" "docker-compose.hardware.yml"
 BAREMETAL_ROOT="$(stack_dir "BareMetal")/SRC"
-MQTT_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT")"
-PORTAL_COMPOSE_FILE="$(stack_compose_file "DATABUS:Broker:MQTT" "docker-compose.portal-broker.yml")"
-PLUGINS_COMPOSE_FILE="$(stack_compose_file "discovery")"
-[ -z "$PLUGINS_COMPOSE_FILE" ] && PLUGINS_COMPOSE_FILE="$(stack_compose_file "plugins:Build")"
+stack_compose_file_into MQTT_COMPOSE_FILE "DATABUS:Broker:MQTT"
+stack_compose_file_into PORTAL_COMPOSE_FILE "DATABUS:Broker:MQTT" "docker-compose.portal-broker.yml"
+stack_compose_file_into PLUGINS_COMPOSE_FILE "discovery"
+[ -z "$PLUGINS_COMPOSE_FILE" ] && stack_compose_file_into PLUGINS_COMPOSE_FILE "plugins:Build"
 # ── POD:protocols IS ONE STACK OF THREE CONTAINERS. Its pod-root compose file
 # `include:`s the three below, and IT is what for_each_stack walks. The three
 # keep their own variables because `compose.sh nmos`, verify.sh and
 # panic-reboot.sh all name them, and because each is still mountable on its own
 # (every one declares `name: protocols`, so it lands in the pod's project).
-PROTOCOLS_COMPOSE_FILE="$(stack_compose_file "POD:protocols")"
-NMOS_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:discovery:NMOS")"
-AES70_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:DEV:AES70")"
-NETBOX_COMPOSE_FILE="$(stack_compose_file "DATABASE:server:NETBOX")"
-EMBER_COMPOSE_FILE="$(stack_compose_file "PROTOCOL:DEV:EMBER")"
-LOGGER_COMPOSE_FILE="$(stack_compose_file "DATABASE:volume:Log STORAGE")"
+stack_compose_file_into PROTOCOLS_COMPOSE_FILE "POD:protocols"
+stack_compose_file_into NMOS_COMPOSE_FILE "PROTOCOL:discovery:NMOS"
+stack_compose_file_into AES70_COMPOSE_FILE "PROTOCOL:DEV:AES70"
+stack_compose_file_into NETBOX_COMPOSE_FILE "DATABASE:server:NETBOX"
+stack_compose_file_into EMBER_COMPOSE_FILE "PROTOCOL:DEV:EMBER"
+stack_compose_file_into LOGGER_COMPOSE_FILE "DATABASE:volume:Log STORAGE"
 LOG_VOLUME_NAME="apk-audio-logs"
 
 # ── DOCKTOR OWN PERSISTENT STORAGE. The same shape as the log volume above and
@@ -198,8 +252,26 @@ netbox_auth_header() {
     printf 'Authorization: Token %s\n' "$key"
 }
 
-# Compose command, resolved once.
-if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+# Compose command, resolved once — and once PER RUN, not once per script: a
+# script that calls another (apps.sh → endpoints.sh, eight times a scan) hands
+# its answer down in APK_COMMON_COMPOSE instead of the child forking the
+# compose plugin again to ask the same question (PLAN-3319.01).
+# AND WITHOUT EXECUTING THE PLUGIN when its binary is where the docker CLI
+# looks for it: `docker compose version` cost ~20 ms of CPU on every script,
+# and an executable plugin in the CLI's own search path is the same answer.
+_compose_plugin_present() {
+    local d
+    for d in "${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins" /usr/local/lib/docker/cli-plugins \
+             /usr/local/libexec/docker/cli-plugins /usr/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins; do
+        [ -x "$d/docker-compose" ] && return 0
+    done
+    return 1
+}
+if [ "${APK_COMMON_COMPOSE:-}" = "docker compose" ]; then
+    COMPOSE_BASE=(docker compose)
+elif [ "${APK_COMMON_COMPOSE:-}" = "docker-compose" ]; then
+    COMPOSE_BASE=(docker-compose)
+elif command -v docker &>/dev/null && { _compose_plugin_present || docker compose version &>/dev/null; }; then
     COMPOSE_BASE=(docker compose)
 elif command -v docker-compose &>/dev/null; then
     COMPOSE_BASE=(docker-compose)
@@ -207,6 +279,7 @@ else
     log_error "Docker / Docker Compose is not installed or not running."
     exit 1
 fi
+export APK_COMMON_COMPOSE="${COMPOSE_BASE[*]}"
 
 # ONE PROJECT FOR OURS (`apk-audio`): core, BareMetal, broker, the portal
 # (web stacks), the plugins and the manager. nmos/aes70/netbox/ember keep their own — third-party source we
@@ -218,7 +291,20 @@ fi
 # ⚠️ `--remove-orphans` under a shared project deletes the other files'
 #    containers. rebuild-all.sh and panic.sh omit it deliberately.
 # Dynamically register stacks from docktor.json
-eval "$(python3 "$MANAGEMENT_SCRIPTS_DIR/config_helper.py" bash_eval apk-audio "$DOCKERS_DIR")"
+# The same hand-down as APK_COMMON_COMPOSE: a child script of this run reuses
+# the parent's reading, keyed on the tree it was read from AND ON ITS AGE — at
+# most 60 s old — so a long-lived process that happened to be started from a
+# shell that sourced this file (a terminal manager) can never serve its
+# children a reading from the day it started. A top-level script (every one the
+# dashboard starts) always reads it fresh.
+if [ "${APK_COMMON_CONFIG_KEY:-}" != "$DOCKERS_DIR" ] || [ -z "${APK_COMMON_CONFIG_EVAL:-}" ] \
+   || [ $(( ${EPOCHSECONDS:-0} - ${APK_COMMON_CONFIG_AT:-0} )) -gt 60 ]; then
+    APK_COMMON_CONFIG_EVAL="$(python3 "$MANAGEMENT_SCRIPTS_DIR/config_helper.py" bash_eval apk-audio "$DOCKERS_DIR")"
+    APK_COMMON_CONFIG_KEY="$DOCKERS_DIR"
+    APK_COMMON_CONFIG_AT="${EPOCHSECONDS:-0}"
+    export APK_COMMON_CONFIG_EVAL APK_COMMON_CONFIG_KEY APK_COMMON_CONFIG_AT
+fi
+eval "$APK_COMMON_CONFIG_EVAL"
 
 # THE NODE'S ROLE, AND THE DEFAULT THAT WAS DOCUMENTED BUT NEVER WRITTEN.
 # A terminal node declares its ROLE, not its plugins (APK:discovery/README.md

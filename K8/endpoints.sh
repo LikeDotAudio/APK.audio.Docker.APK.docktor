@@ -268,7 +268,7 @@ emit_endpoint Ember-Provider 9000/tcp 9000 copy \
 # One `open` row — the whole console is one page at /. It is DECLARED here so
 # DockTor holds the URL now; the row reads `down` until the container runs and
 # `open ↗` the moment it binds 8140. See
-# LIBRARY/lib:MIB/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
+# plugin/plugin:SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
 # container is given decides which switch it configures (first: TEG-240WS).
 emit_endpoint Switch-GUI 8140/tcp 8140 open \
     "Switch Config (MIB-driven)" "http://{host}:{port}/"

@@ -8,7 +8,11 @@
 # reader here wants ONE reading that ends.
 # Stopped containers are absent by design — a zero row for a stopped container
 # is a number that looks like telemetry. Join against ps.sh for every container.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+# NO _common.sh, ON PURPOSE (PLAN-3319.01). Nothing below reads a variable or
+# calls a function from it, and sourcing it cost ~60 ms of CPU — more than the
+# work itself — on a script the manager runs on a clock: the cost meter every
+# 30 s, the resource sampler every minute, the live meters every 5 s. Source
+# it again the day this script needs something from it.
 
 docker stats --no-stream --format \
     '{{.Name}}	{{.CPUPerc}}	{{.MemUsage}}	{{.MemPerc}}	{{.NetIO}}	{{.BlockIO}}	{{.PIDs}}'

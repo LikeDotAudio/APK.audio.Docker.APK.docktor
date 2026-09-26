@@ -27,13 +27,35 @@ WANT="${1:-}"
 
 wanted() { [ -z "$WANT" ] || [ "$WANT" = "$1" ]; }
 
+# ONE `docker ps` AND ONE endpoints.sh PER CONTAINER, PER RUN (PLAN-3319.01).
+# Every gatherer asked `docker ps` again, and every label asked endpoints.sh
+# again — a whole script, _common.sh and all — so one scan ran endpoints.sh a
+# dozen times for six containers, and this script cost ~1.4 s of CPU on the
+# dashboard's 15 s beat. Both answers are read once and reused; endpoints.sh's
+# output is kept in a per-run folder because endpoint_uri runs inside `$( )`,
+# where a shell variable set by one call is gone before the next.
+_RUNNING_NAMES=""
+_RUNNING_READ=""
 container_is_up() {
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+    if [ -z "$_RUNNING_READ" ]; then
+        _RUNNING_NAMES="$(docker ps --format '{{.Names}}' 2>/dev/null)"
+        _RUNNING_READ=1
+    fi
+    printf '%s\n' "$_RUNNING_NAMES" | grep -qx "$1"
 }
+
+_ENDPOINT_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/apps-endpoints.XXXXXX" 2>/dev/null)" || _ENDPOINT_CACHE=""
+[ -n "$_ENDPOINT_CACHE" ] && trap 'rm -rf "$_ENDPOINT_CACHE"' EXIT
 
 # The up URI endpoints.sh reports for a container, or empty.
 endpoint_uri() {
-    local container="$1" want_label="$2"
+    local container="$1" want_label="$2" cached
+    if [ -n "$_ENDPOINT_CACHE" ]; then
+        cached="$_ENDPOINT_CACHE/$(printf '%s' "$container" | tr -c 'A-Za-z0-9._-' '_')"
+        [ -f "$cached" ] || "$MANAGEMENT_SCRIPTS_DIR/endpoints.sh" "$container" > "$cached" 2>/dev/null
+        awk -F'\t' -v label="$want_label" '$3 == label && $5 == "up" { print $4; exit }' "$cached"
+        return 0
+    fi
     "$MANAGEMENT_SCRIPTS_DIR/endpoints.sh" "$container" 2>/dev/null \
         | awk -F'\t' -v label="$want_label" '$3 == label && $5 == "up" { print $4; exit }'
 }

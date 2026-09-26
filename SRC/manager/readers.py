@@ -15,6 +15,7 @@ import os
 import re
 import time
 import json
+import subprocess
 import threading
 
 from .bus import emit
@@ -549,6 +550,23 @@ def run_container_tests(on_line_callback=None):
 
 
 WATCHDOG_ACTIVE = False
+# The longest the watchdog trusts an unchanged `docker ps -a` without running
+# the full stacks.sh check. See start_watchdog.
+WATCHDOG_FULL_SECONDS = 300
+
+
+def _container_fingerprint():
+    """Every container's name and state, as one string — or None if docker
+    could not be asked. Direct, like ping.py's `ip neigh`: a script would cost
+    ten times what it saves."""
+    try:
+        done = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.State}}"],
+                              capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    return "\n".join(sorted(done.stdout.splitlines()))
 
 
 def watchdog_active():
@@ -569,22 +587,42 @@ def start_watchdog(interval=30):
     WATCHDOG_ACTIVE = True
     containerised = os.path.exists("/.dockerenv")
 
+    # THE FULL CHECK ONLY WHEN SOMETHING MOVED (PLAN-3319.01). stacks.sh — a
+    # script, _common.sh, two `docker ps` and a parse of every compose file —
+    # ran every 30 s for ever and was the largest single cost of an idle
+    # DockTor. Each beat now reads one `docker ps -a` (names and states, ~10 ms)
+    # and runs stacks.sh only when that differs from the last beat that found
+    # nothing to remount, or every WATCHDOG_FULL_SECONDS regardless (a stack
+    # declared since, which no container state would reveal). A beat that DID
+    # remount never records a fingerprint, so a stack that stays dark is
+    # retried on every beat exactly as before.
+    state = {"clean": None, "full_at": 0.0}
+
     def loop():
         time.sleep(15)
         while True:
             try:
                 if not is_any_script_running():
+                    fingerprint = _container_fingerprint()
+                    fresh = time.time() - state["full_at"] < WATCHDOG_FULL_SECONDS
+                    if fingerprint is not None and fingerprint == state["clean"] and fresh:
+                        time.sleep(interval)
+                        continue
                     stack_list = read_stacks(quiet=True)
+                    state["full_at"] = time.time()
+                    remounted = False
                     for s in stack_list:
                         if s.get("manager") and not containerised:
                             continue
                         if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
                             stack_name = s.get("stack")
                             if stack_name and not is_any_script_running():
+                                remounted = True
                                 emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
                                 run_management_script('up-stack.sh', args=[stack_name], cancellable=True,
                                                       ordered_by=f"the DockTor watchdog ({stack_name} was down)")
                                 time.sleep(10)
+                    state["clean"] = None if remounted else fingerprint
             except Exception as err:
                 emit("WATCHDOG_ERROR", {"error": str(err)})
             time.sleep(interval)
