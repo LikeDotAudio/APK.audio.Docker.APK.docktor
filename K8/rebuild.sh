@@ -55,14 +55,55 @@ for container in "$@"; do
 
     # THE MANAGER CANNOT REBUILD ITSELF FROM INSIDE: compose stops the container
     # running this script between the stop and the start, and the bench is left
-    # with DockTor Exited (137) and a `<id>_DockTor` stuck in Created. Same rule
-    # as up-stack.sh. From a host terminal it is safe.
+    # with DockTor Exited (137) and a `<id>_DockTor` stuck in Created. So from
+    # inside, the rebuild is HANDED OFF to a detached sibling off the manager's
+    # own image — panic.sh's pattern — which runs the checkout's
+    # `manager.sh up` (build, then recreate) and outlives the swap. From a host
+    # terminal there is nothing to detach from and the loop below does it.
     if [ -f /.dockerenv ] && { [ "$container" = "$MANAGER_CONTAINER" ] \
         || [ "$(docker inspect --format '{{.Name}}' "$container" 2>/dev/null)" = "/$MANAGER_CONTAINER" ]; }; then
-        log_error "Refusing to rebuild $MANAGER_CONTAINER from inside $MANAGER_CONTAINER."
-        echo "  It would stop the container running this rebuild halfway through."
-        echo "  From a host terminal:  ./APK:PODS/Docktor/K8/manager.sh up"
-        announce CONTAINER_REBUILD_REFUSED "{\"container\":\"$container\",\"reason\":\"self\"}"
+        manager_script="$MANAGEMENT_SCRIPTS_DIR/manager.sh"
+        case "$MANAGEMENT_SCRIPTS_DIR" in
+            /app/*)
+                from_checkout="$REPO_ROOT/${MANAGEMENT_SCRIPTS_DIR#/app/}/manager.sh"
+                [ -f "$from_checkout" ] && manager_script="$from_checkout"
+                ;;
+        esac
+        # No checkout bound means nothing to build from: refuse, as before.
+        if [ ! -f "$manager_script" ] || [ ! -d "$DOCKERS_DIR" ]; then
+            log_error "Refusing to rebuild $MANAGER_CONTAINER: no checkout is bound here to build it from."
+            echo "  From a host terminal:  ./APK:PODS/Docktor/K8/manager.sh up"
+            announce CONTAINER_REBUILD_REFUSED "{\"container\":\"$container\",\"reason\":\"no_checkout\"}"
+            worst=3
+            continue
+        fi
+        rebuild_container="${MANAGER_CONTAINER}-Self-Rebuild"
+        log_step "Handing the $MANAGER_CONTAINER rebuild to a detached sibling ($rebuild_container)"
+        docker rm -f "$rebuild_container" >/dev/null 2>&1 || true
+        # --mount, NEVER -v: repo paths carry colons. --network host to match
+        # the manager. No --rm, so `docker logs` still answers after the swap.
+        if docker run -d \
+                --name "$rebuild_container" \
+                --network host \
+                --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+                --mount "type=bind,source=$REPO_ROOT,target=$REPO_ROOT" \
+                --workdir "$REPO_ROOT" \
+                --env APKAUDIO_REPO="$REPO_ROOT" \
+                --env APKAUDIO_UID="${APKAUDIO_UID:-}" \
+                --env APKAUDIO_GID="${APKAUDIO_GID:-}" \
+                --env APKAUDIO_NO_OPEN=1 \
+                "$MANAGER_IMAGE" \
+                bash "$manager_script" up >/dev/null 2>&1; then
+            announce CONTAINER_REBUILD_HANDOFF "{\"container\":\"$container\",\"helper\":\"$rebuild_container\",\"image\":\"$MANAGER_IMAGE\"}"
+            echo ""
+            echo "🩺 $MANAGER_CONTAINER REBUILD HANDED OFF to $rebuild_container."
+            echo "   It builds the new image first; if the build fails, the old $MANAGER_CONTAINER keeps running."
+            echo "   When it swaps, THIS TAB GOES DARK FOR A MOMENT — reload and it is the new one."
+            echo "   Watch it with:  docker logs -f $rebuild_container"
+            continue
+        fi
+        log_error "Could not start $rebuild_container from $MANAGER_IMAGE — nothing was touched."
+        announce CONTAINER_REBUILD_HANDOFF_FAILED "{\"container\":\"$container\",\"helper\":\"$rebuild_container\",\"image\":\"$MANAGER_IMAGE\"}"
         worst=3
         continue
     fi

@@ -329,9 +329,9 @@ eval "$APK_COMMON_CONFIG_EVAL"
 # WHAT IS COLLECTED: every `profiles:` in the discovery compose file and in the
 # files it `include:`s — which IS the set of plugin roles, because a plugin is
 # a service in one of those files and its profile is its role.
-# `build` IS THE ONE EXCLUSION, and it is not a role: plugins-image and
-# plugins-python-image exist to be BUILT, and their `command: ["true"]` would
-# leave two exited containers behind every `up`.
+# `build` IS THE ONE EXCLUSION, and it is not a role: plugins-image exists to
+# be BUILT, and its `command: ["true"]` would leave an exited container behind
+# every `up`.
 # ⚠️ SOME ROLES NEED A VALUE BEFORE THEIR CONTAINER CAN DO ANYTHING —
 #    `switches` wants APK_NETGEAR_HOST / APK_TRENDNET_HOST, `netbox-sync` wants
 #    NETBOX_API_TOKEN_WRITE, `puck` wants a SpaceNavigator plugged in. They are
@@ -364,7 +364,7 @@ for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "
 unset _apk_role
 
 # ── THE PUCK THAT IS NOT PLUGGED IN. `puck` is in the default role list above,
-# and plugin:SPACENAVIGATOR names a `devices:` entry — so on a bench with no
+# and PLUGIN:SPACENAVIGATOR names a `devices:` entry — so on a bench with no
 # SpaceNavigator on it compose does not skip that container, it REFUSES:
 #   error gathering device information while adding custom device
 #   "/dev/input/by-id/usb-3Dconnexion_SpaceNavigator-event-if00": no such file
@@ -1013,7 +1013,7 @@ for_each_stack() {
 # IDEMPOTENT — the `plugins` alias hands over COMPOSE_PLUGINS, which already
 # carries the same flags from the role loop, so a second pass adds none.
 # AND EACH PLUGIN FILE ON ITS OWN, which is the second half and was missing:
-# every `plugin:*` is ALSO a stack in its own right — it is in the walk, and it
+# every `PLUGIN:*` is ALSO a stack in its own right — it is in the walk, and it
 # is the per-stack remount button on the dashboard — and reached that way it
 # came through here, matched nothing, and ran profile-less. Compose then said
 # `no service selected` and exited 0, so a mount printed that line twenty-two

@@ -339,7 +339,14 @@ def instrument_routes(container):
     if mod and fam:
         api_path = f"/api/instrument/api?model={urllib.parse.quote(mod)}&family={urllib.parse.quote(fam)}"
         spec_path = f"/api/instrument/{fam}/{mod}/{mod}.api.json"
-        routes.append(route("GET", api_path, f"http://localhost:8080{api_path}", "open", f"Public API definition for {fam}/{mod}"))
+        routes.append(route("GET", api_path, f"http://localhost:8080{api_path}", "open", f"Specification for {fam}/{mod}"))
+        # Status and GUI are THIS box, named by its container's protocol + resource.
+        proto = labels.get("apk.audio.protocol") or ""
+        res = labels.get("apk.audio.resource") or ""
+        if proto and res:
+            box_q = urllib.parse.urlencode({"protocol": proto, "resource": res, "model": mod, "family": fam})
+            routes.append(route("GET", f"/api/instrument/status?{box_q}", f"http://localhost:8080/api/instrument/status?{box_q}", "open", f"Live status of {res}"))
+            routes.append(route("GET", f"/api/instrument/gui?{box_q}", f"http://localhost:8080/api/instrument/gui?{box_q}", "open", f"GUI for {res}"))
         routes.append(route("GET", spec_path, f"http://localhost:8080{spec_path}", "open", f"Raw OpenAPI & SCPI specification for {mod}"))
         routes.append(route("WS", f"/ws/instrument/{fam}/{mod}", f"ws://localhost:15000/ws/instrument/{fam}/{mod}", "open", "Real-time command & reading WebSocket"))
         routes.append(route("GET", f"/api/instrument/{fam}/{mod}/health", f"http://localhost:8080/api/instrument/{fam}/{mod}/health", "open", "Instrument health check endpoint"))
@@ -348,7 +355,7 @@ def instrument_routes(container):
     return {
         "container": container,
         "how": "declared",
-        "source": f"APK:INSTRUMENTS/{fam}/{mod}" if (fam and mod) else "APK:INSTRUMENTS",
+        "source": f"INSTRUMENTS/INSTRUMENT:{fam}/{mod}" if (fam and mod) else "INSTRUMENTS",
         "routes": routes,
     }
 

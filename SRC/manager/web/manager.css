@@ -1077,6 +1077,30 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
   font: 11.5px/1.5 var(--mono); padding: 10px 12px;
 }
 
+/* ------------------------------------------------------- the command queue */
+.queue-count {
+  display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px;
+  border-radius: 9px; background: #fdd835; color: #101014;
+  font: 700 11px var(--mono); text-align: center;
+}
+#queue-dialog { width: min(760px, 92vw); }
+.queue-body { padding: 10px 14px 14px; max-height: 66vh; overflow: auto; }
+.queue-body h4 { margin: 12px 0 6px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
+.queue-body h4:first-child { margin-top: 0; }
+.queue-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 7px 9px; margin-bottom: 5px;
+  background: var(--card); border: 1px solid var(--edge); border-radius: 6px;
+}
+.queue-row .what { flex: 1; min-width: 0; }
+.queue-row .what b { color: var(--ink); }
+.queue-row .who { color: var(--dimmer); font-size: 11px; overflow-wrap: anywhere; }
+.queue-row .closing { color: var(--dim); font-size: 11px; white-space: pre-wrap; }
+.queue-row.running { border-color: #1e88e5; }
+.queue-row.failed { border-color: rgba(239,83,80,.6); }
+.queue-row.dropped, .queue-row.cancelled { opacity: .6; }
+.queue-empty { color: var(--dimmer); font-size: 12px; margin: 0 0 4px; }
+
 /* ------------------------------------------------------- a working card
  * A CONTAINER THAT IS UP IS THE WHOLE TILE, NOT A GLYPH ON IT: renderCard()
  * adds `.up` for tone ok (healthcheck passing) and live (up, no healthcheck),

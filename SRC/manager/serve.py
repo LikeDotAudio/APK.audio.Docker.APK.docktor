@@ -105,6 +105,25 @@ class LogStream:
             self._subscribers.append(subscriber)
         return subscriber
 
+    def notify(self, kind, payload):
+        """Push one record to every open tab WITHOUT keeping it in the ring.
+
+        For state that has a current value rather than a history — the command
+        queue — a replayed old copy would be wrong, so a tab opening fresh
+        asks the route instead.
+        """
+        record = {"kind": kind, "at": time.time(), "payload": payload}
+        with self._lock:
+            dead = []
+            for subscriber in self._subscribers:
+                try:
+                    subscriber.put_nowait(record)
+                except queue.Full:
+                    dead.append(subscriber)
+            for subscriber in dead:
+                self._subscribers.remove(subscriber)
+        return record
+
     def unsubscribe(self, subscriber):
         with self._lock:
             if subscriber in self._subscribers:
@@ -171,6 +190,14 @@ class StreamedRun:
             for kind, text in self.brief.feed(raw):
                 LOG.publish(kind, text)
 
+
+
+# A QUEUED ORDER RUNS AFTER THE REQUEST THAT MADE IT HAS ANSWERED, so it speaks
+# onto the shared log the same way a press does, and every change to the line
+# goes to every open tab as a `queue` record.
+api.QUEUE_OUTPUT.update(stream=StreamedRun,
+                        say=lambda text: LOG.publish("line", text),
+                        changed=lambda snapshot: LOG.notify("queue", snapshot))
 
 class ManagerHandler(BaseHTTPRequestHandler):
     server_version = "DockTor/1.0"
@@ -248,6 +275,8 @@ class ManagerHandler(BaseHTTPRequestHandler):
                 return self._json(api.routes())
             if route == "/api/palette":
                 return self._json(palette.as_json())
+            if route == "/api/queue":
+                return self._json(api.command_queue())
             if route == "/api/actions":
                 return self._json(api.action_table())
             if route == "/api/containers":
@@ -318,8 +347,11 @@ class ManagerHandler(BaseHTTPRequestHandler):
         except ValueError:
             return self._error(400, "Body was not JSON.")
 
-        if route == "/api/broadcast":
-            return self._json(api.broadcast(say=lambda text: LOG.publish("line", text)))
+        if route == "/api/queue/cancel":
+            result = api.cancel_queued(body.get("id"))
+            if result.get("message"):
+                LOG.publish("line", result["message"])
+            return self._json(result)
 
         if route == "/api/chat":
             result = api.chat(body.get("message"))
@@ -359,8 +391,11 @@ class ManagerHandler(BaseHTTPRequestHandler):
                                                 ordered_by=ordered_by)
             if closing:
                 LOG.publish("line", closing)
-            return self._json({"ok": exit_code == 0, "exit_code": exit_code,
-                               "message": closing}, code=200 if exit_code == 0 else 200)
+            # QUEUED IS NOT A FAILURE: the order was taken and will run.
+            queued = exit_code == api.QUEUED
+            return self._json({"ok": exit_code == 0 or queued, "queued": queued,
+                               "exit_code": None if queued else exit_code,
+                               "message": closing})
 
         return self._error(404, "No such route: %s. This manager accepts POST at: %s"
                            % (route, ", ".join(row["path"] for row in api.ROUTES

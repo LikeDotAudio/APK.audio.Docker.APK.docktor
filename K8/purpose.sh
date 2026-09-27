@@ -392,7 +392,7 @@ PURPOSE = {
         "because they live in the checkout rather than in any container."),
 
     # --- APK:plugin:* -- one container per plugin, started by node role --------
-    # Every plugin runs a binary from apk-plugins:local (or apk-plugins-python:local)
+    # Every plugin runs a binary from apk-plugins:local
     # built by APK:discovery, and speaks to the broker. The role is its
     # compose profile; APKAUDIO_PLUGIN_ROLES in _common.sh decides which run here.
     "APK-Discovery-Engine": (
@@ -452,9 +452,8 @@ PURPOSE = {
 
     "Plugin-DESKTOP_MONITOR": (
         "This machine's own telemetry. No role: every node",
-        "linux_desktop_monitor.py on apk-plugins-python:local, host networking, "
-        "publishing CPU, RAM, disks, network counters, temperatures and uptime. "
-        "Not built on the plugin runner, so its healthcheck is disabled.",
+        "apk-desktop-monitor on apk-plugins:local, host networking, "
+        "publishing CPU, RAM, disks, network counters, temperatures and uptime.",
         "Every node reports itself as a machine whatever role it plays. Host "
         "networking is the measurement: interface counters and hostname are only the "
         "host's inside the host's namespace. Without it the node is a name with no vitals."),
@@ -564,10 +563,10 @@ PURPOSE = {
 
     "Plugin-SERIAL_COM": (
         "This machine's serial ports on the bus. Role: instruments",
-        "serial_com.py on apk-plugins-python:local, reading /sys for every real serial "
+        "apk-serial-com on apk-plugins:local, reading /sys for every real serial "
         "port (USB adapters, CDC-ACM, onboard UARTs) and publishing each one retained "
-        "under APK.audio/System/Protocols/serial_com/incoming/, with the alias SERIAL.py "
-        "gave it. It never opens a port.",
+        "under APK.audio/System/Protocols/serial_com/incoming/, with the alias its "
+        "aliases file gives it. It never opens a port.",
         "The Discovery Engine raises it when a serial port is present and executes it "
         "when the last one is unplugged; its Serial tab shows the same ports beside "
         "every USB device."),
@@ -590,7 +589,7 @@ PURPOSE = {
 
     "Plugin-SPACENAVIGATOR": (
         "3Dconnexion SpaceNavigator on the bus. Role: puck",
-        "spacenavigator_probe.py on apk-plugins-python:local, reading the device at "
+        "apk-spacenavigator on apk-plugins:local, reading the device at "
         "APK_SPACENAVIGATOR_DEVICE (by-id path) and publishing six axes and two buttons. "
         "Docker refuses to create it when that device is not plugged in.",
         "It turns the puck into a controller anything on the bus can use. Its own "

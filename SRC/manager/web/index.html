@@ -72,7 +72,11 @@
       </div>
     </div>
 
-    <button class="btn teal" id="broadcast">📡 Broadcast Status to MQTT</button>
+    <!-- THE COMMAND QUEUE. Every verb that could not run the moment it was
+         ordered waits here — presses, countdowns, launch.sh alike — and runs
+         by itself when the bench is free. The count is what is waiting; the
+         dialog names each order, who gave it, and takes it back out. -->
+    <button class="btn teal" id="queue-open">📋 Command Queue <span id="queue-count" class="queue-count" hidden>0</span></button>
 
     <div class="menu" data-menu>
       <button class="btn blue" data-menu-open>🌐 Web Pages ▾</button>
@@ -407,6 +411,14 @@
     <button class="btn plain small" id="sheet-close">Close</button>
   </div>
   <textarea id="sheet-body" spellcheck="false"></textarea>
+</dialog>
+
+<dialog id="queue-dialog">
+  <div class="sheet-head">
+    <h3>📋 Command Queue</h3>
+    <button class="btn plain small" id="queue-close">Close</button>
+  </div>
+  <div id="queue-body" class="queue-body"></div>
 </dialog>
 
 <script src="manager.js"></script>

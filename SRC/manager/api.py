@@ -11,12 +11,14 @@ no port, no container name here.
 THE READ / ACT SPLIT IS THE SAFETY MODEL, enforced by the two tables below:
 serve.py refuses a READ over POST and an ACTION over GET, so a prefetch, a
 crawler or an <img src> elsewhere cannot stop a container.
-ONE ACTION AT A TIME. ACTION_LOCK is held for a whole run and a second request
-is REFUSED, not queued — a rebuild that starts twenty minutes late is worse
-than one that never started.
-EXCEPT `down` and `panic`, which carry `preempts`: they cancel the holder, wait,
-then run. "Refused, another action is already running" answers a stop with the
-reason for pressing it.
+ONE ACTION AT A TIME, AND THE REST WAIT IN LINE. ACTION_LOCK is held for a
+whole run; a verb that arrives while it is held — or while anything is already
+waiting — goes into command_queue.QUEUE and runs when the bench is free. Every
+hand that orders a verb (a press, a countdown, launch.sh) shares that line, and
+GET /api/queue shows it, so nothing the automation is about to do is hidden.
+EXCEPT `down` and `panic`, which carry `preempts`: they EMPTY the line, cancel
+the holder, wait, then run. A remount that fires the moment after a panic is
+the opposite of what the panic asked for.
 """
 
 import os
@@ -41,7 +43,8 @@ from .readers import (read_containers, read_container_apps, read_app_plane,
                       VOLUME_SAMPLE_SECONDS)
 from .diagnose import (diagnose_state, health_status, port_mappings,
                        network_addresses, service_endpoints, configuration_path)
-from .report import publish_status_report, publish_refresh_status, run_reported
+from .report import publish_refresh_status, run_reported
+from .command_queue import CommandQueue
 from .provenance import container_provenance
 from .readers import watchdog_active
 from .ping import ping as ping_device
@@ -333,12 +336,37 @@ ACTIONS = {
     },
 }
 
+# THE TWO CARDS THAT ARE NOT LIKE THE OTHERS. _common.sh's is_protected_container
+# names the same pair on the same environment variables: the manager (this page)
+# and the broker (every plugin's voice and this page's own telemetry). A verb
+# aimed at either earns a second ask, and the second ask says what is different
+# about THIS card rather than repeating the first louder.
+MANAGER_CONTAINER = os.environ.get("APKAUDIO_MANAGER_CONTAINER", "DockTor")
+BROKER_CONTAINER = os.environ.get("APKAUDIO_BROKER_CONTAINER", "Broker-Mosquitto")
+PROTECTED_CONTAINERS = {"manager": MANAGER_CONTAINER, "broker": BROKER_CONTAINER}
+
 # Verbs that take a CONTAINER NAME. Separate table because the arity differs
 # and because each is scoped to one card, so a client with nothing selected
 # cannot reach them.
 CONTAINER_ACTIONS = {
     "restart": {
         "label": "🔄 Restart", "script": "restart.sh", "confirm": None,
+        "protected_confirms": {
+            "manager": [
+                "Restart '{name}'?\n\nThat is DockTor itself — the page you are "
+                "reading this on.",
+                "Are you sure you want to restart the Doctor?\n\nTHIS TAB GOES "
+                "DARK while it comes back. Anything queued here is dropped. "
+                "Reload in a few seconds.",
+            ],
+            "broker": [
+                "Restart '{name}'?\n\nThat is the MQTT broker every plugin, the "
+                "discovery engine and this page's telemetry talk over.",
+                "Are you sure you want to restart the broker?\n\nEvery client "
+                "drops and reconnects; the bench reads as zeros until they do. "
+                "Retained state survives in its volume.",
+            ],
+        },
         "done": "✅ {name} restarted.",
         "failed": "❌ Could not restart {name} — restart.sh exited {code}.",
     },
@@ -350,6 +378,25 @@ CONTAINER_ACTIONS = {
                    "Only this container is touched. The old one keeps running "
                    "until the build succeeds, so a failed build leaves the "
                    "bench as it is.",
+        "protected_confirms": {
+            "manager": [
+                "Rebuild '{name}'?\n\nThat is DockTor itself — the page you are "
+                "reading this on. It cannot rebuild itself from inside, so the "
+                "job is handed to a detached helper container "
+                "({name}-Self-Rebuild).",
+                "Are you sure you want to rebuild the Doctor?\n\nThe new image "
+                "is built first; a failed build leaves this one running. When "
+                "it swaps, THIS TAB GOES DARK — reload and it is the new one. "
+                "Watch it with: docker logs -f {name}-Self-Rebuild",
+            ],
+            "broker": [
+                "Rebuild '{name}'?\n\nThat is the MQTT broker every plugin, the "
+                "discovery engine and this page's telemetry talk over.",
+                "Are you sure you want to rebuild the broker?\n\nWhile it is "
+                "replaced every client drops and reconnects, and the bench reads "
+                "as zeros until they do. Retained state survives in its volume.",
+            ],
+        },
         "done": "✅ {name} rebuilt and running.",
         "failed": "❌ Could not rebuild {name} — the script exited {code}.\n"
                   "   Read the output above; nothing else was touched.",
@@ -429,8 +476,19 @@ STACK_ACTIONS = {
     },
 }
 
-# ONE ACTION AT A TIME, refused rather than queued. See the module header.
+# ONE ACTION AT A TIME; the rest wait in QUEUE. See the module header.
 ACTION_LOCK = threading.Lock()
+
+# What run_action() returns for an order that was put in line rather than run.
+# Not an exit code any script can produce, so no caller mistakes it for one.
+QUEUED = -202
+
+# WHERE A QUEUED RUN SPEAKS. A direct press streams into the request that made
+# it; a queued one runs on the worker thread after that request has answered,
+# so serve.py hands in its log here at start-up. Both default to silence so
+# api.py stays importable without a server.
+QUEUE_OUTPUT = {"stream": lambda: None, "say": lambda text: None,
+                "changed": lambda snapshot: None}
 
 # How long a preempting verb waits for the lock after issuing the cancel. The
 # cancel closes the pipe the runner is blocked reading, so a holder normally
@@ -477,11 +535,16 @@ def action_table():
                     for key, row in ACTIONS.items()},
         # No container verb preempts: they are scoped to one card, and a stop
         # aimed at one container is not an escape hatch from a rebuild.
+        # `protected_confirms` REPLACES `confirms` when the card is one of
+        # `protected`: a client that does not know the field asks the ordinary
+        # question once, which is the old behaviour and not a silent run.
         "container_actions": {key: {"label": row["label"],
                                     "confirm": (confirmations(row) or [None])[0],
                                     "confirms": confirmations(row),
+                                    "protected_confirms": row.get("protected_confirms") or {},
                                     "preempts": False}
                               for key, row in CONTAINER_ACTIONS.items()},
+        "protected": PROTECTED_CONTAINERS,
         # Nor does a stack verb, for the same reason one rung up.
         "stack_actions": {key: {"label": row["label"],
                                 "confirm": (confirmations(row) or [None])[0],
@@ -1064,7 +1127,11 @@ ROUTES = (
      "what": "locate the device behind a card and knock on the wire: alive, dead or unknown"},
     {"method": "GET", "path": "/api/config-script/<name>",
      "what": "the compose file or Dockerfile that built it, and its text"},
-    {"method": "POST", "path": "/api/broadcast", "what": "publish the inventory to every broker"},
+    {"method": "GET", "path": "/api/queue",
+     "what": "the command queue: what is running, what is waiting in line and "
+             "the last orders that finished, with who ordered each"},
+    {"method": "POST", "path": "/api/queue/cancel",
+     "what": "take one waiting order ({id}) out of the line before it runs"},
     {"method": "POST", "path": "/api/chat", "what": "one line onto the bus"},
     {"method": "POST", "path": "/api/cost",
      "what": "set the price per CPU-minute from now on ({price_per_cpu_minute}), "
@@ -1073,7 +1140,8 @@ ROUTES = (
     {"method": "POST", "path": "/api/action/<key>",
      "what": "run one verb from ACTIONS, from CONTAINER_ACTIONS when a "
              "container is named, or from STACK_ACTIONS when a stack is. "
-             "ONE AT A TIME, refused rather than queued"},
+             "ONE AT A TIME — a verb that cannot run now is queued and runs "
+             "when the bench is free"},
 )
 
 
@@ -1112,14 +1180,6 @@ def surface(name, quiet=True):
     }
 
 
-def broadcast(say=None):
-    """Publish the inventory to every broker, as the button used to."""
-    result = publish_status_report("manual", say=say)
-    if result is None:
-        return {"ok": False, "error": "Broker discovery unavailable — nothing broadcast."}
-    return {"ok": True, **result}
-
-
 # ---------------------------------------------------------------------------
 # CHAT. One line onto the bus from whoever is at the manager. Four lines and one
 # topic; the Tkinter Toplevel it replaces was 60 lines of window around them,
@@ -1156,8 +1216,10 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container",
                ordered_by=None):
     """Run one verb from the tables above. (exit_code, closing sentence).
 
-    REFUSED, NOT QUEUED, when another action holds the bench — unless this verb
-    carries `preempts`, in which case it CANCELS the holder and takes the bench.
+    QUEUED, NOT REFUSED, when another action holds the bench or anything is
+    already waiting: the answer is (QUEUED, where it is in line) and the worker
+    runs it later. A verb carrying `preempts` never waits — it empties the
+    line, CANCELS the holder and takes the bench.
     `name` is the argument and `scope` says which table it names. One parameter,
     not two, because the two are alternatives and never both.
     `ordered_by` names the hand on the button — a press, a countdown, a CLI
@@ -1185,56 +1247,132 @@ def run_action(key, name=None, extra=(), on_line=None, scope="container",
     if row is None:
         return 127, f"❌ Unknown action: {key}"
 
-    cancelled = []
-    if not ACTION_LOCK.acquire(blocking=False):
-        if not row.get("preempts"):
-            return 111, ("⏳ Another action is already running. This one was refused "
-                         "rather than queued — a rebuild that starts twenty minutes "
-                         "after it was asked for is worse than one that did not start.")
-        # THE CANCEL IS ISSUED WITHOUT THE LOCK, and has to be: the lock is
-        # what the thing being cancelled is holding. Safe because
-        # cancel_running_scripts() only signals — the holder notices its pipe
-        # close, finishes, and releases below.
-        cancelled = cancel_running_scripts(reason=key)
-        emit("ACTION_PREEMPTED", {"action": key, "cancelled": cancelled})
-        if on_line and cancelled:
-            on_line("🛑 cancelling %s to make way for %s…\n"
-                    % (", ".join(cancelled), row["label"]))
-        if not ACTION_LOCK.acquire(timeout=PREEMPT_WAIT_SECONDS):
-            emit("ACTION_PREEMPT_FAILED", {"action": key,
-                                           "holding": running_scripts()})
-            return 111, ("⏳ %s cancelled the running action, but the bench was "
-                         "still held %.0fs later and nothing was run. Whatever is "
-                         "holding it did not die on a signal — read the output "
-                         "above." % (row["label"], PREEMPT_WAIT_SECONDS))
+    who = ordered_by or "an unnamed caller of the DockTor API"
+    entry = QUEUE.new_entry(key, row["label"], name, scope if name else "bench",
+                            extra, who)
+    entry["_row"], entry["_args"] = row, args
 
+    cancelled, dropped = [], []
+    if row.get("preempts"):
+        dropped = QUEUE.drop_all(row["label"])
+        if dropped:
+            emit("COMMANDS_DROPPED", {"by": key, "dropped": [e["label"] for e in dropped]})
+            if on_line:
+                on_line("🧹 %s emptied the queue: %s\n"
+                        % (row["label"], ", ".join(e["label"] for e in dropped)))
+        if not ACTION_LOCK.acquire(blocking=False):
+            # THE CANCEL IS ISSUED WITHOUT THE LOCK, and has to be: the lock is
+            # what the thing being cancelled is holding. REPEATED UNTIL THE
+            # LOCK COMES FREE, because the queue worker may take the bench in
+            # the instant between the drop above and the first cancel, and the
+            # order it started must die too.
+            deadline = time.monotonic() + PREEMPT_WAIT_SECONDS
+            while True:
+                cancelled += [c for c in cancel_running_scripts(reason=key)
+                              if c not in cancelled]
+                if ACTION_LOCK.acquire(timeout=0.5):
+                    break
+                if time.monotonic() >= deadline:
+                    emit("ACTION_PREEMPT_FAILED", {"action": key,
+                                                   "holding": running_scripts()})
+                    return 111, ("⏳ %s cancelled the running action, but the bench was "
+                                 "still held %.0fs later and nothing was run. Whatever is "
+                                 "holding it did not die on a signal — read the output "
+                                 "above." % (row["label"], PREEMPT_WAIT_SECONDS))
+            emit("ACTION_PREEMPTED", {"action": key, "cancelled": cancelled})
+            if on_line and cancelled:
+                on_line("🛑 cancelled %s to make way for %s…\n"
+                        % (", ".join(cancelled), row["label"]))
+    elif QUEUE.waiting() or not ACTION_LOCK.acquire(blocking=False):
+        held, position, new = QUEUE.put(entry)
+        running = QUEUE.snapshot()["running"]
+        behind = f"behind {running['label']}" if running else "for the bench"
+        if not new:
+            return QUEUED, (f"📋 {row['label']} is already in the queue "
+                            f"(#{held['id']}, position {position}) — not added twice.")
+        emit("COMMAND_QUEUED", {"id": held["id"], "action": key, "name": name,
+                                "position": position, "ordered_by": who})
+        return QUEUED, (f"📋 Queued #{held['id']}: {row['label']}"
+                        + (f" — {name}" if name else "")
+                        + f" — position {position}, waiting {behind}. It runs by "
+                          f"itself when the bench is free; cancel it from 📋 Command Queue.")
+
+    try:
+        exit_code, closing = _execute(entry, on_line)
+    finally:
+        ACTION_LOCK.release()
+    if cancelled:
+        closing = "🛑 Cancelled first: %s\n%s" % (", ".join(cancelled), closing)
+    return exit_code, closing
+
+
+def _execute(entry, on_line):
+    """Run one order with ACTION_LOCK ALREADY HELD. (exit_code, closing).
+
+    The one body both hands share: a direct press in its request thread, and
+    the queue worker in its own.
+    """
+    row, args, name = entry["_row"], entry["_args"], entry["name"]
+    order = f"{row['label']}" + (f" — {name}" if name else "") + f", ordered by {entry['ordered_by']}"
+    if entry.get("state") == "waiting":
+        waited = time.time() - entry["queued_at"]
+        order += f" (queued #{entry['id']}, waited {waited:.0f}s)"
+    QUEUE.started(entry)
+    chat(f"🤖 DockTor Action: {order}")
     # READ AFTER THE ACQUIRE: a preempting verb bumps the epoch on its way in,
     # and reading earlier would have every stop report itself as stopped.
-    who = ordered_by or "an unnamed caller of the DockTor API"
-    order = f"{row['label']}" + (f" — {name}" if name else "") + f", ordered by {who}"
-    chat(f"🤖 DockTor Action: {order}")
     epoch_before = cancel_epoch()
+    exit_code, closing = 1, f"❌ {row['label']} did not finish."
     try:
         exit_code, _ = run_reported(row["script"], args, on_line_callback=on_line,
                                     ordered_by=order)
+        # A CANCELLED RUN IS NOT A FAILED ONE — "❌ Rebuild FAILED, exited -15"
+        # reads as a broken build to whoever deliberately broke it.
+        if exit_code != 0 and cancel_epoch() != epoch_before:
+            closing = ("🛑 %s was CANCELLED by a stop pressed while it ran. "
+                       "Nothing was rolled back — read the output above for "
+                       "how far it got." % row["label"])
+        else:
+            template = row["done"] if exit_code == 0 else row["failed"]
+            closing = template.format(code=exit_code, name=name or "")
+        chat(f"📢 DockTor Result: {closing}")
+        return exit_code, closing
     finally:
-        ACTION_LOCK.release()
+        QUEUE.finished(entry, exit_code, closing)
 
-    # A CANCELLED RUN IS NOT A FAILED ONE — "❌ Rebuild FAILED, exited -15"
-    # reads as a broken build to whoever deliberately broke it.
-    if exit_code != 0 and cancel_epoch() != epoch_before:
-        msg = ("🛑 %s was CANCELLED by a stop pressed while it ran. "
-               "Nothing was rolled back — read the output above for "
-               "how far it got." % row["label"])
-        chat(f"📢 DockTor Result: {msg}")
-        return exit_code, msg
 
-    template = row["done"] if exit_code == 0 else row["failed"]
-    closing = template.format(code=exit_code, name=name or "")
-    if cancelled:
-        closing = "🛑 Cancelled first: %s\n%s" % (", ".join(cancelled), closing)
-    chat(f"📢 DockTor Result: {closing}")
-    return exit_code, closing
+def _execute_queued(entry):
+    """The worker's hand: same body, output onto the shared log."""
+    say = QUEUE_OUTPUT["say"]
+    say(f"📋 ⚡ #{entry['id']} {entry['label']}"
+        + (f" — {entry['name']}" if entry["name"] else "") + " — from the queue…")
+    _, closing = _execute(entry, QUEUE_OUTPUT["stream"]())
+    say(closing)
+
+
+QUEUE = CommandQueue(_execute_queued, ACTION_LOCK,
+                     on_change=lambda snapshot: QUEUE_OUTPUT["changed"](snapshot))
+
+
+def command_queue():
+    """GET /api/queue."""
+    return QUEUE.snapshot()
+
+
+def cancel_queued(entry_id):
+    """POST /api/queue/cancel. Only a WAITING order can be taken out; a running
+    one is stopped with 🛑, which is a different act and says so."""
+    try:
+        entry_id = int(entry_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "No queue id given."}
+    entry = QUEUE.cancel(entry_id)
+    if entry is None:
+        return {"ok": False, "error": f"#{entry_id} is not waiting — it already "
+                                      f"ran, is running, or never existed."}
+    emit("COMMAND_CANCELLED", {"id": entry_id, "action": entry["key"]})
+    return {"ok": True, "cancelled": entry,
+            "message": f"🗑️ Took #{entry_id} {entry['label']} out of the queue."}
 
 
 def health():

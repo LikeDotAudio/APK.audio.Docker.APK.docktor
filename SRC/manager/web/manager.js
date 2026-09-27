@@ -313,7 +313,13 @@ function openStream() {
   const source = new EventSource(at("/api/stream"));
   const note = $("#stream-state");
   source.onopen = () => { note.textContent = "live"; };
-  source.onmessage = (event) => logRecord(JSON.parse(event.data));
+  source.onmessage = (event) => {
+    const record = JSON.parse(event.data);
+    // THE QUEUE IS STATE, NOT A LINE: pushed on every change and never kept in
+    // the log ring, so it repaints the badge and never lands in a swimlane.
+    if (record.kind === "queue") return renderQueue(record.payload);
+    logRecord(record);
+  };
   // EventSource reconnects on its own; saying so is the difference between a
   // quiet bench and a manager nobody noticed had gone deaf.
   source.onerror = () => { note.textContent = "reconnecting…"; };
@@ -3120,25 +3126,55 @@ function follow(on) {
   state.followTimer = on
     ? setInterval(() => scan({ apps: false, quiet: true }), 2000)
     : null;
-  // EVERY BUTTON GOES DARK EXCEPT THE ONES THAT MEAN STOP. Disabling the whole
-  // bar was right for a second build and wrong for 🛑 and 🚨: the tab that
-  // started the rebuild is the tab whose hand is on it. `preempts` comes from
-  // the server action table.
-  $$(".btn[data-action], .btn[data-cverb], .btn[data-saction]").forEach((button) => {
-    button.disabled = on && !preempts(button);
-  });
+  // NO BUTTON GOES DARK. The server QUEUES a verb that cannot run yet, so a
+  // press during a rebuild is an order for afterwards, not a refusal — and
+  // 📋 Command Queue shows it waiting and can take it back out.
   if (!on) scan();
 }
 
-function preempts(button) {
-  const key = button.dataset.action;
-  return Boolean(key && state.actions?.actions?.[key]?.preempts);
+/* ----------------------------------------------------------- command queue */
+/* WHAT THE BENCH HAS BEEN TOLD TO DO AND HAS NOT DONE YET. The badge counts the
+ * waiting orders; the dialog names the running one, every waiting one with
+ * who gave it and a 🗑️ to take it back out, and the last few that finished.
+ * A RUNNING order has no 🗑️ — stopping it is 🛑, which cancels work under way
+ * and says so in its own dialog. */
+function renderQueue(snapshot) {
+  if (!snapshot) return;
+  state.queue = snapshot;
+  const waiting = snapshot.waiting || [];
+  const count = $("#queue-count");
+  if (count) {
+    count.textContent = String(waiting.length);
+    count.hidden = waiting.length === 0;
+  }
+  const body = $("#queue-body");
+  if (!body || !$("#queue-dialog").open) return;
+  const ago = (t) => (t ? behind(Math.max(0, Math.round(Date.now() / 1000 - t))) + " ago" : "");
+  const row = (entry, extra = "") => `
+    <div class="queue-row ${entry.state}">
+      <div class="what">
+        <b>#${entry.id} ${escapeHTML(entry.label)}</b>${entry.name ? ` — <code>${escapeHTML(entry.name)}</code>` : ""}
+        <div class="who">ordered by ${escapeHTML(entry.ordered_by || "?")} · queued ${ago(entry.queued_at)}${entry.state !== "waiting" && entry.state !== "running" ? ` · ${entry.state}` : ""}</div>
+        ${entry.closing ? `<div class="closing">${escapeHTML(entry.closing)}</div>` : ""}
+      </div>${extra}
+    </div>`;
+  const running = snapshot.running;
+  body.innerHTML = `
+    <h4>Running now</h4>
+    ${running ? row(running) : `<p class="queue-empty">Nothing — the bench is free.</p>`}
+    <h4>Waiting (${waiting.length})</h4>
+    ${waiting.length ? waiting.map((entry) => row(entry,
+        `<button class="btn plain small" data-queue-cancel="${entry.id}" title="Take this order out of the line">🗑️</button>`)).join("")
+      : `<p class="queue-empty">Nothing waiting. A verb pressed while another runs lands here and runs by itself when the bench is free.</p>`}
+    <h4>Recent</h4>
+    ${(snapshot.recent || []).length ? snapshot.recent.map((entry) => row(entry)).join("")
+      : `<p class="queue-empty">Nothing has run since this manager started.</p>`}`;
 }
 
 /* ------------------------------------------------------------------- verbs */
-/* WHICH BUTTON IS THE ONE THAT IS RUNNING. follow() greys the whole bar for the
- * length of a verb — it has to, because the server takes ONE action at a time —
- * and a bar of forty identical dimmed buttons does not say which press landed.
+/* WHICH BUTTON IS THE ONE THAT IS RUNNING. The server takes ONE action at a
+ * time and queues the rest, and a bar of forty identical buttons does not say
+ * which press is the one holding the bench.
  * On a build that takes minutes, "the page is busy" is indistinguishable from a
  * click that never landed.
  * THE MARK IS ON THE ELEMENT THAT WAS PRESSED, not on the verb: two rows
@@ -3188,7 +3224,20 @@ async function runAction(key, button, skipConfirm = false, origin = null) {
 async function runContainerAction(key, name, button) {
   const row = state.actions.container_actions[key];
   if (!row) return;
-  if (row.confirm && !(await ask(`${row.label} — ${name}`, row.confirm.replace(/\{name\}/g, name)))) return;
+  // THE DOCTOR AND THE BROKER ASK TWICE. Which card is which comes from the
+  // server (`protected`), the words from the verb's `protected_confirms`.
+  const kind = Object.entries(state.actions.protected || {})
+    .find(([, container]) => container === name)?.[0];
+  const special = kind && row.protected_confirms?.[kind];
+  const confirms = (special?.length ? special : (row.confirms?.length ? row.confirms
+                   : (row.confirm ? [row.confirm] : [])))
+    .map((text) => text.replace(/\{name\}/g, name));
+  for (let step = 0; step < confirms.length; step += 1) {
+    const title = confirms.length > 1
+      ? `${row.label} — ${name} — ask ${step + 1} of ${confirms.length}`
+      : `${row.label} — ${name}`;
+    if (!(await ask(title, confirms[step]))) return;
+  }
   markRunning(button, true);
   follow(true);
   try {
@@ -3204,8 +3253,8 @@ async function runContainerAction(key, name, button) {
  * container publishing a port — so one exited Portal-Broker cost a running
  * Storage-Broker, Broker-Mosquitto, NMOS-Dev and AES70-Dev their uptime, and
  * the local broker refused the status publish in between. up-stack scopes the
- * eviction to its own file. One at a time: the server refuses a second action
- * while one runs, and each post returns only when its script has. */
+ * eviction to its own file. One at a time: each post returns when its script
+ * has, or at once if the server put it in the command queue behind another. */
 async function remountStacks(rows, button, origin) {
   const stacks = [...new Set((rows || []).map((row) => row.compose_file || row.stack).filter(Boolean))];
   const row = state.actions.stack_actions?.["up-stack"];
@@ -3244,15 +3293,14 @@ async function runStackAction(key, stack, button) {
 /* THE POD MENU — ONE FLOATING .menu-items FOR THE WHOLE GRID, drawn at the
  * pointer on a right-click inside a lasso. Rebuilt on every open, so its words
  * come from the server table like every other verb, and a verb pressed while
- * one is running is greyed here the same way follow() greys the bar.
+ * one is running goes into the command queue like any other press.
  * OVER A CARD IT IS THE SAME MENU WITH THE CONTAINER ON TOP: that container's
  * launchers and verbs first, then the pod's. The launchers need
  * /api/container, so they arrive a beat after the menu does. */
 function openPodMenu(name, stack, x, y, container = null) {
   const menu = podMenu();
   const token = (state.podMenuToken = (state.podMenuToken || 0) + 1);
-  const busy = (state.busy || 0) > 0;
-  const off = busy ? " disabled" : "";
+  const off = "";
   // THE MANAGER CANNOT ACT ON ITS OWN POD FROM INSIDE ITS OWN CONTAINER — every
   // stack script refuses it with exit 2 (up-stack.sh, rebuild-stack.sh, …), so
   // offering the row only buys a red failure. Greyed with the host command
@@ -3679,7 +3727,19 @@ async function boot() {
     if (state.view === "volumes") loadVolumes();
   };
   $("#live-resources").onclick = () => armMeters(!state.meters);
-  $("#broadcast").onclick = () => post("/api/broadcast");
+  $("#queue-open").onclick = () => {
+    $("#queue-dialog").showModal();
+    get("/api/queue").then(renderQueue).catch(() => {});
+  };
+  $("#queue-close").onclick = () => $("#queue-dialog").close();
+  $("#queue-body").onclick = async (event) => {
+    const button = event.target.closest("[data-queue-cancel]");
+    if (!button) return;
+    button.disabled = true;
+    const result = await post("/api/queue/cancel", { id: Number(button.dataset.queueCancel) });
+    if (!result.ok && result.error) sayLocally(`⚠️ ${result.error}`);
+  };
+  get("/api/queue").then(renderQueue).catch(() => {});
   $("#clear-log").onclick = () => post("/api/log/clear");
 
   $("#chat").onclick = async () => {

@@ -268,7 +268,7 @@ emit_endpoint Ember-Provider 9000/tcp 9000 copy \
 # One `open` row — the whole console is one page at /. It is DECLARED here so
 # DockTor holds the URL now; the row reads `down` until the container runs and
 # `open ↗` the moment it binds 8140. See
-# plugin/plugin:SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
+# plugin/PLUGIN:SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
 # container is given decides which switch it configures (first: TEG-240WS).
 emit_endpoint Plugin-SNMP 8140/tcp 8140 open \
     "Switch Config (MIB-driven)" "http://{host}:{port}/"
@@ -360,7 +360,7 @@ if [ -z "$WANT" ] || [ "$WANT" = "APK-Discovery-Engine" ]; then
         "${disc_url}/status" "$disc_state"
 fi
 
-# --- AES67 / ST 2110-30 bridge, from 'plugin:AES67/Docker/docker-compose.yml' --
+# --- AES67 / ST 2110-30 bridge, from 'PLUGIN:AES67/Docker/docker-compose.yml' --
 # The one plugin with pages of its own: host-networked, APK_AES67_HTTP_PORT (8130).
 if [ -z "$WANT" ] || [ "$WANT" = "Plugin-AES67" ]; then
     aes_url="http://127.0.0.1:${APK_AES67_HTTP_PORT:-8130}"
@@ -439,6 +439,7 @@ for c_inst in "${inst_containers[@]}"; do
     fam="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.family"}}' 2>/dev/null)"
     mod="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.model"}}' 2>/dev/null)"
     res="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.resource"}}' 2>/dev/null)"
+    proto="$(docker inspect "$c_inst" --format '{{index .Config.Labels "apk.audio.protocol"}}' 2>/dev/null)"
     if [ -z "$mod" ] || [ "$mod" = "Unknown" ] || [ "$mod" = "generic" ]; then
         # Fallback to name parsing
         c_stripped="${c_inst#apk-}"
@@ -451,7 +452,16 @@ for c_inst in "${inst_containers[@]}"; do
         spec_link="http://localhost:8080/api/instrument/${fam}/${mod}/${mod}.api.json"
         ws_link="ws://localhost:15000/ws/instrument/${fam}/${mod}"
         printf '%s\t%s\t%s\t%s\t%s\n' \
-            "$c_inst" open "Public API (${fam}/${mod})" "$api_link" "up"
+            "$c_inst" open "Specification (${fam}/${mod})" "$api_link" "up"
+        # Status and GUI are THIS box, not the model: named by the protocol and
+        # resource its container is labelled with (OsApi instrument_page.py).
+        if [ -n "$proto" ] && [ -n "$res" ]; then
+            box_q="$(python3 -c 'import sys,urllib.parse as u; print(u.urlencode(dict(zip(("protocol","resource","model","family"), sys.argv[1:]))))' "$proto" "$res" "$mod" "$fam")"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$c_inst" open "Status (${res})" "http://localhost:8080/api/instrument/status?${box_q}" "up"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$c_inst" open "GUI (${res})" "http://localhost:8080/api/instrument/gui?${box_q}" "up"
+        fi
         printf '%s\t%s\t%s\t%s\t%s\n' \
             "$c_inst" open "Public API Spec (${mod}.api.json)" "$spec_link" "up"
         printf '%s\t%s\t%s\t%s\t%s\n' \

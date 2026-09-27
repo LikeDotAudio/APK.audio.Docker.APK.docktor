@@ -133,8 +133,8 @@ def relay_event_line(line):
 
 # ---------------------------------------------------------------------------
 # WHAT IS RUNNING RIGHT NOW, AND HOW TO STOP IT.
-# THE STOP BUTTON IS NOT ANOTHER ACTION: api.ACTION_LOCK refuses a second verb
-# rather than queueing it, which is right for a second BUILD and inverted for
+# THE STOP BUTTON IS NOT ANOTHER ACTION: api.ACTION_LOCK makes a second verb
+# wait in the command queue, which is right for a second BUILD and inverted for
 # down and panic. One rebuild-all held the lock for eleven minutes and refused
 # five presses of Stop with the bench already down.
 # A SESSION, NOT A PROCESS: start_new_session=True puts each script in its own
