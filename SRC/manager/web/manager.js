@@ -1390,11 +1390,17 @@ function renderGrid(snapshot) {
   const cardW = state.density === "low" ? 220 : 215;
   const cardsPerRow = Math.max(1, Math.floor((colWidth - 20) / (cardW + 8)));
 
+  // ALPHABETICAL, ALWAYS: pods by name, and the cards inside each pod by name.
+  // Numeric-aware and case-blind, so AES67 sits before AES70 and `netbox`
+  // beside `NETBOX-Sync`, and a pod is found where its name says it will be.
+  const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
   const allLassos = [];
   groups.filter((group) => group.containers.length).forEach((group) => {
     const hue = group.hue || "";
     const groupName = group.label;
-    const cards = group.containers.map((c) => {
+    // By the name the card SHOWS (its leaf), not the full container name.
+    const containers = [...group.containers].sort((a, b) => byName(a.leaf || a.name, b.leaf || b.name));
+    const cards = containers.map((c) => {
       c.groupLabel = groupName;
       c.groupHue = hue;
       c.groupOurs = group.ours;
@@ -1419,7 +1425,7 @@ function renderGrid(snapshot) {
         ${cards ? `<div class="group group-all">${cards}</div>` : ""}
       </section>`;
     const cardRows = Math.ceil(total / cardsPerRow);
-    allLassos.push({ html, weight: muted ? 0 : (cardRows + 1.2) });
+    allLassos.push({ name: groupName, html, weight: muted ? 0 : (cardRows + 1.2) });
   });
 
   idle.forEach((row) => {
@@ -1435,21 +1441,31 @@ function renderGrid(snapshot) {
         <p class="dark-fix"><button class="btn small" data-saction="up-stack"
              data-stack="${escapeAttr(row.stack)}"></button></p>
       </section>`;
-    allLassos.push({ html, weight: 2.0 });
+    allLassos.push({ name: row.stack.replace(/^APK:plugin:/, ""), html, weight: 2.0 });
   });
 
-  // Longest-Processing-Time first (LPT) bin packing: sort descending so largest pods place first
-  const sortedLassos = [...allLassos].sort((a, b) => b.weight - a.weight);
+  // IN NAME ORDER, DOWN THEN ACROSS. The pods used to be bin-packed largest
+  // first (LPT), which balanced the columns and scattered the names: Plugins,
+  // then Discovered, then BareMetal. Now the columns are cut from one
+  // alphabetical run, each taking its share of the weight still to place, so
+  // the page reads top-to-bottom, left-to-right, A to Z, and still comes out
+  // roughly even.
+  const sortedLassos = [...allLassos].sort((a, b) => byName(a.name, b.name));
   const cols = Array.from({ length: numCols }, () => []);
-  const colWeights = new Array(numCols).fill(0);
-
+  let remaining = sortedLassos.reduce((sum, item) => sum + item.weight, 0);
+  let col = 0;
+  let colWeight = 0;
   sortedLassos.forEach((item) => {
-    let minIdx = 0;
-    for (let i = 1; i < numCols; i++) {
-      if (colWeights[i] < colWeights[minIdx]) minIdx = i;
+    const share = remaining / (numCols - col);
+    // Move on when this pod would land further past the share than stopping
+    // short leaves it — and never leave a column empty behind us.
+    if (col < numCols - 1 && colWeight > 0 && colWeight + item.weight / 2 > share) {
+      remaining -= colWeight;
+      col += 1;
+      colWeight = 0;
     }
-    cols[minIdx].push(item.html);
-    colWeights[minIdx] += item.weight;
+    cols[col].push(item.html);
+    colWeight += item.weight;
   });
 
   host.innerHTML = `<div class="lasso-columns">` +
@@ -1560,7 +1576,9 @@ function podMuted(name) {
 function renderPodFilter(groups, issues = new Map()) {
   const bar = $("#pod-filter");
   if (!bar) return;
-  bar.innerHTML = `<span class="pod-filter-lead">🫛 Pods</span>` + groups.map((g) => `
+  // Same order as the grid: by name.
+  const byName = (a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
+  bar.innerHTML = `<span class="pod-filter-lead">🫛 Pods</span>` + [...groups].sort(byName).map((g) => `
       <label style="--group: ${escapeAttr(g.hue || "#6f7480")}"
              title="Solo ${escapeAttr(g.label)} — Ctrl/Shift-click to solo several">
         <input type="checkbox" value="${escapeAttr(g.label)}"${podMuted(g.label) ? "" : " checked"}>
@@ -2015,19 +2033,40 @@ function spreadRange(text) {
   return Array.from({ length: high - low + 1 }, (_, step) => String(low + step));
 }
 
-function portRows() {
-  const rows = new Map();
-  const rowFor = (port, proto) => {
-    const key = `${port}/${proto}`;
-    if (!rows.has(key)) {
-      rows.set(key, { port, proto, sort: parseInt(port, 10) || 0,
-                      bound: [], endpoints: [] });
+/* 🌳 A TREE, NOT A TABLE: POD → CONTAINER → PORT → WHAT ANSWERS.
+ * The table was keyed on the PORT, and two ports broke it: 1883 carried every
+ * plugin's "public config API" endpoint under one Mosquitto row, forty lines
+ * deep, and 15000 carried every discovered device's instrument socket under
+ * one row forty containers wide. Keyed on the CONTAINER each of those lands
+ * where it belongs — one line under its own owner — and the port becomes a
+ * leaf you open to, not a row you scroll past. Same join as before: docker's
+ * bindings and endpoints.sh's names, either side may create the port node.
+ * A port docker binds for more than one container says so on the node. */
+function portTree() {
+  const containers = new Map();
+  const nodeFor = (name, info) => {
+    if (!containers.has(name)) {
+      containers.set(name, { name, ports: new Map(), ...info });
     }
-    return rows.get(key);
+    return containers.get(name);
   };
+  const portFor = (node, port, proto) => {
+    const key = `${port}/${proto}`;
+    if (!node.ports.has(key)) {
+      node.ports.set(key, { port, proto, sort: parseInt(port, 10) || 0, targets: [], endpoints: [] });
+    }
+    return node.ports.get(key);
+  };
+  const infoOf = (container, group) => ({
+    leaf: container.leaf || container.name, stack: group.label, hue: group.hue || "",
+    hostNetworked: container.network_mode === "host",
+  });
 
+  // How many containers docker binds each host port for — a clash shows on the node.
+  const owners = new Map();
   for (const group of state.snapshot?.groups || []) {
     for (const container of group.containers) {
+      const node = nodeFor(container.name, infoOf(container, group));
       for (const text of container.published || []) {
         // `3212 → 3212/tcp`, and `3209-3211 → 3209-3211/tcp` for a range.
         const parsed = /^([\d-]+)\s*→\s*([\d-]+)\/(\w+)$/.exec(text.trim());
@@ -2035,137 +2074,160 @@ function portRows() {
         const hosts = spreadRange(parsed[1]);
         const targets = spreadRange(parsed[2]);
         hosts.forEach((port, index) => {
-          rowFor(port, parsed[3]).bound.push({
-            container: container.name, leaf: container.leaf || container.name,
-            stack: group.label, hue: group.hue || "", tone: container.tone,
-            status: container.status,
-            // Docker maps a range one-for-one and in order, so the nth host
-            // port is the nth container port. A pair of ranges of different
-            // lengths is not something docker prints; if one arrives, the whole
-            // range is said rather than a wrong pairing.
-            target: `${targets.length === hosts.length ? targets[index] : parsed[2]}/${parsed[3]}`,
-          });
+          // Docker maps a range one-for-one and in order; a mismatched pair is
+          // said whole rather than paired wrongly.
+          portFor(node, port, parsed[3]).targets.push(
+            `${targets.length === hosts.length ? targets[index] : parsed[2]}/${parsed[3]}`);
+          const key = `${port}/${parsed[3]}`;
+          owners.set(key, (owners.get(key) || new Set()).add(container.name));
         });
       }
     }
   }
 
-  const byName = {};
-  for (const group of state.snapshot?.groups || []) {
-    for (const container of group.containers) byName[container.name] = { container, group };
-  }
-
   for (const endpoint of state.endpoints || []) {
     // THE AUTHORITY, PARSED THE WAY api.undeclared_ports() PARSES IT and not
     // with `new URL`: half of these are mqtt:// and mysql://, and one carries
-    // credentials whose FIRST colon-and-digits is not a port. Same three steps
-    // as the server — what is between :// and the next /, drop anything before
-    // an @, and the port is what follows the last colon. [::1]:8080 survives.
+    // credentials whose FIRST colon-and-digits is not a port. Between :// and
+    // the next /, drop anything before an @, the port follows the last colon.
     const authority = ((endpoint.uri || "").split("://")[1] || "").split("/")[0].split("@").pop();
     const found = authority.includes(":") ? /^(\d+)$/.exec(authority.split(":").pop()) : null;
     if (!found) continue;
-    const known = byName[endpoint.container];
-    // The proto is the row, not the endpoint: an endpoint is named for a port
-    // docker bound over TCP, and a second `8080/` row would split the one fact
-    // the table exists to state.
-    const row = rows.has(`${found[1]}/tcp`) ? rows.get(`${found[1]}/tcp`)
-                                            : rowFor(found[1], "tcp");
-    row.endpoints.push({
-      ...endpoint,
-      hue: known?.group.hue || "",
-      leaf: known?.container.leaf || endpoint.container,
-      stack: known?.group.label || "",
-      hostNetworked: known?.container.network_mode === "host",
-    });
+    // A container docker does not know is still drawn, under its own heading.
+    const node = containers.get(endpoint.container)
+      || nodeFor(endpoint.container, { leaf: endpoint.container, stack: "", hue: "", hostNetworked: false });
+    // Named for a port docker bound over TCP: an endpoint joins the tcp node.
+    portFor(node, found[1], "tcp").endpoints.push(endpoint);
   }
 
-  return [...rows.values()].sort((first, second) =>
-    first.sort - second.sort || first.proto.localeCompare(second.proto));
+  // Pods by name, containers by the name the card shows, ports by number.
+  const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+  const pods = new Map();
+  for (const node of containers.values()) {
+    if (!node.ports.size) continue;
+    node.portList = [...node.ports.values()].sort((a, b) => a.sort - b.sort || a.proto.localeCompare(b.proto));
+    for (const p of node.portList) {
+      const bound = owners.get(`${p.port}/${p.proto}`) || new Set();
+      p.shared = p.targets.length ? Math.max(0, bound.size - 1) : 0;
+      // SOMEONE ELSE'S PORT: every plugin names its config API at
+      // mqtt://…:1883, which is the broker's binding, not the plugin's.
+      // That is "reached through Mosquitto", not "not bound".
+      p.via = p.targets.length ? [] : [...bound].map((name) => containers.get(name)?.leaf || name);
+    }
+    const pod = node.stack || "not on this box";
+    if (!pods.has(pod)) pods.set(pod, { label: pod, hue: node.hue, containers: [] });
+    pods.get(pod).containers.push(node);
+  }
+  const list = [...pods.values()].sort((a, b) => byName(a.label, b.label));
+  for (const pod of list) pod.containers.sort((a, b) => byName(a.leaf, b.leaf));
+  return list;
 }
 
-function portOpenHTML(row) {
-  const open = row.endpoints.filter((e) => e.kind === "open");
-  const copy = row.endpoints.filter((e) => e.kind === "copy");
-  const links = open.map((e) => e.state === "up"
-    ? `<a href="${escapeAttr(e.uri)}" target="_blank" rel="noreferrer">🌐 open ↗</a>`
-    // LISTED, NOT OPENED, the Web Pages menu rule: a stopped container behind
-    // a link produces a browser error page, which reads as a broken SITE.
-    : `<span class="down">⏸️ ${escapeHTML(e.state)}</span>`);
-  const copies = copy.map((e) =>
-    `<button class="linky" data-copy="${escapeAttr(e.uri)}" title="${escapeAttr(e.uri)}">📋 copy URI</button>`);
-  if (links.length || copies.length) return [...links, ...copies].join(" ");
-  if (!row.bound.length) return `<span class="down">—</span>`;
-  // NOTHING NAMED IT, SO THE SCHEME IS A GUESS AND SAYS SO. The PORT is not a
-  // guess — docker has it bound this second — and the host is the one this page
-  // was reached on. Styled down and titled rather than dropped: a table that
-  // offered nothing for the other thirty would send the reader to type the
-  // same URL by hand.
-  const guess = `http://${location.hostname}:${String(row.port).split("-")[0]}/`;
+/* One endpoint's link: open it, copy it, or say it is down. */
+function endpointOpenHTML(e) {
+  if (e.kind === "open") {
+    return e.state === "up"
+      ? `<a href="${escapeAttr(e.uri)}" target="_blank" rel="noreferrer">🌐 open ↗</a>`
+      // LISTED, NOT OPENED, the Web Pages menu rule: a stopped container behind
+      // a link produces a browser error page, which reads as a broken SITE.
+      : `<span class="down">⏸️ ${escapeHTML(e.state)}</span>`;
+  }
+  return `<button class="linky" data-copy="${escapeAttr(e.uri)}" title="${escapeAttr(e.uri)}">📋 copy URI</button>`;
+}
+
+/* NOTHING NAMED IT, SO THE SCHEME IS A GUESS AND SAYS SO. The port is docker's
+ * and real; the http:// in front of it is this page's assumption. */
+function guessOpenHTML(port) {
+  const guess = `http://${location.hostname}:${String(port).split("-")[0]}/`;
   return `<a class="guess" href="${escapeAttr(guess)}" target="_blank" rel="noreferrer"
              title="No endpoint is declared for this port — docker has it bound, but the http:// is this page's guess.">🔎 try http ↗</a>`;
 }
 
+/* WHICH BRANCHES ARE OPEN, kept across redraws: every scan rebuilds this pane,
+ * and a tree that snapped shut every few seconds could not be read. Pods start
+ * open, containers start closed (their ports are on the summary line). */
+const portTreeOpen = new Map();
+const isOpen = (key, fallback) => (portTreeOpen.has(key) ? portTreeOpen.get(key) : fallback);
+
 function renderPorts() {
   const host = $("#ports");
-  const rows = portRows();
-  if (!rows.length) {
+  const pods = portTree();
+  if (!pods.length) {
     host.innerHTML = `<p class="empty">Nothing is publishing a port, and endpoints.sh named
        no address either.</p>`;
     return;
   }
 
-  const named = rows.filter((row) => row.endpoints.length).length;
-  const body = rows.map((row) => {
-    // ONE CONTAINER, SAID ONCE. Three NetBox endpoints on 8081 are three
-    // things to open and ONE container to name; repeating the name per endpoint
-    // read as three containers fighting over a port.
-    const seen = new Set();
-    const who = row.bound.length
-      ? row.bound.filter((b) => !seen.has(b.container) && seen.add(b.container)).map((b) => `
-          <span class="who" data-container="${escapeAttr(b.container)}">
-            <span class="swatch" style="background: ${escapeAttr(b.hue || "#6f7480")}"></span>
-            ${escapeHTML(b.leaf)}<small> · ${escapeHTML(b.stack)}</small>
-          </span>`).join("")
-      : row.endpoints.filter((e) => !seen.has(e.container) && seen.add(e.container)).map((e) => `
-          <span class="who" data-container="${escapeAttr(e.container)}">
-            <span class="swatch" style="background: ${escapeAttr(e.hue || "#6f7480")}"></span>
-            ${escapeHTML(e.leaf)}${e.hostNetworked
-              ? `<small> · host networking, nothing published</small>`
-              : `<small> · ${escapeHTML(e.stack || "not on this box")}</small>`}
-          </span>`).join("");
-
-    const what = row.endpoints.length
-      ? row.endpoints.map((e) => `<span class="what">${escapeHTML(e.title ? `${e.title} — ${e.label}` : e.label)}</span>`).join("")
-      : `<span class="what unnamed">unnamed — endpoints.sh declares nothing here</span>`;
-
+  let portCount = 0, named = 0, containerCount = 0;
+  const podHTML = pods.map((pod) => {
+    const podKey = `pod:${pod.label}`;
+    const podPorts = pod.containers.reduce((n, c) => n + c.portList.length, 0);
+    const containersHTML = pod.containers.map((node) => {
+      containerCount++;
+      const key = `c:${node.name}`;
+      const chips = node.portList.map((p) =>
+        `<span class="chip${p.endpoints.length ? "" : " unnamed"}">${escapeHTML(p.port)}</span>`).join("");
+      const portsHTML = node.portList.map((p) => {
+        portCount++;
+        if (p.endpoints.length) named++;
+        const target = p.targets.length
+          ? `<span class="target">→ ${escapeHTML([...new Set(p.targets)].join(", "))}</span>`
+          : p.via.length
+            ? `<span class="target via">via ${escapeHTML(p.via.join(", "))}</span>`
+            : `<span class="down">${node.hostNetworked ? "host network" : "not bound"}</span>`;
+        const shared = p.shared ? `<span class="shared" title="docker binds this host port for ${p.shared} other container(s) too">⚠ shared ×${p.shared + 1}</span>` : "";
+        const leaves = p.endpoints.length
+          ? p.endpoints.map((e) => `
+              <li class="ep"><span class="what">${escapeHTML(e.title ? `${e.title} — ${e.label}` : e.label)}</span>
+                <span class="open">${endpointOpenHTML(e)}</span></li>`).join("")
+          : `<li class="ep"><span class="what unnamed">unnamed — endpoints.sh declares nothing here</span>
+               <span class="open">${p.targets.length ? guessOpenHTML(p.port) : ""}</span></li>`;
+        return `
+          <li class="port-node">
+            <div class="port-line"><span class="port">${escapeHTML(p.port)}<small>/${escapeHTML(p.proto)}</small></span>
+              ${target}${shared}</div>
+            <ul>${leaves}</ul>
+          </li>`;
+      }).join("");
+      return `
+        <li><details data-key="${escapeAttr(key)}"${isOpen(key, false) ? " open" : ""}>
+          <summary><span class="who" data-container="${escapeAttr(node.name)}">${escapeHTML(node.leaf)}</span>
+            ${node.hostNetworked ? `<small class="net">host net</small>` : ""}
+            <span class="chips">${chips}</span></summary>
+          <ul>${portsHTML}</ul>
+        </details></li>`;
+    }).join("");
     return `
-      <tr>
-        <td class="port">${escapeHTML(row.port)}<small>/${escapeHTML(row.proto)}</small></td>
-        <td class="target">${row.bound.length
-            ? escapeHTML([...new Set(row.bound.map((b) => b.target))].join(", "))
-            : `<span class="down">not bound</span>`}</td>
-        <td class="who-cell">${who || `<span class="down">—</span>`}</td>
-        <td>${what}</td>
-        <td class="open">${portOpenHTML(row)}</td>
-      </tr>`;
+      <details class="pod" data-key="${escapeAttr(podKey)}"${isOpen(podKey, true) ? " open" : ""}
+               style="--group: ${escapeAttr(pod.hue || "#6f7480")}">
+        <summary><span class="swatch"></span><b>${escapeHTML(pod.label)}</b>
+          <small>${pod.containers.length} container(s) · ${podPorts} port(s)</small></summary>
+        <ul>${containersHTML}</ul>
+      </details>`;
   }).join("");
 
   host.innerHTML = `
-    <table class="port-table">
-      <thead><tr>
-        <th>🔌 Host port</th><th>→ in container</th><th>Container</th>
-        <th>What answers on it</th><th>Open</th>
-      </tr></thead>
-      <tbody>${body}</tbody>
-    </table>
-    <p class="note wide">${rows.length} port(s) — ${named} named by endpoints.sh, the rest bound by
-       docker with nothing declaring what they are. A row with <b>not bound</b> is an address
-       endpoints.sh knows and docker publishes no port for: a host-networked node has no Ports
-       column to appear in, and a declared endpoint whose stack is down has nothing listening
-       yet.</p>`;
+    <div class="port-tree-bar">
+      <button class="btn small plain" data-tree="open">Expand all</button>
+      <button class="btn small plain" data-tree="close">Collapse all</button>
+    </div>
+    <div class="port-tree">${podHTML}</div>
+    <p class="note wide">${portCount} port(s) on ${containerCount} container(s) — ${named} named by
+       endpoints.sh, the rest bound by docker with nothing declaring what they are. <b>not bound</b>
+       is an address endpoints.sh knows and docker publishes no port for; <b>host network</b> is a
+       container that listens on the host directly, so docker has nothing to publish.</p>`;
 
+  $$("details[data-key]", host).forEach((d) => {
+    d.ontoggle = () => portTreeOpen.set(d.dataset.key, d.open);
+  });
+  $$("[data-tree]", host).forEach((button) => {
+    button.onclick = () => {
+      const open = button.dataset.tree === "open";
+      $$("details[data-key]", host).forEach((d) => { portTreeOpen.set(d.dataset.key, open); d.open = open; });
+    };
+  });
   $$("[data-container]", host).forEach((cell) => {
-    cell.onclick = () => select(cell.dataset.container);
+    cell.onclick = (event) => { event.preventDefault(); select(cell.dataset.container); };
   });
   $$("[data-copy]", host).forEach((button) => {
     button.onclick = () => navigator.clipboard.writeText(button.dataset.copy);

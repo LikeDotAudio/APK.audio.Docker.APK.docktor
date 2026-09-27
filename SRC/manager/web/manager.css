@@ -585,10 +585,6 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .donuts, .ports, .volumes {
   overflow: auto; padding: 10px; background: var(--ground); flex: 1;
 }
-/* THE PANE IS HALF A WINDOW AND THE TABLE HAS FIVE COLUMNS. Below this width
- * every cell wraps to three lines and the port numbers stop being a column you
- * can run an eye down, which is the only reason to draw the table. */
-.port-table { min-width: 640px; }
 .donuts { display: grid; gap: 12px; align-content: start;
           grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
 
@@ -637,49 +633,50 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 .note.wide { grid-column: 1 / -1; }
 
 /* ------------------------------------------------------------- port table */
-.port-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.port-table th {
-  position: sticky; top: 0; z-index: 1;
-  text-align: left; padding: 6px 8px; background: var(--panel);
-  border-bottom: 1px solid var(--edge); color: var(--dim);
-  font: 700 10.5px var(--sans); letter-spacing: .5px; text-transform: uppercase;
+/* 🌳 THE PORTS TREE — pod → container → port → endpoint. Indented by the
+ * list, one guide line per level so a deep leaf still says whose it is. */
+.port-tree-bar { display: flex; gap: 6px; margin-bottom: 8px; }
+.port-tree { font-size: 12px; }
+.port-tree ul { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 1px solid #262630; }
+.port-tree details.pod { margin-bottom: 6px; }
+.port-tree summary { cursor: pointer; padding: 3px 4px; border-radius: 4px; }
+.port-tree summary:hover { background: #1c1c23; }
+.port-tree details.pod > summary { font: 700 12.5px var(--sans); }
+.port-tree details.pod > summary small { color: var(--dimmer); font-weight: 400; margin-left: 6px; }
+.port-tree .swatch {
+  display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px;
+  background: var(--group, var(--dimmer));
 }
-.port-table td { padding: 5px 8px; border-bottom: 1px solid #1f1f27; vertical-align: top; }
-.port-table tr:hover td { background: #1c1c23; }
-/* THE PORT IS THE KEY OF THIS TABLE and a number compared with other numbers,
- * so it is monospaced and the heaviest thing in the row: 8080 and 8100 differ
- * in one glyph. */
-.port-table .port { font: 700 14px var(--mono); color: var(--accent); white-space: nowrap; }
-.port-table .port small { font: 400 10px var(--mono); color: var(--dimmer); }
-.port-table .target { font: 600 11px var(--mono); color: var(--dim); white-space: nowrap; }
-.port-table .who-cell { min-width: 150px; }
-.port-table .who {
-  display: flex; align-items: center; gap: 5px; cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.port-tree .who { cursor: pointer; font-weight: 600; }
+.port-tree .who:hover { color: var(--accent); text-decoration: underline; }
+.port-tree .net { color: var(--dimmer); margin-left: 6px; }
+.port-tree .chips { margin-left: 8px; }
+.port-tree .chip {
+  display: inline-block; margin-right: 4px; padding: 0 5px; border-radius: 3px;
+  font: 600 10.5px var(--mono); color: var(--accent); background: #22222b;
 }
-.port-table .who:hover { color: var(--accent); }
-.port-table .who .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.port-table .who small { color: var(--dimmer); }
-.port-table .what { display: block; }
-.port-table .what.unnamed { color: var(--dimmer); font-style: italic; }
-.port-table .down { color: var(--dimmer); }
-/* ONE LINE PER ENDPOINT, IN BOTH COLUMNS, so the third link in this cell is the
- * third name in the cell beside it. NetBox answers on 8081 three times, and
- * three identical `open ↗` links said nothing about which was which. */
-.port-table .open { white-space: nowrap; }
-.port-table .open a, .port-table .open .linky, .port-table .open .down { display: block; }
-.port-table .open a { color: var(--tone-live); text-decoration: none; font-weight: 600; }
-.port-table .open a:hover { text-decoration: underline; }
-/* A GUESSED SCHEME IS OFFERED AND MARKED, dimmer than a declared endpoint: the
- * port is docker and real, the http:// in front of it is this page assumption,
- * and the two must not look alike. */
-.port-table .open a.guess { color: var(--dimmer); font-weight: 500; }
-.port-table .open a.guess:hover { color: var(--dim); }
-.port-table .linky {
+.port-tree .chip.unnamed { color: var(--dimmer); }
+.port-tree .port-node { padding: 3px 0; }
+.port-tree .port-line { display: flex; gap: 10px; align-items: baseline; }
+/* 8080 and 8100 differ in one glyph: the port is monospaced and heaviest. */
+.port-tree .port { font: 700 13px var(--mono); color: var(--accent); white-space: nowrap; }
+.port-tree .port small { font: 400 10px var(--mono); color: var(--dimmer); }
+.port-tree .target { font: 600 11px var(--mono); color: var(--dim); }
+.port-tree .target.via { font-family: var(--sans); font-weight: 500; color: var(--dimmer); }
+.port-tree .shared { color: var(--tone-hot); font-size: 11px; }
+.port-tree .down { color: var(--dimmer); }
+.port-tree .ep { display: flex; gap: 12px; align-items: baseline; padding: 1px 0; }
+.port-tree .what.unnamed { color: var(--dimmer); font-style: italic; }
+.port-tree .open { white-space: nowrap; }
+.port-tree .open a { color: var(--tone-live); text-decoration: none; font-weight: 600; }
+.port-tree .open a:hover { text-decoration: underline; }
+/* A GUESSED SCHEME IS OFFERED AND MARKED, dimmer than a declared endpoint. */
+.port-tree .open a.guess { color: var(--dimmer); font-weight: 500; }
+.port-tree .linky {
   background: none; border: 0; padding: 0; cursor: pointer;
   color: var(--dim); font: 600 12px var(--sans);
 }
-.port-table .linky:hover { color: var(--ink); text-decoration: underline; }
+.port-tree .linky:hover { color: var(--ink); text-decoration: underline; }
 
 /* PULSE IS "ALIVE", the one thing on a card no still frame can fake: a frozen
  * tab and a stopped container look identical until something moves. Only the
