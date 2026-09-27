@@ -546,8 +546,8 @@ node_hardware_report() {
 # ⚠️ nmos/aes70/netbox/ember declare no dependency in either direction; their
 #    position is about log order only. Do not grow a depends_on across a
 #    project boundary — compose cannot hold one and only this note would.
-# Three mosquittos coexist by numbering the HOST ports: 1883/9001 storage,
-# 1884/9002 broker, 1885/9003 portal.
+# One mosquitto, Broker-Mosquitto on 1883/9001; the storage and portal brokers
+# are decommissioned (their names are network aliases of this one).
 # A 9th stack costs an array, an ordering position and a stated reason here.
 
 # ── The manager's identity, read off docker-compose.manager.yml rather than

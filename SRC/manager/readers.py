@@ -555,18 +555,52 @@ WATCHDOG_ACTIVE = False
 WATCHDOG_FULL_SECONDS = 300
 
 
+# THE LABEL A LAUNCHER STAMPS ON A CONTAINER NO COMPOSE FILE DECLARES — the one
+# _common.sh reads as APKAUDIO_UNMANAGED_LABEL, from the same variable, so there
+# is one spelling. See _fingerprint_of.
+UNMANAGED_LABEL = os.environ.get("APKAUDIO_UNMANAGED_LABEL",
+                                 "apk.audio.managed_by=BareMetal-Manager")
+
+
+def _fingerprint_of(listing, unmanaged_label=UNMANAGED_LABEL):
+    """`docker ps -a` rows (name TAB state TAB label-value) as one string,
+    leaving out every container the launcher raised.
+
+    THE LAUNCHER'S CONTAINERS ARE NOT A STACK'S (PLAN-3319.01). Node-BareMetal
+    raises one per discovered instrument and buries it when the device goes, so
+    on a live bench a name appears or leaves nearly every minute. Counted here,
+    that churn changed the fingerprint on almost every beat and the full
+    stacks.sh check — the cost this fingerprint exists to skip — ran every 30 s
+    anyway. No compose file declares those containers, so none of them can make
+    a stack dark; the watchdog has no reason to notice them.
+    """
+    _key, _, value = unmanaged_label.partition("=")
+    rows = []
+    for line in listing.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        label = parts[2] if len(parts) > 2 else ""
+        if label and (not value or label == value):
+            continue
+        rows.append("\t".join(parts[:2]))
+    return "\n".join(sorted(rows))
+
+
 def _container_fingerprint():
-    """Every container's name and state, as one string — or None if docker
-    could not be asked. Direct, like ping.py's `ip neigh`: a script would cost
-    ten times what it saves."""
+    """Every stack container's name and state, as one string — or None if
+    docker could not be asked. Direct, like ping.py's `ip neigh`: a script
+    would cost ten times what it saves."""
+    key = UNMANAGED_LABEL.partition("=")[0]
+    template = "{{.Names}}\t{{.State}}\t{{.Label \"%s\"}}" % key
     try:
-        done = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.State}}"],
+        done = subprocess.run(["docker", "ps", "-a", "--format", template],
                               capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     if done.returncode != 0:
         return None
-    return "\n".join(sorted(done.stdout.splitlines()))
+    return _fingerprint_of(done.stdout)
 
 
 def watchdog_active():
@@ -657,7 +691,21 @@ _storage_dir_cache = {"path": None, "at": 0.0}
 # five-minute series into a five-second one. The sampler thread and a reader
 # both write through record_volume_sample(); only the sampler passes no gap.
 _last_sample_at = 0.0
+# HOW LONG AN ANSWER IS TRUSTED. A refusal ('') is asked again after a minute,
+# so a volume created while this runs is picked up. A FOLDER is kept for an
+# hour (PLAN-3319.01): inside the container it is a mount that cannot move
+# while the process lives, and asking every minute cost a bash, _common.sh, a
+# `find` over PODS/ and a python config read — on a clock, on an idle bench,
+# because the cost sampler reaches this on every beat.
 STORAGE_DIR_SECONDS = 60
+STORAGE_DIR_FOUND_SECONDS = 3600
+
+
+def _storage_answer_fresh(path, age):
+    """True while a cached storage_directory() answer may be served as-is."""
+    if path is None:
+        return False
+    return age < (STORAGE_DIR_FOUND_SECONDS if path else STORAGE_DIR_SECONDS)
 
 
 def storage_directory(quiet=True):
@@ -672,8 +720,8 @@ def storage_directory(quiet=True):
     this run", which is what a bench with no docker has anyway.
     """
     with _volume_lock:
-        if (_storage_dir_cache["path"] is not None
-                and time.time() - _storage_dir_cache["at"] < STORAGE_DIR_SECONDS):
+        if _storage_answer_fresh(_storage_dir_cache["path"],
+                                 time.time() - _storage_dir_cache["at"]):
             return _storage_dir_cache["path"]
     exit_code, output = run_management_script('storage-volume.sh', ['--path'], quiet=quiet)
     path = ''
@@ -926,7 +974,12 @@ def start_volume_sampler(interval=VOLUME_SAMPLE_SECONDS):
 # counted as up, because nothing here saw it.
 # KEPT IN THE MANAGER'S OWN STORAGE (/storage), one JSON document rewritten
 # atomically, so it survives a restart, a rebuild and a closed tab.
-COST_SAMPLE_SECONDS = 30
+# SIXTY SECONDS, NOT THIRTY (PLAN-3319.01). The ledger adds counter DELTAS, so a
+# longer beat misses nothing a container burned while it stayed up; what it
+# widens is only the window in which a container that restarts loses its
+# pre-restart burn — and a bash, a python and two socket calls per container
+# every half-minute was a visible share of what an idle DockTor cost.
+COST_SAMPLE_SECONDS = 60
 COST_FILE = "cost-meter.json"
 _cost_lock = threading.Lock()
 
@@ -1057,7 +1110,7 @@ def set_cost_price(price=None, currency=None, reset=False, quiet=True):
 
 
 def start_cost_sampler(interval=COST_SAMPLE_SECONDS):
-    """Charge the CPU deltas every thirty seconds, for as long as this runs."""
+    """Charge the CPU deltas every COST_SAMPLE_SECONDS (a minute), for as long as this runs."""
     def loop():
         while True:
             try:

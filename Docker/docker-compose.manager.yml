@@ -43,6 +43,14 @@ services:
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped
+    # A REAPER AS PID 1 (LOOSE-idle-cpu-bits). Without it the manager's python is
+    # PID 1, and a K8 script that exits before a child it started (a backgrounded
+    # `docker …`, a subshell) leaves that child reparented to python, which only
+    # ever waits for the pids it spawned — measured 2026-09-27: 8 `[docker]` /
+    # `[bash] <defunct>` under python in 38 minutes of uptime, never collected.
+    # `init: true` puts docker-init (tini) at PID 1 to reap them; python and
+    # every script it runs are unchanged.
+    init: true
     # ── MOUNT 3, AND IT IS A MOUNT: THE HOST OWN NETWORK STACK. endpoints.sh
     # is the one copy of the port table and every address in it is written
     # `localhost`, because the person reading the dashboard is on the host.
@@ -149,7 +157,8 @@ services:
       # because either alone is a coincidence away from passing.
       test: ["CMD", "python3", "-c",
              "import json,os,urllib.request;i=json.load(urllib.request.urlopen('http://127.0.0.1:8765/api/health',timeout=4)).get('instance') or {};raise SystemExit(0 if i.get('containerised') and os.path.exists('/proc/%d' % i['pid']) else 1)"]
-      interval: 30s
+      interval: 60s   # PLAN-3385.01: was 30s; a probe is a docker exec, most of an idle container's CPU
+      start_interval: 5s   # fast while starting, so depends_on: service_healthy is not slowed
       timeout: 10s
       retries: 3
       start_period: 5s

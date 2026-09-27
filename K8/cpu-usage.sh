@@ -14,9 +14,9 @@
 # wait the second a streaming sample needs; forty containers is forty short calls.
 # NO _common.sh, ON PURPOSE (PLAN-3319.01). Nothing below reads a variable or
 # calls a function from it, and sourcing it cost ~60 ms of CPU — more than the
-# work itself — on a script the manager runs on a clock: the cost meter every
-# 30 s, the resource sampler every minute, the live meters every 5 s. Source
-# it again the day this script needs something from it.
+# work itself — on a script the manager runs on a clock: the cost meter runs
+# it every 60 s (COST_SAMPLE_SECONDS in SRC/manager/readers.py; it was 30 s).
+# Source it again the day this script needs something from it.
 
 python3 - <<'PY'
 import calendar

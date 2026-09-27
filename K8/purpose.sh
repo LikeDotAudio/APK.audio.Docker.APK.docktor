@@ -182,17 +182,6 @@ PURPOSE = {
         "fails silently and calmly -- the name resolves, the healthcheck is green, and "
         "`observed 0` is indistinguishable from a quiet bench."),
 
-    # --- the portal: DATABUS:Broker:MQTT/Docker/docker-compose.portal-broker.yml -
-    "Portal-Broker": (
-        "The portal stack's broker, on 1885/9003",
-        "The third mosquitto. It mounts the CONTAINER variant of the broker config -- "
-        "the one that binds every interface with anonymous access -- which is why both "
-        "of its published ports carry a 127.0.0.1 prefix. Services in its own stack "
-        "reach it as `broker:1883` on the compose network.",
-        "The portal stack is a broker and the web tier it includes, and this is the broker half: "
-        "it is what the heartbeat beside it publishes to when this stack is brought up "
-        "on its own."),
-
     "Portal-Heartbeat": (
         "The metronome of the bench",
         "The Missions Heartbeat timer, running as its own container (APK:clock:Heartbeat) "
@@ -203,7 +192,7 @@ PURPOSE = {
         "the orchestrator restarts whenever a panel rebuild goes wrong, and a clock that "
         "stops when something unrelated stops is not a clock."),
 
-    # --- APK:web:Traffic-Router / OsApi / Static -- the web tier ------------------------
+    # --- web:Traffic-Router / OsApi / Static -- the web tier ------------------------
     "Portal-Gateway": (
         "The web tier's front door: one origin on 443",
         "Caddy, published on ${APK_GATEWAY_BIND:-127.0.0.1}:443. It routes /api/os/* "
