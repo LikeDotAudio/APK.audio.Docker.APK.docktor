@@ -9,15 +9,15 @@ PROJECT = re.compile(r'^name:\s*["\']?([^"\'\s#]+)', re.M)
 # Hardcoded legacy variable names so old scripts don't break
 LEGACY_MAPPINGS = {
     "APK:BareMetal": ("CORE", "COMPOSE_FILE"),
-    "DATABASE:volume:Log STORAGE": ("LOGGER", "LOGGER_COMPOSE_FILE"),
-    "DATABASE:server:SQL": ("SQLCLUSTER", "SQLCLUSTER_COMPOSE_FILE"),
-    "DATABUS:Broker:MQTT": ("MQTT", "MQTT_COMPOSE_FILE"),
+    "DATABASE.volume.Log-STORAGE": ("LOGGER", "LOGGER_COMPOSE_FILE"),
+    "DATABASE.server.SQL": ("SQLCLUSTER", "SQLCLUSTER_COMPOSE_FILE"),
+    "DATABUS.Broker.MQTT": ("MQTT", "MQTT_COMPOSE_FILE"),
     "APK:audio:WebPortal": ("PORTAL", "PORTAL_COMPOSE_FILE"),
-    "PROTOCOL:discovery:NMOS": ("NMOS", "NMOS_COMPOSE_FILE"),
-    "PROTOCOL:DEV:AES70": ("AES70", "AES70_COMPOSE_FILE"),
-    "PROTOCOL:DEV:EMBER": ("EMBER", "EMBER_COMPOSE_FILE"),
-    "DATABASE:server:NETBOX": ("NETBOX", "NETBOX_COMPOSE_FILE"),
-    "POD:protocols": ("PROTOCOLS", "PROTOCOLS_COMPOSE_FILE"),
+    "PROTOCOL.discovery.NMOS": ("NMOS", "NMOS_COMPOSE_FILE"),
+    "PROTOCOL.DEV.AES70": ("AES70", "AES70_COMPOSE_FILE"),
+    "PROTOCOL.DEV.EMBER": ("EMBER", "EMBER_COMPOSE_FILE"),
+    "DATABASE.server.NETBOX": ("NETBOX", "NETBOX_COMPOSE_FILE"),
+    "POD.protocols": ("PROTOCOLS", "PROTOCOLS_COMPOSE_FILE"),
     "APK:discovery": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:plugins:Build": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
     "APK:Docktor": ("MANAGER", "MANAGER_COMPOSE_FILE")
@@ -27,11 +27,11 @@ LEGACY_MAPPINGS = {
 # compose file of its own and is `include:`d by its parent's, so the parent is
 # what `up`/`down`/`rebuild-all` walk -- see "member_of" below.
 # ⚠️ THE PARENT MUST BE A STACK HERE TOO, or its members become unreachable:
-#    POD:protocols/Docker/docker-compose.yml is what makes this table true.
+#    POD.protocols/Docker/docker-compose.yml is what makes this table true.
 MEMBER_OF = {
-    "PROTOCOL:discovery:NMOS": "POD:protocols",
-    "PROTOCOL:DEV:AES70": "POD:protocols",
-    "PROTOCOL:DEV:EMBER": "POD:protocols",
+    "PROTOCOL.discovery.NMOS": "POD.protocols",
+    "PROTOCOL.DEV.AES70": "POD.protocols",
+    "PROTOCOL.DEV.EMBER": "POD.protocols",
 }
 
 
@@ -82,12 +82,12 @@ def cmd_bash_eval(project_name, dockers_dir):
             # Priority logic: DockTor is 1, MQTT Mosquitto is 2 (first to launch after DockTor)
             up_order = 50
             if folder_name == "APK:Docktor" or "manager" in file_base: up_order = 1
-            elif folder_name == "DATABUS:Broker:MQTT": up_order = 2
-            elif "Log STORAGE" in folder_name: up_order = 3
-            elif "server:SQL" in folder_name or "cluster:SQL" in folder_name: up_order = 4
+            elif folder_name == "DATABUS.Broker.MQTT": up_order = 2
+            elif "Log STORAGE" in folder_name or "Log-STORAGE" in folder_name: up_order = 3
+            elif any(k in folder_name for k in ("server:SQL", "cluster:SQL", "server.SQL", "cluster.SQL")): up_order = 4
             elif folder_name == "APK:BareMetal": up_order = 6
             elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
-            elif folder_name == "POD:protocols": up_order = 8
+            elif folder_name == "POD.protocols": up_order = 8
 
             stack_info = {
                 "name": folder_name,
@@ -140,7 +140,7 @@ def cmd_bash_eval(project_name, dockers_dir):
             var_suffix, file_var = LEGACY_MAPPINGS[name]
         else:
             # Sanitize name for bash variable
-            clean_name = name.replace(":", "_").replace("-", "_").upper()
+            clean_name = name.replace(":", "_").replace(".", "_").replace("-", "_").upper()
             var_suffix = clean_name
             file_var = f"{clean_name}_COMPOSE_FILE"
             
@@ -154,7 +154,7 @@ def cmd_bash_eval(project_name, dockers_dir):
         elif file_base == "docker-compose.manager.yml":
             safe_name = "MANAGER"
         else:
-            safe_name = name.replace(':', '_').replace('-', '_').replace(' ', '_')
+            safe_name = name.replace(':', '_').replace('.', '_').replace('-', '_').replace(' ', '_')
         bash_lines.append(f"COMPOSE_BY_NAME_{safe_name}=(\"${{COMPOSE_BASE[@]}}\" -f \"{full_path}\")")
         
     # Export all driven files for stacks.sh

@@ -7,7 +7,7 @@ subject:
   - APK:DOCKERS/APK:audio:WebPortal/SRC/APK:Softapps/GAMES/XandO/archive
   - APK:DOCKERS/APK:audio:WebPortal/SRC/APK:FrontEnd/assets/generate_icons.py
   - APK:DOCKERS/APK:audio:WebPortal/SRC/APK:FrontEnd/assets/makegif_original.py
-  - APK:DOCKERS/PROTOCOL:DEV:AES70/SRC/aes70py
+  - APK:DOCKERS/PROTOCOL.DEV.AES70/SRC/aes70py
   - APK:DOCKERS/APK:audio:WebPortal/SRC/APK:OS/server.py
   - .apk.scripts/audit_python_census.py
   - .apk.scripts/console.baseline.json
@@ -82,7 +82,7 @@ weight. **Lens 5 (provenance)** on F6, which is the one tree that must NOT be cu
 |---|---:|---:|---:|---|
 | `.apk.scripts/` | 145 | 50,135 | 12 | **KEEP** |
 | `Softapps/PythonAudioConsoleElements` | 682 | 37,140 | 132 | **CUT** |
-| `PROTOCOL:DEV:AES70/aes70py` | 442 | 19,912 | 107 | **KEEP — VENDORED** |
+| `PROTOCOL.DEV.AES70/aes70py` | 442 | 19,912 | 107 | **KEEP — VENDORED** |
 | `BareMetal/Simulation:SPICE` | 14 | 10,122 | 1 | KEEP |
 | `WebPortal/APK:OS` | 7 | 7,630 | 0 | KEEP |
 | `BareMetal/Baremetal:Manager` | 12 | 7,296 | 0 | KEEP |
@@ -200,7 +200,7 @@ checkout root and cannot rot the same way again. PLAN-910.04.
 
 **They duplicate live tools that do have callers.** `midi_tester.py` is a second, different copy of
 `APK:BareMetal/Protocol/Protocol-midi/Test/midi_tester.py` (different sha, same job, and the bare-metal one
-is named by `check.sh`). `aes70_tester.py` is 28 lines against `PROTOCOL:DEV:AES70/aes70_probe.py`'s
+is named by `check.sh`). `aes70_tester.py` is 28 lines against `PROTOCOL.DEV.AES70/aes70_probe.py`'s
 259, which is in the AES70-Dev Dockerfile. `mqtt_tester.py` is 49 lines against
 `Storage:MQTT/mqtt_agent.py` and `Baremetal:Manager/mqtt_broker_discovery.py`, both wired.
 
@@ -286,7 +286,7 @@ lines are unreferenced and the 9 references are unresolvable, in opposite direct
 
 ## F6 · The single largest block of callerless Python must not be touched, and the thing that says so is one JSON file
 
-`PROTOCOL:DEV:AES70/aes70py/` is **442 files, 19,912 lines**, of which **107 files / 8,904 lines have
+`PROTOCOL.DEV.AES70/aes70py/` is **442 files, 19,912 lines**, of which **107 files / 8,904 lines have
 no caller** — the biggest orphan block in the census after the console library.
 
 **It is not ours.** It is a verbatim copy of `github.com/AES70py/aes70py`, MIT, pinned in

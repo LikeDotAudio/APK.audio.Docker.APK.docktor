@@ -62,9 +62,9 @@ PURPOSE = {
         "hardware -- which is why its open config and a narrow bind are a pair."),
 
     "Storage-MariaDB": (
-        "Decommissioned (Consolidated into SQL-Proxy in DATABASE:server:SQL)",
+        "Decommissioned (Consolidated into SQL-Proxy in DATABASE.server.SQL)",
         "The standalone MariaDB instance has been retired. SQL database services are consolidated "
-        "into DATABASE:server:SQL behind SQL-Proxy:3306, supporting both 'PROXY 1 server' and 'PROXY 3 cluster' modes.",
+        "into DATABASE.server.SQL behind SQL-Proxy:3306, supporting both 'PROXY 1 server' and 'PROXY 3 cluster' modes.",
         "Clients now connect through SQL-Proxy on port 3306."),
 
     "Storage-PHP": (
@@ -102,7 +102,7 @@ PURPOSE = {
         "to apk.audio mirrors. Everything else on the bench is something this page "
         "talks to."),
 
-    # --- DATABASE:server:SQL -- consolidated SQL server (1 server / 3 cluster) ---
+    # --- DATABASE.server.SQL -- consolidated SQL server (1 server / 3 cluster) ---
     "SQL-Node-1": (
         "Primary MariaDB node (1 server mode seed, and Galera cluster founder)",
         "MariaDB 11.4 on its own `sql-node-1-data` volume, reachable only on the compose network. "
@@ -192,7 +192,7 @@ PURPOSE = {
         "the orchestrator restarts whenever a panel rebuild goes wrong, and a clock that "
         "stops when something unrelated stops is not a clock."),
 
-    # --- web:Traffic-Router / OsApi / Static -- the web tier ------------------------
+    # --- WEB.Traffic-Router / OsApi / Static -- the web tier ------------------------
     "Portal-Gateway": (
         "The web tier's front door: one origin on 443",
         "Caddy, published on ${APK_GATEWAY_BIND:-127.0.0.1}:443. It routes /api/os/* "
@@ -348,7 +348,7 @@ PURPOSE = {
         "saying so is the point of it being separate: an operator can flush or recreate "
         "it without wondering whether a queued job went with it."),
 
-    # --- PROTOCOL:DEV:AES70 ----------------------------------------------------
+    # --- PROTOCOL.DEV.AES70 ----------------------------------------------------
     "AES70-Dev": (
         "The AES70 workbench and offline documentation on 3220",
         "AES70py -- a pure-Python AES70/OCA CONTROLLER speaking OCP.1 over TCP -- "
@@ -357,7 +357,7 @@ PURPOSE = {
         "It provides both the AES70py development environment and the offline "
         "AES70 documentation in a single container."),
 
-    # --- PROTOCOL:DEV:EMBER ----------------------------------------------------------
+    # --- PROTOCOL.DEV.EMBER ----------------------------------------------------------
     "Ember-Provider": (
         "A real Ember+ provider on 9000 and offline specification docs on 3221",
         "The embserver provider, serving a GLOW tree on S101/TCP 9000 from CSV files "

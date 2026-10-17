@@ -30,6 +30,10 @@ MANAGER_PACKAGE = os.path.dirname(os.path.abspath(__file__))
 SOURCE_DIRECTORY = os.path.dirname(MANAGER_PACKAGE)
 MANAGEMENT_DIRECTORY = os.path.dirname(SOURCE_DIRECTORY)
 DOCKERS_DIRECTORY = os.path.dirname(MANAGEMENT_DIRECTORY)
+# In the checkout the stack sits in its pod (PODS/POD.manager/MANAGER.Docktor),
+# so the PODS root is one rung further; in the image it is /app/APK:DOCKERS.
+if os.path.basename(DOCKERS_DIRECTORY).startswith('POD.'):
+    DOCKERS_DIRECTORY = os.path.dirname(DOCKERS_DIRECTORY)
 REPOSITORY_ROOT = os.path.abspath(os.path.join(DOCKERS_DIRECTORY, '..'))
 
 # The backend scripts for K8 / Kubernetes container management live in `Docktor/K8`.
@@ -61,8 +65,8 @@ def _find_first_existing_dir(candidates):
     return candidates[0]
 
 BAREMETAL_SRC_CANDIDATES = [
-    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'SRC'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'SRC'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal'),
     os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'SRC'),
@@ -81,7 +85,7 @@ BAREMETAL_ROOT = _find_first_existing_dir(BAREMETAL_SRC_CANDIDATES)
 # the two BareMetal spellings stay for a checkout that still carries its own.
 BRAND_TOKENS_CANDIDATES = [
     os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:THICK', 'BareMetal', 'contracts', 'tokens', 'brand.json'),
+    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'contracts', 'tokens', 'brand.json'),
     os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),

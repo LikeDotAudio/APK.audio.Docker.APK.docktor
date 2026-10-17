@@ -2,7 +2,7 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🔄 Restart ONE pod in place. The lasso's restart verb.
-#   ./restart-stack.sh 'PROTOCOL:DEV:EMBER'
+#   ./restart-stack.sh 'PROTOCOL.DEV.EMBER'
 # `compose restart`: the containers that exist are stopped and started again,
 # nothing is rebuilt, recreated or removed. A pod with no containers stays
 # empty — up-stack.sh is the verb that makes them.
@@ -11,7 +11,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 STACK="${1:-}"
 if [ -z "$STACK" ]; then
     log_error "Which pod? Name the directory under APK:PODS/."
-    echo "Usage: ./restart-stack.sh 'PROTOCOL:DEV:EMBER'"
+    echo "Usage: ./restart-stack.sh 'PROTOCOL.DEV.EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi

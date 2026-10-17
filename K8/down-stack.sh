@@ -2,8 +2,8 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🛑 Take ONE pod off the bench. The lasso's stop verb.
-#   ./down-stack.sh 'PROTOCOL:DEV:EMBER'
-#   ./down-stack.sh 'PROTOCOL:DEV:EMBER' --volumes    ⚠️ ALSO ITS NAMED VOLUMES
+#   ./down-stack.sh 'PROTOCOL.DEV.EMBER'
+#   ./down-stack.sh 'PROTOCOL.DEV.EMBER' --volumes    ⚠️ ALSO ITS NAMED VOLUMES
 # down.sh stops everything; this stops the one pod somebody pointed at, which is
 # the unit the card grid draws and therefore the unit people reach for.
 # ⚠️ NO --remove-orphans. Five of the compose files share the project
@@ -23,7 +23,7 @@ WITH_VOLUMES=0
 
 if [ -z "$STACK" ]; then
     log_error "Which pod? Name the directory under APK:PODS/."
-    echo "Usage: ./down-stack.sh 'PROTOCOL:DEV:EMBER'"
+    echo "Usage: ./down-stack.sh 'PROTOCOL.DEV.EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi

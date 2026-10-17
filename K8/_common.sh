@@ -41,7 +41,10 @@ elif [ -n "${APKAUDIO_REPO:-}" ] && [ -d "$APKAUDIO_REPO/APK:PODS" ]; then
     REPO_ROOT="$APKAUDIO_REPO"
     DOCKERS_DIR="$REPO_ROOT/APK:PODS"
 else
-    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:THIN" ] || [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK_THIN" ]; then
+    # K8/ sits in PODS/POD.manager/MANAGER.Docktor/, so PODS is three rungs up.
+    if [ -d "$MANAGEMENT_SCRIPTS_DIR/../../../POD.THIN" ]; then
+        DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../.." && pwd)"
+    elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD.THIN" ] || [ -d "$MANAGEMENT_SCRIPTS_DIR/../../POD:APK_THIN" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../.." && pwd)"
     elif [ -d "$MANAGEMENT_SCRIPTS_DIR/../../PODS" ]; then
         DOCKERS_DIR="$(cd "$MANAGEMENT_SCRIPTS_DIR/../../PODS" && pwd)"
@@ -57,7 +60,7 @@ else
     REPO_ROOT="$(cd "$DOCKERS_DIR/.." && pwd)"
 fi
 
-# Exported, not just assigned: PROTOCOL:DEV:EMBER/docker-compose.yml and
+# Exported, not just assigned: PROTOCOL.DEV.EMBER/docker-compose.yml and
 # docker-compose.manager.yml interpolate ${APKAUDIO_REPO} and Ember spells it
 # `:?` — unset is a hard refusal at interpolation.
 export APKAUDIO_REPO="$REPO_ROOT"
@@ -66,7 +69,7 @@ export APKAUDIO_REPO="$REPO_ROOT"
 # spelled. ⚠️ A wrong path does not raise — compose warns and carries on, so
 # every stack reads as empty. Build contexts are repo-root-relative.
 # ⚠️ AND THAT IS EXACTLY WHAT HAPPENED. The stacks moved down a rung into
-#    POD:APK_THIN / POD:database / POD:databus / POD:protocols and these ten lines
+#    POD:APK_THIN / POD.database / POD.databus / POD.protocols and these ten lines
 #    kept the flat spellings, so ALL TEN named files that are not there. Nothing
 #    said so, because nothing in this ecosystem treats a missing compose file as
 #    an error: `up` mounted nothing and reported success, stacks.sh could not
@@ -172,26 +175,26 @@ stack_compose_file() {
 
 # Dynamically resolve legacy stack variables — off ONE walk of the tree.
 index_stack_dirs
-stack_compose_file_into SQLCLUSTER_COMPOSE_FILE "DATABASE:server:SQL"
+stack_compose_file_into SQLCLUSTER_COMPOSE_FILE "DATABASE.server.SQL"
 COMPOSE_FILE="$SQLCLUSTER_COMPOSE_FILE"
-stack_compose_file_into BAREMETAL_COMPOSE_FILE "BareMetal"
-[ -n "${BAREMETAL_HARDWARE_COMPOSE_FILE:-}" ] || stack_compose_file_into BAREMETAL_HARDWARE_COMPOSE_FILE "BareMetal" "docker-compose.hardware.yml"
-BAREMETAL_ROOT="$(stack_dir "BareMetal")/SRC"
-stack_compose_file_into MQTT_COMPOSE_FILE "DATABUS:Broker:MQTT"
-stack_compose_file_into PORTAL_COMPOSE_FILE "DATABUS:Broker:MQTT" "docker-compose.portal-broker.yml"
-stack_compose_file_into PLUGINS_COMPOSE_FILE "discovery"
+stack_compose_file_into BAREMETAL_COMPOSE_FILE "NODE.BareMetal"
+[ -n "${BAREMETAL_HARDWARE_COMPOSE_FILE:-}" ] || stack_compose_file_into BAREMETAL_HARDWARE_COMPOSE_FILE "NODE.BareMetal" "docker-compose.hardware.yml"
+BAREMETAL_ROOT="$(stack_dir "NODE.BareMetal")/SRC"
+stack_compose_file_into MQTT_COMPOSE_FILE "DATABUS.Broker.MQTT"
+stack_compose_file_into PORTAL_COMPOSE_FILE "DATABUS.Broker.MQTT" "docker-compose.portal-broker.yml"
+stack_compose_file_into PLUGINS_COMPOSE_FILE "DISCOVERY.Engine"
 [ -z "$PLUGINS_COMPOSE_FILE" ] && stack_compose_file_into PLUGINS_COMPOSE_FILE "plugins:Build"
-# ── POD:protocols IS ONE STACK OF THREE CONTAINERS. Its pod-root compose file
+# ── POD.protocols IS ONE STACK OF THREE CONTAINERS. Its pod-root compose file
 # `include:`s the three below, and IT is what for_each_stack walks. The three
 # keep their own variables because `compose.sh nmos`, verify.sh and
 # panic-reboot.sh all name them, and because each is still mountable on its own
 # (every one declares `name: protocols`, so it lands in the pod's project).
-stack_compose_file_into PROTOCOLS_COMPOSE_FILE "POD:protocols"
-stack_compose_file_into NMOS_COMPOSE_FILE "PROTOCOL:discovery:NMOS"
-stack_compose_file_into AES70_COMPOSE_FILE "PROTOCOL:DEV:AES70"
-stack_compose_file_into NETBOX_COMPOSE_FILE "DATABASE:server:NETBOX"
-stack_compose_file_into EMBER_COMPOSE_FILE "PROTOCOL:DEV:EMBER"
-stack_compose_file_into LOGGER_COMPOSE_FILE "DATABASE:volume:Log STORAGE"
+stack_compose_file_into PROTOCOLS_COMPOSE_FILE "POD.protocols"
+stack_compose_file_into NMOS_COMPOSE_FILE "PROTOCOL.discovery.NMOS"
+stack_compose_file_into AES70_COMPOSE_FILE "PROTOCOL.DEV.AES70"
+stack_compose_file_into NETBOX_COMPOSE_FILE "DATABASE.server.NETBOX"
+stack_compose_file_into EMBER_COMPOSE_FILE "PROTOCOL.DEV.EMBER"
+stack_compose_file_into LOGGER_COMPOSE_FILE "DATABASE.volume.Log-STORAGE"
 LOG_VOLUME_NAME="apk-audio-logs"
 
 # ── DOCKTOR OWN PERSISTENT STORAGE. The same shape as the log volume above and
@@ -364,7 +367,7 @@ for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "
 unset _apk_role
 
 # ── THE PUCK THAT IS NOT PLUGGED IN. `puck` is in the default role list above,
-# and PLUGIN:SPACENAVIGATOR names a `devices:` entry — so on a bench with no
+# and PLUGIN.SPACENAVIGATOR names a `devices:` entry — so on a bench with no
 # SpaceNavigator on it compose does not skip that container, it REFUSES:
 #   error gathering device information while adding custom device
 #   "/dev/input/by-id/usb-3Dconnexion_SpaceNavigator-event-if00": no such file
@@ -574,6 +577,7 @@ node_hardware_report() {
 #    nothing, a realpath still compares — which is why it is worth four
 #    candidates and this comment.
 for _candidate in \
+    "$DOCKERS_DIR/POD.manager/MANAGER.Docktor/Docker/docker-compose.manager.yml" \
     "$DOCKERS_DIR/APK:Docktor/Docker/docker-compose.manager.yml" \
     "$DOCKERS_DIR/APK:docktor/Docker/docker-compose.manager.yml" \
     "$DOCKERS_DIR/Docktor/Docker/docker-compose.manager.yml" \
@@ -622,7 +626,7 @@ fi
 # allowed — a blip, not an outage.
 BROKER_CONTAINER="${APKAUDIO_BROKER_CONTAINER:-Broker-Mosquitto}"
 BROKER_SERVICE="${APKAUDIO_BROKER_SERVICE:-mosquitto}"
-BROKER_STACK_NAME="${APKAUDIO_BROKER_STACK:-DATABUS:Broker:MQTT}"
+BROKER_STACK_NAME="${APKAUDIO_BROKER_STACK:-DATABUS.Broker.MQTT}"
 # Set on the service in its compose file, so a bare `docker container prune`
 # or anything else that filters by label can leave it alone too.
 PROTECTED_LABEL="apk.audio.protected=true"
@@ -858,7 +862,7 @@ for_each_stack() {
     # ⚠️ DOCKTOR IS FIRST UP AND LAST DOWN, and neither is a preference:
     #    · FIRST, because it is the only stack that can SHOW you the other
     #      stacks mounting.
-    #    · MQTT MOSQUITTO (DATABUS:Broker:MQTT) IS SECOND UP (FIRST AFTER DOCKTOR),
+    #    · MQTT MOSQUITTO (DATABUS.Broker.MQTT) IS SECOND UP (FIRST AFTER DOCKTOR),
     #      so the central message bus is alive before any storage, baremetal,
     #      or protocol services attempt to announce or connect.
     #    · LAST DOWN, for the same reason read backwards: the tool that reports
@@ -1002,7 +1006,7 @@ for_each_stack() {
 # ran the plugin stack profile-less and started the one service that carries no
 # role. Every branch calls this before it returns.
 # ONLY THE PLUGIN STACK. Every other stack's profiles are opt-in on purpose and
-# must not be switched on by being looked at: PROTOCOL:discovery:NMOS keeps the
+# must not be switched on by being looked at: PROTOCOL.discovery.NMOS keeps the
 # conformance harness behind one (732 MB of that stack's 1,087, off unless
 # APK_NMOS_PROFILES asks), and the plugin file's own `build` profile is two
 # services that exist to be built, never run.
@@ -1018,12 +1022,12 @@ for_each_stack() {
 # came through here, matched nothing, and ran profile-less. Compose then said
 # `no service selected` and exited 0, so a mount printed that line twenty-two
 # times and reported success while creating nothing.
-# HOW A PLUGIN FILE IS RECOGNISED: it `extends` discovery/Docker/plugin-base.yml.
+# HOW A PLUGIN FILE IS RECOGNISED: it `extends` DISCOVERY.Engine/Docker/plugin-base.yml.
 # That is what a plugin IS — the base service carries the image, the capability
 # floor, the broker variables and the healthcheck — so it is a test of the file
 # rather than of its folder's name, and a plugin renamed or moved still matches.
 # STILL NOT EVERY STACK WITH PROFILES: the rule below admits the plugin files
-# and the discovery file and nothing else, so PROTOCOL:discovery:NMOS keeps its
+# and the discovery file and nothing else, so PROTOCOL.discovery.NMOS keeps its
 # conformance harness off (732 MB of that stack's 1,087, off unless
 # APK_NMOS_PROFILES asks). And only the ROLES are selected, never every profile
 # in the file, so `build` stays off wherever it appears.

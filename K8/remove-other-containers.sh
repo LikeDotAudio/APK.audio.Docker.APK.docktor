@@ -32,7 +32,7 @@ DRY_RUN=0
 # ⚠️ THIS GLOB WAS ONE RUNG AND STAYED ONE RUNG AFTER THE PODS LANDED, so for
 #    months it matched NOTHING and the sweep refused on the guard below — which
 #    read as "the repo is broken" rather than "the glob is". It became dangerous
-#    the day POD:protocols/Docker/docker-compose.yml appeared: suddenly the one
+#    the day POD.protocols/Docker/docker-compose.yml appeared: suddenly the one
 #    rung matched exactly ONE file, the first guard passed, and the keep-set was
 #    one project. Only the SECOND guard (no container_name: in it) stood between
 #    a --dry-run and a sweep that read the whole bench as strangers.

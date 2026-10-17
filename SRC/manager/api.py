@@ -656,11 +656,11 @@ def snapshot(quiet=True, with_apps=True):
             stack_repo_map[s["project"]] = repo_info
 
     # ── SECOND PASS: A POD THAT ONLY `include:`s CLAIMS ITS MEMBERS' CARDS.
-    # POD:protocols/Docker/docker-compose.yml declares no container of its own;
+    # POD.protocols/Docker/docker-compose.yml declares no container of its own;
     # it names three files that each declare one. Without this, every protocol
     # card points at its own stack folder, the Protocols group is a three-way
     # tie in _group_stack(), and `max` breaks it alphabetically — so the pod
-    # verbs would quietly act on PROTOCOL:discovery:NMOS and leave the other two
+    # verbs would quietly act on PROTOCOL.discovery.NMOS and leave the other two
     # standing. The verbs take a DIRECTORY, and the directory for these cards is
     # the pod.
     # ⚠️ ONLY A FILE THAT DECLARES NO `container_name:` OF ITS OWN, which is what
@@ -669,7 +669,7 @@ def snapshot(quiet=True, with_apps=True):
     #    to include, not a pod root, and the plugin cards keep pointing at their
     #    own folders exactly as before.
     # SECOND, so it OVERWRITES the first pass: `stacks` is sorted by name and
-    # `POD:protocols` sorts before `PROTOCOL:*`, so a single pass would let the
+    # `POD.protocols` sorts before `PROTOCOL:*`, so a single pass would let the
     # members win.
     for s in stacks:
         compose_file = s.get("compose_file")
@@ -749,7 +749,7 @@ def snapshot(quiet=True, with_apps=True):
         # how Storage-MariaDB and Storage-Portal come to sit together — while
         # up-stack.sh, rebuild-stack.sh and down-stack.sh all take the DIRECTORY
         # under APK:PODS/. The two differ on nearly every row ("Storage" is
-        # `DATABASE:server:SQL`), so the client is handed the answer rather than
+        # `DATABASE.server.SQL`), so the client is handed the answer rather than
         # left to guess it from a label it must not parse.
         # READ OFF THE CARDS' OWN `repo`, which stack_repo_map built from the
         # container_name: lines in each compose file — so a group whose cards

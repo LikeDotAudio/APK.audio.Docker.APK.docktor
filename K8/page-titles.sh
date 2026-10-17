@@ -26,7 +26,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 # wall-clock stamps, and .gitignored for both reasons.
 # Below the source line on purpose — check.sh prologue measures the opening
 # comment run.
-PAGE_TITLE_CACHE="$(dirname "$MANAGEMENT_SCRIPTS_DIR")/page-titles.json"
+# In .cache/ rather than the stack root, which keeps no loose files.
+PAGE_TITLE_CACHE="$(dirname "$MANAGEMENT_SCRIPTS_DIR")/.cache/page-titles.json"
+mkdir -p "$(dirname "$PAGE_TITLE_CACHE")" 2>/dev/null || true
 
 MODE=probe
 if [ "${1:-}" = "--remembered" ]; then

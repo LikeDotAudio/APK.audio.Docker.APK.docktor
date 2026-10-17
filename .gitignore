@@ -7,10 +7,12 @@ __pycache__/
 .DS_Store
 
 # What THIS bench's pages answered when last asked their name. `K8/page-titles.sh`
-# writes /page-titles.json beside K8/, and SRC/page-titles.json is an older copy
+# writes /.cache/page-titles.json beside K8/; /page-titles.json and
+# SRC/page-titles.json are older copies
 # from before the move. Each is an observation of one machine at one time, and
 # `endpoints.sh` is where an address's DECLARED name lives. Moved here from the
 # superproject's .gitignore, which cannot reach inside this repository.
 # PLAN-3320.01.
+/.cache/
 /page-titles.json
 /SRC/page-titles.json

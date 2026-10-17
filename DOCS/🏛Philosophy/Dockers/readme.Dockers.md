@@ -33,7 +33,7 @@ in the same tree that deliberately does the opposite.
 | `Server:Broker:MQTT/` | `apk-audio` | 2 | the bus as a subject: a broker to work on, and the thing that records it |
 | `DockTor/` | `apk-audio` | 1 | the tool that looks at the others — the only holder of the docker socket |
 | `Server:Discovery:NMOS/` | `nmos` | 4 (+2) | somebody else's specification furniture, plus the two devices we ship into it |
-| `PROTOCOL:DEV:AES70/` | `aes70` | 2 | somebody else's library, on an interpreter this bench does not otherwise have |
+| `PROTOCOL.DEV.AES70/` | `aes70` | 2 | somebody else's library, on an interpreter this bench does not otherwise have |
 | `Server:Ember/` | `ember` | 2 | a real Ember+ provider three of our own readers had been dialling for months |
 | `Server:Netbox/` | `netbox` | 5 | the inventory, and a database nothing else may reach |
 
@@ -361,7 +361,7 @@ upstream bases are pinned by digest — `rhastie/nmos-cpp@sha256:c54c8de…` and
 `amwa/nmos-testing@sha256:99a411d…` — never by tag, because *"`latest` on a conformance suite
 means the gate's meaning changes without a commit."*
 
-### `PROTOCOL:DEV:AES70/` — the AES70 workbench · project `aes70`
+### `PROTOCOL.DEV.AES70/` — the AES70 workbench · project `aes70`
 
 | container | image | published | why |
 |---|---|---|---|

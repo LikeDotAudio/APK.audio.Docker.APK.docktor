@@ -1305,7 +1305,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; pad
 .ask-prompt input:focus { outline: none; border-color: var(--accent); }
 .ask-prompt small { display: block; margin-top: 4px; color: var(--dimmer); font-size: 10.5px; }
 /* THE DIRECTORY THE BUTTONS ACT ON, beside the name the grid groups by — they
- * are different strings ("Storage" is DATABASE:server:SQL), and a button that
+ * are different strings ("Storage" is DATABASE.server.SQL), and a button that
  * says "Stop This Pod" should not leave which pod to inference. */
 .lasso-stack { font: 500 10px var(--mono); color: var(--dimmer); }
 .lasso-nostack { font: 400 10px var(--sans); color: var(--dimmer); font-style: italic; }

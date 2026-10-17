@@ -275,7 +275,7 @@ def read_stacks(quiet=True):
         f = (line.split('\t') + [''] * 10)[:10]
         # ONE COMPOSE FILE UNDER TWO NAMES IS ONE STACK. stacks.sh walks
         # APK:PODS/, where the compatibility symlinks (APK:docktor -> Docktor,
-        # Server:Broker:MQTT -> POD:databus/…) sit beside the folders they name,
+        # Server:Broker:MQTT -> POD.databus/…) sit beside the folders they name,
         # so a file arrived twice and the watchdog remounted it twice. First wins.
         real = os.path.realpath(f[1])
         if real in seen:

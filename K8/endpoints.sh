@@ -171,10 +171,10 @@ emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
     "Portal status page" "http://{host}:{port}/status.html"
 
 emit_endpoint Broker-Mosquitto        1883/tcp 1883 copy \
-    "MQTT broker (DATABUS:Broker:MQTT)" "mqtt://{host}:{port}"
+    "MQTT broker (DATABUS.Broker.MQTT)" "mqtt://{host}:{port}"
 
 emit_endpoint Broker-Mosquitto        9001/tcp 9001 copy \
-    "MQTT over WebSockets (DATABUS:Broker:MQTT)" "ws://{host}:{port}"
+    "MQTT over WebSockets (DATABUS.Broker.MQTT)" "ws://{host}:{port}"
 
 # THE DATABASE CLIENTS USE: the database through ProxySQL on port 3306.
 emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3306}" copy \
@@ -230,7 +230,7 @@ emit_endpoint NMOS-Dev 3217/tcp 3217 copy \
 emit_endpoint NMOS-Dev 3218/tcp 3218 open \
     "NMOS IS-04 Node API (DataBus bridge)" "http://{host}:{port}/x-nmos/node/v1.3/self"
 
-# --- PROTOCOL:DEV:AES70 ---------------------------------------------------
+# --- PROTOCOL.DEV.AES70 ---------------------------------------------------
 # NO ROWS. aes70py-dev publishes nothing; aes70-site publishes 3220 but is a
 # mirror of somebody else project site — bench scaffolding, same standard as
 # NMOS-Sandbox. 3220 is in EXCLUDED_PORTS; the fallback launcher still finds it.
@@ -254,7 +254,7 @@ emit_endpoint Netbox-App 8080/tcp 8081 open \
 emit_endpoint Netbox-App 8080/tcp 8081 open \
     "NetBox GraphQL" "http://{host}:{port}/graphql/"
 
-# --- PROTOCOL:DEV:EMBER ---------------------------------------------------------
+# --- PROTOCOL.DEV.EMBER ---------------------------------------------------------
 # ONE ROW, NOT TWO. ember-docs publishes 3221 and serves Lawo specification
 # PDFs — somebody else specification, so it is in EXCLUDED_PORTS.
 # copy, not open: S101 is a framed TCP stream. Ember+/S101 has no registered URI
@@ -268,7 +268,7 @@ emit_endpoint Ember-Provider 9000/tcp 9000 copy \
 # One `open` row — the whole console is one page at /. It is DECLARED here so
 # DockTor holds the URL now; the row reads `down` until the container runs and
 # `open ↗` the moment it binds 8140. See
-# plugin/PLUGIN:SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
+# PLUGINS/PLUGIN.SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
 # container is given decides which switch it configures (first: TEG-240WS).
 emit_endpoint Plugin-SNMP 8140/tcp 8140 open \
     "Switch Config (MIB-driven)" "http://{host}:{port}/"
@@ -360,7 +360,7 @@ if [ -z "$WANT" ] || [ "$WANT" = "APK-Discovery-Engine" ]; then
         "${disc_url}/status" "$disc_state"
 fi
 
-# --- AES67 / ST 2110-30 bridge, from 'PLUGIN:AES67/Docker/docker-compose.yml' --
+# --- AES67 / ST 2110-30 bridge, from 'PLUGIN.AES67/Docker/docker-compose.yml' --
 # The one plugin with pages of its own: host-networked, APK_AES67_HTTP_PORT (8130).
 if [ -z "$WANT" ] || [ "$WANT" = "Plugin-AES67" ]; then
     aes_url="http://127.0.0.1:${APK_AES67_HTTP_PORT:-8130}"

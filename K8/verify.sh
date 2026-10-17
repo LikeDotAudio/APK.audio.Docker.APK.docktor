@@ -49,22 +49,22 @@ validate_stack "Node-BareMetal" "${COMPOSE_NODE[@]}"
 # runs is one it must be able to parse. The two-line version of this list is how
 # APK:audio:WebPortal carried a bind mount the daemon refuses.
 validate_stack "Server:Broker:MQTT"    "${COMPOSE_MQTT[@]}"
-validate_stack "Portal (DATABUS:Broker:MQTT portal-broker)" "${COMPOSE_PORTAL[@]}"
+validate_stack "Portal (DATABUS.Broker.MQTT portal-broker)" "${COMPOSE_PORTAL[@]}"
 # Not driven by for_each_stack, and still a file `compose.sh plugins` runs.
 validate_stack "APK:discovery"         "${COMPOSE_PLUGINS[@]}"
 # THE POD ROOT FIRST, because it is what for_each_stack mounts: it `include:`s
 # the three below, so it is the one file whose FAILURE stops the pod. The three
 # are still validated individually -- an include that parses says nothing about
 # whether the child is still mountable on its own, which it must be.
-validate_stack "POD:protocols"         "${COMPOSE_PROTOCOLS[@]}"
+validate_stack "POD.protocols"         "${COMPOSE_PROTOCOLS[@]}"
 validate_stack "Server:Discovery:NMOS" "${COMPOSE_NMOS[@]}"
-validate_stack "PROTOCOL:DEV:AES70"    "${COMPOSE_AES70[@]}"
-validate_stack "DATABASE:server:NETBOX" "${COMPOSE_NETBOX[@]}"
-validate_stack "DATABASE:server:SQL"     "${COMPOSE_SQLCLUSTER[@]}"
-# PROTOCOL:DEV:EMBER can fail config on the ENVIRONMENT rather than the file: it
+validate_stack "PROTOCOL.DEV.AES70"    "${COMPOSE_AES70[@]}"
+validate_stack "DATABASE.server.NETBOX" "${COMPOSE_NETBOX[@]}"
+validate_stack "DATABASE.server.SQL"     "${COMPOSE_SQLCLUSTER[@]}"
+# PROTOCOL.DEV.EMBER can fail config on the ENVIRONMENT rather than the file: it
 # interpolates ${APKAUDIO_REPO:?}. _common.sh exports it, so a failure here
 # means the export went away, not that the YAML is wrong.
-validate_stack "PROTOCOL:DEV:EMBER"    "${COMPOSE_EMBER[@]}"
+validate_stack "PROTOCOL.DEV.EMBER"    "${COMPOSE_EMBER[@]}"
 # LOGGER STORAGE interpolates ${APKAUDIO_REPO:?} for its bind device, same as Ember.
 validate_stack "DATABSE:volume:Log STORAGE" "${COMPOSE_LOGGER[@]}"
 
@@ -252,7 +252,7 @@ fi
 # The comment above turned out to be about ITSELF: the rung moved again with the
 # pods, this line did not, and the whole PHP tier went back to being skipped in
 # silence. stack_dir() is what finds the stack now, under whichever POD: holds it.
-api_tests="$(stack_dir 'DATABASE:server:SQL')/SRC/APK:API/tests/run.sh"
+api_tests="$(stack_dir 'DATABASE.server.SQL')/SRC/APK:API/tests/run.sh"
 if [ -f "$api_tests" ]; then
     note "Running APK:API integration test script..."
     if out="$( cd "$REPO_ROOT" && bash "$api_tests" 2>&1 )"; then

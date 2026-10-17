@@ -558,7 +558,7 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
 # launch. Once per BROKER_LAUNCH_COOLDOWN at most, on its own thread, so a
 # broker that will not start is not hammered and the status beat never waits
 # on a mount.
-BROKER_STACK = "DATABUS:Broker:MQTT"
+BROKER_STACK = "DATABUS.Broker.MQTT"
 BROKER_LAUNCH_COOLDOWN = 120
 _broker_launch_lock = threading.Lock()
 _broker_launch_at = 0.0

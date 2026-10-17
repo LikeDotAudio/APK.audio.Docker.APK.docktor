@@ -46,7 +46,7 @@ fi
 managed_by="$(docker inspect --format \
     '{{index .Config.Labels "apk.audio.managed_by"}}' "$container" 2>/dev/null)"
 if [ "$managed_by" = "BareMetal-Manager" ]; then
-    path="$(stack_dir 'BareMetal')/SRC/Baremetal:Manager/instrument_launcher.py"
+    path="$(stack_dir 'NODE.BareMetal')/SRC/Baremetal:Manager/instrument_launcher.py"
     if [ -f "$path" ]; then
         printf '%s\n' "$path"
         exit 0
@@ -68,9 +68,9 @@ case "$lowered" in
     # that HAVE one resolved to a file that is not there — and the button that
     # exists to show you what built a container showed nothing.
     *baremetal*)
-        path="$(stack_dir 'BareMetal')/Docker/Dockerfile" ;;
+        path="$(stack_dir 'NODE.BareMetal')/Docker/Dockerfile" ;;
     *portal*|*web*)
-        path="$(stack_dir 'DATABASE:server:SQL')/Docker/Dockerfile" ;;
+        path="$(stack_dir 'DATABASE.server.SQL')/Docker/Dockerfile" ;;
     *mariadb*|*maria*|*broker*|*mqtt*)
         path="$COMPOSE_FILE" ;;
     *)

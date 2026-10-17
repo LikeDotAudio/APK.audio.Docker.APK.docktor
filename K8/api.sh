@@ -355,7 +355,7 @@ def instrument_routes(container):
     return {
         "container": container,
         "how": "declared",
-        "source": f"INSTRUMENTS/INSTRUMENT:{fam}/{mod}" if (fam and mod) else "INSTRUMENTS",
+        "source": f"INSTRUMENTS/INSTRUMENT.{fam}/{mod}" if (fam and mod) else "INSTRUMENTS",
         "routes": routes,
     }
 

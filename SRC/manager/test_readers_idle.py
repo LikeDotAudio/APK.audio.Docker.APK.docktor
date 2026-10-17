@@ -2,7 +2,7 @@
 # MIT Licence. Full text in LICENSE at the root.
 """What an idle DockTor may skip, and what it must still notice (PLAN-3319.01).
 
-    cd PODS/Docktor/SRC && python3 -m unittest manager.test_readers_idle -v
+    cd PODS/POD.manager/MANAGER.Docktor/SRC && python3 -m unittest manager.test_readers_idle -v
 """
 
 import unittest

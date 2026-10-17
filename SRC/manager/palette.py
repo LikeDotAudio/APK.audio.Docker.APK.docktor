@@ -132,7 +132,7 @@ ROLE_DEFAULT = "\U0001F433"
 # read the same way here.
 GROUP_SEPARATORS = "-_:"
 
-# POD:protocols — THREE CONTAINERS, ONE POD. The pod-root compose file puts
+# POD.protocols — THREE CONTAINERS, ONE POD. The pod-root compose file puts
 # AES70, EMBER and NMOS in one project (`protocols`); this is the same fact said
 # where the grid can see it, because a group here is read off the container NAME
 # and these five names share no prefix.

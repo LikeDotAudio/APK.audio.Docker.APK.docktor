@@ -64,7 +64,7 @@ if [ "$DRY_RUN" = "1" ]; then
     log_step "3/3. Rehearsal: Stack images and services that rebuild-all.sh would build (--no-cache)"
 
     # `protocols`, not `nmos aes70 ember`: the three are CONTAINERS in the
-    # POD:protocols stack now, and rebuild-all.sh walks the pod, so a
+    # POD.protocols stack now, and rebuild-all.sh walks the pod, so a
     # rehearsal that listed them separately would describe three builds
     # where one happens.
     order=(logger sqlcluster core mqtt portal protocols netbox node)

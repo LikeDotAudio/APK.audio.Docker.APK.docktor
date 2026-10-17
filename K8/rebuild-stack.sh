@@ -2,7 +2,7 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # 🧱⚡ Rebuild ONE pod from scratch and put it back. The lasso's build verb.
-#   ./rebuild-stack.sh 'PROTOCOL:DEV:EMBER'
+#   ./rebuild-stack.sh 'PROTOCOL.DEV.EMBER'
 # THREE VERBS NOW SCOPE TO ONE STACK and they are three different acts:
 #   · up-stack.sh     mount it, building only what changed
 #   · rebuild-stack.sh  THIS — build --no-cache, then force-recreate
@@ -22,7 +22,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 STACK="${1:-}"
 if [ -z "$STACK" ]; then
     log_error "Which pod? Name the directory under APK:PODS/."
-    echo "Usage: ./rebuild-stack.sh 'PROTOCOL:DEV:EMBER'"
+    echo "Usage: ./rebuild-stack.sh 'PROTOCOL.DEV.EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi

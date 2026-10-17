@@ -107,7 +107,7 @@ CLI_ACTIONS_WITH_ARGS = {
         'phoenix.sh'),
 }
 
-USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
+USAGE = """Usage: python3 'APK:PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' <action> [args] [--no-kaboom]
 
   launch [action] [--wait N]
                        THIS IS THE DEFAULT: a bare invocation runs it. Starts
@@ -193,7 +193,7 @@ USAGE = """Usage: python3 'APK:PODS/K8:runner.py' <action> [args] [--no-kaboom]
                        NAMED VOLUME (all local data) on this host, then
                        performs a clean rebuild and remount from source code.
 
-Every action runs one file from 'APK:PODS/Docktor/SRC/docker scripts/';
+Every action runs one file from 'APK:PODS/POD.manager/MANAGER.Docktor/SRC/docker scripts/';
 run them directly too."""
 
 

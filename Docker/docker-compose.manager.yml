@@ -1,5 +1,5 @@
 # DockTor, installed beside the stacks it manages.
-#     docker compose -f 'APK:PODS/Docktor/Docker/docker-compose.manager.yml' up -d --build
+#     docker compose -f 'APK:PODS/POD.manager/MANAGER.Docktor/Docker/docker-compose.manager.yml' up -d --build
 #     open http://localhost:8765/
 # ONE SERVICE, AND THE ONLY ONE IN THIS REPOSITORY THAT HOLDS THE DOCKER SOCKET:
 # every other stack runs a workload, this one runs the tool that looks at them.
@@ -32,14 +32,13 @@ name: apk-audio
 services:
   manager:
     build:
-      context: "../../.."                                          # repo root
-      # ⚠️ REAL PATH, AND IT IS `APK:Docktor`. This said `APK:PODS/Docktor`, a
-      # directory that has never existed, so every mount of this stack died on
-      # `lstat .../APK:PODS/Docktor: no such file or directory` — including the
-      # remount button on the dashboard's own row. The CONTEXT above is right as
-      # it stands: this file is one rung under APK:PODS, so `../../..` is the
-      # checkout root, which is what the dockerfile path below is relative to.
-      dockerfile: "PODS/Docktor/Docker/Dockerfile.manager"
+      context: "../../../.."                                       # repo root
+      # ⚠️ REAL PATH. This file is PODS/POD.manager/MANAGER.Docktor/Docker/, so
+      # `../../../..` is the checkout root, which is what the dockerfile path
+      # below is relative to. When it said `APK:PODS/Docktor` — a directory that
+      # did not exist — every mount of this stack died on `lstat`, including the
+      # remount button on the dashboard's own row.
+      dockerfile: "PODS/POD.manager/MANAGER.Docktor/Docker/Dockerfile.manager"
     image: docktor:local
     container_name: DockTor
     restart: unless-stopped
