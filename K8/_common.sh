@@ -1138,6 +1138,18 @@ synch_skills() {
     fi
     ( cd "$REPO_ROOT" && python3 "$script" --quiet )
     local status=$?
+    # DockTor runs this as ROOT (its container has no user), so every copy it
+    # wrote came out root-owned, and the next synch run as the repo's owner hit
+    # PermissionError on .agents/skills (measured 2026-10-25: the whole tree
+    # root's since a DockTor mount on 10-23). Hand what it wrote back to whoever
+    # owns the checkout — the files are theirs, the root was only ours.
+    if [ "$(id -u)" -eq 0 ]; then
+        local owner
+        owner=$(stat -c '%u:%g' "$REPO_ROOT")
+        for tree in "$REPO_ROOT/.agents" "$REPO_ROOT/.claude/skills"; do
+            [ -e "$tree" ] && chown -R "$owner" "$tree"
+        done
+    fi
     announce SKILLS_SYNCHED "{\"script\":\"$script\",\"exit_code\":$status}"
     if [ $status -eq 2 ]; then
         log_error "skills synch could not READ part of .apk.skills/. It retired nothing, so"
