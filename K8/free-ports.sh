@@ -329,6 +329,7 @@ def free_the_port(port):
         return True, ''
 
     attempted = False
+    protected_holder = None
 
     for pid in processes_holding(port):
         attempted = True
@@ -352,6 +353,7 @@ def free_the_port(port):
         # for a port — a stack that wants 1883 is the one that is wrong.
         if name in PROTECTED:
             print(f"    port {port} is held by protected {name} -- never evicted", flush=True)
+            protected_holder = name
             continue
         attempted = True
         print(f"    \U0001f4a5 {name} ({identifier}) {ORDER} to shut down "
@@ -364,6 +366,17 @@ def free_the_port(port):
             if port_is_free(port):
                 return True, ''
             time.sleep(0.2)
+
+    # HELD BY THE BROKER IS NOT HELD BY A STRANGER. The broker's own compose
+    # file declares 1883 and 9001, so every bench-wide up found them taken by
+    # the broker it had just ensured, skipped it as protected, attempted
+    # nothing, and reported `unreachable-holder` -- blaming a host process that
+    # did not exist, and up.sh's prepare_for_up || exit 1 aborted the remount.
+    # Compose keeps its own running container; a stack that is NOT the
+    # broker's and wants the port is the one that is wrong, and compose says so.
+    if protected_holder and not attempted:
+        print(f"    port {port} stays with {protected_holder} -- left for its own compose", flush=True)
+        return True, ''
 
     # A TIME_WAIT socket with no owner frees itself; give it a moment.
     for _ in range(20):
