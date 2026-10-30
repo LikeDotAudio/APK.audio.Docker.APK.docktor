@@ -144,7 +144,7 @@ Before submitting code changes:
 | :--- | :--- | :--- | :--- |
 | **`apkaudio-broker`** | MQTT Mosquitto | Broker candidate order & socket checks (`run_brokerlist`) | **REFUSE BUILD** if discovery or candidates fail |
 | **`Storage-MariaDB`** | MariaDB 11.4 | None — the schema-lock gate went with oneScope | *(no gate)* |
-| **`apk-audio` (Web Shell)** | Web Portal | Static boot snapshot (`run_static_boot`) | **REFUSE BUILD** if PHP contains syntax errors |
+| **`apk-audio` (Web Shell)** | Web Portal | Static boot snapshot (`run_static_boot` → `WEB.Frontend-Assets/.apk.scripts/check_static_boot.py`) | **REFUSE BUILD** if, serving `PODS/POD.THIN/OS` as plain files with no Python answering, any registry/tree snapshot or `os.modules.json` module fails to load |
 
 ### Enforcement Mechanisms
 
