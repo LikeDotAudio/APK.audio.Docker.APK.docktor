@@ -6,7 +6,7 @@
 # The inverse of panic.sh: for reclaiming a bench that has collected other
 # projects stopped containers without touching the stack you are working on.
 # THE KEEP-SET IS READ FROM THE COMPOSE FILES, NEVER TYPED HERE: a container is
-# ours if any APK:PODS/*/Docker/docker-compose.yml declares its
+# ours if any PODS/*/Docker/docker-compose.yml declares its
 # container_name:, or if it carries a com.docker.compose.project label naming one
 # of the projects those files declare (apk-audio, and nmos).
 # ⚠️ A hand-written list of name substrings does not survive a rename. This
@@ -36,13 +36,18 @@ DRY_RUN=0
 #    rung matched exactly ONE file, the first guard passed, and the keep-set was
 #    one project. Only the SECOND guard (no container_name: in it) stood between
 #    a --dry-run and a sweep that read the whole bench as strangers.
-# A KEEP-SET BUILT FROM A GLOB MUST BE BUILT FROM ALL OF THEM. stacks.sh walks
-# two rungs for the same reason; this walks four because it is the file that
-# DELETES, and being short here is the expensive direction to be wrong in.
+# A KEEP-SET BUILT FROM A GLOB MUST BE BUILT FROM ALL OF THEM, so this asks
+# the one walker every reader uses (config_helper.compose_files, any depth):
+# a fixed -maxdepth 5 here missed Scanalyzer-API at
+# POD.THIN/Softapps/SCANALYZER_SUITE/SCANALYZER.Like.audio/Docker, and this is
+# the file that DELETES, where being short is the expensive direction.
 # THIS IS THE ONE READER OF THE COMPOSE FILES THAT SAYS SO WHEN IT FINDS NONE —
 # the two guards below are why.
-mapfile -t compose_files < <(find "$DOCKERS_DIR" -mindepth 3 -maxdepth 5 \
-    -type f -name 'docker-compose.yml' -path '*/Docker/*' 2>/dev/null | sort)
+mapfile -t compose_files < <(python3 -c '
+import sys; sys.path.insert(0, sys.argv[1])
+from config_helper import compose_files
+print("\n".join(p for p in compose_files(sys.argv[2]) if p.endswith("/docker-compose.yml")))
+' "$MANAGEMENT_SCRIPTS_DIR" "$DOCKERS_DIR" 2>/dev/null | sed '/^$/d')
 if [ ${#compose_files[@]} -eq 0 ]; then
     log_error "No */Docker/docker-compose.yml under $DOCKERS_DIR."
     echo "  Refusing to sweep: with nothing parsed the keep-set is empty, and every"

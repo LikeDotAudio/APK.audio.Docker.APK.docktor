@@ -6,7 +6,7 @@
 # ps.sh answers "what containers exist". This answers what ps.sh cannot: what
 # the repository DECLARED that is not here at all — a removed container leaves
 # no row in docker ps -a, so a vanished stack renders as nothing.
-# A STACK = a compose file under APK:PODS/ with a top-level `name:`. That key
+# A STACK = a compose file under PODS/ with a top-level `name:`. That key
 # is what docker groups by, and it separates a stack ROOT from an OVERLAY
 # (hardware/host/dev/macvlan declare no project and are a second -f).
 # DRIVEN = the manager verbs (up, down, rebuild-all, panic, panic-reboot,
@@ -44,6 +44,7 @@ RUNNING_NAMES="$(docker ps --format '{{.Names}}' 2>/dev/null)" || RUNNING_NAMES=
 #    the ten stacks (LOGGER STORAGE and the SQL cluster included) plus the
 #    manager.
 DOCKERS="$DOCKERS_DIR" \
+K8DIR="$MANAGEMENT_SCRIPTS_DIR" \
 PRESENT="$PRESENT_NAMES" \
 RUNNING="$RUNNING_NAMES" \
 DRIVEN="$ALL_DRIVEN_FILES" \
@@ -52,6 +53,7 @@ PLUGIN_ROLES="$APKAUDIO_PLUGIN_ROLES" \
 python3 - <<'PY'
 import os
 import re
+import sys
 import json
 import glob
 
@@ -164,19 +166,27 @@ def restart_policies(lines):
 PLUGIN_ROLES = {r for r in (os.environ.get("PLUGIN_ROLES") or "").split(",") if r}
 
 stacks = []
-# TWO RUNGS, NOT ONE. It was `<stack>/Docker/<file>` after the 2026-09-06 split
-# and is `POD:<pod>/<stack>/Docker/<file>` since the pods landed — and DockTor's
-# own stack still sits at the first depth, so BOTH are walked rather than either
-# replaced. With only the shallow glob this file reported a repository of ONE
-# stack (the manager) and the dashboard drew a bench with nothing on it.
-# ⚠️ A GLOB THAT MATCHES NOTHING IS NOT AN ERROR IN PYTHON, which is the whole
-#    reason this went unnoticed: a wrong rung reads exactly like a repo that
-#    declares no stacks. `seen` is what keeps a file found by both patterns —
-#    or through a compatibility symlink — from being counted twice.
+# ANY DEPTH, THROUGH THE ONE WALKER (config_helper.compose_files). This was two
+# fixed rungs (<stack>/Docker and POD.<pod>/<stack>/Docker), so a stack nested
+# deeper — Scanalyzer-API in POD.THIN/Softapps/SCANALYZER_SUITE/… — was mounted
+# by up.sh and absent from this table, and the dashboard never drew it.
+# ⚠️ A WALK THAT MATCHES NOTHING IS NOT AN ERROR, which is the whole reason a
+#    wrong rung went unnoticed before: it reads exactly like a repo that
+#    declares no stacks. `seen` keeps a file reached through a symlink from
+#    being counted twice.
+sys.path.insert(0, os.environ["K8DIR"])
+from config_helper import compose_files
+# ⚠️ NOT THE PLUGINS. A plugin under POD.THICK/PLUGINS/ is raised on demand
+#    and executed again by the discovery engine (through APK-Docker-Gate) when
+#    the thing it serves goes quiet, so "none of its containers exists" is its
+#    resting state, not news. Listed here it would read `dark` and `driven`,
+#    and the DockTor watchdog (readers.start_watchdog) would remount every
+#    plugin the engine had just executed — two owners fighting over one
+#    lifecycle every 30 s. They stay out, as they were under the fixed rungs.
 seen_paths = set()
-patterns = (os.path.join(dockers, "*", "Docker", "docker-compose*.yml"),
-            os.path.join(dockers, "*", "*", "Docker", "docker-compose*.yml"))
-for path in sorted({p for pattern in patterns for p in glob.glob(pattern)}):
+for path in compose_files(dockers):
+    if "PLUGINS" in os.path.relpath(path, dockers).split(os.sep):
+        continue
     real_path = os.path.realpath(path)
     if real_path in seen_paths:
         continue

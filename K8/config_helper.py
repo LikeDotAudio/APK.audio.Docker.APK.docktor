@@ -35,79 +35,104 @@ MEMBER_OF = {
 }
 
 
+# NOT WALKED INTO: nothing under these holds a stack's Docker/ folder, and
+# node_modules / target are where a walk would spend all its time.
+_PRUNE = ('node_modules', 'target', '__pycache__')
+
+
+def compose_files(dockers_dir):
+    """Every `<stack>/Docker/docker-compose*.yml` under PODS/, AT ANY DEPTH.
+
+    THE ONE WALKER. stacks.sh, staleness.sh, api.declared_projects and this
+    file each used to glob a fixed number of rungs (one, two, or four), so a
+    stack nested deeper than the reader expected -- Scanalyzer-API, at
+    POD.THIN/Softapps/SCANALYZER_SUITE/SCANALYZER.Like.audio/Docker -- was
+    driven by one script and invisible to the next. A glob that matches
+    nothing is not an error, so a missing rung reads as a stack that does not
+    exist. Hidden folders and _PRUNE are skipped; nothing else is.
+    Sorted by path; callers that need another order sort again.
+    """
+    found = []
+    if not dockers_dir or not os.path.isdir(dockers_dir):
+        return found
+    for base, directories, files in os.walk(dockers_dir):
+        directories[:] = [d for d in directories
+                          if not d.startswith('.') and d not in _PRUNE]
+        if os.path.basename(base) != 'Docker':
+            continue
+        for filename in files:
+            if filename.startswith('docker-compose') and filename.endswith('.yml'):
+                found.append(os.path.join(base, filename))
+    return sorted(found)
+
+
 def cmd_bash_eval(project_name, dockers_dir):
     bash_lines = []
     stacks = []
 
-    # Find all docker-compose files
-    patterns = [
-        os.path.join(dockers_dir, "*", "*", "*", "*", "Docker", "docker-compose*.yml"),
-        os.path.join(dockers_dir, "*", "*", "*", "Docker", "docker-compose*.yml"),
-        os.path.join(dockers_dir, "*", "*", "Docker", "docker-compose*.yml"),
-        os.path.join(dockers_dir, "*", "Docker", "docker-compose*.yml")
-    ]
-    
+    # Every compose file, DEEPEST FIRST -- the order the four fixed-rung globs
+    # this replaced walked in, which is what decides a folder-name tie below.
     seen_paths = set()
     seen_folders = set()
-    for pattern in patterns:
-        for path in sorted(glob.glob(pattern)):
-            real_path = os.path.realpath(path)
-            if real_path in seen_paths:
-                continue
-            seen_paths.add(real_path)
-            
-            # Extract folder name
-            folder_name = os.path.basename(os.path.dirname(os.path.dirname(path)))
-            file_base = os.path.basename(path)
+    for path in sorted(compose_files(dockers_dir),
+                       key=lambda p: (-p.count(os.sep), p)):
+        real_path = os.path.realpath(path)
+        if real_path in seen_paths:
+            continue
+        seen_paths.add(real_path)
+        
+        # Extract folder name
+        folder_name = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        file_base = os.path.basename(path)
 
-            if folder_name.startswith("APK:plugin:"):
-                continue
+        if folder_name.startswith("APK:plugin:"):
+            continue
 
-            # Only primary compose files represent standalone stacks
-            if file_base not in ("docker-compose.yml", "docker-compose.manager.yml"):
-                continue
+        # Only primary compose files represent standalone stacks
+        if file_base not in ("docker-compose.yml", "docker-compose.manager.yml"):
+            continue
 
-            if folder_name in seen_folders:
-                continue
-            seen_folders.add(folder_name)
+        if folder_name in seen_folders:
+            continue
+        seen_folders.add(folder_name)
 
-            try:
-                with open(real_path, "r", encoding="utf-8", errors="replace") as f:
-                    text = f.read()
-            except OSError:
-                continue
-            if not PROJECT.search(text):
-                continue
-            
-            # Priority logic: DockTor is 1, MQTT Mosquitto is 2 (first to launch after DockTor)
-            up_order = 50
-            if folder_name == "APK:Docktor" or "manager" in file_base: up_order = 1
-            elif folder_name == "DATABUS.Broker.MQTT": up_order = 2
-            elif "Log STORAGE" in folder_name or "Log-STORAGE" in folder_name: up_order = 3
-            elif any(k in folder_name for k in ("server:SQL", "cluster:SQL", "server.SQL", "cluster.SQL")): up_order = 4
-            elif folder_name == "APK:BareMetal": up_order = 6
-            elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
-            elif folder_name == "POD.protocols": up_order = 8
+        try:
+            with open(real_path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        if not PROJECT.search(text):
+            continue
+        
+        # Priority logic: DockTor is 1, MQTT Mosquitto is 2 (first to launch after DockTor)
+        up_order = 50
+        if folder_name == "APK:Docktor" or "manager" in file_base: up_order = 1
+        elif folder_name == "DATABUS.Broker.MQTT": up_order = 2
+        elif "Log STORAGE" in folder_name or "Log-STORAGE" in folder_name: up_order = 3
+        elif any(k in folder_name for k in ("server:SQL", "cluster:SQL", "server.SQL", "cluster.SQL")): up_order = 4
+        elif folder_name == "APK:BareMetal": up_order = 6
+        elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
+        elif folder_name == "POD.protocols": up_order = 8
 
-            stack_info = {
-                "name": folder_name,
-                "compose_path": real_path,
-                "file_base": file_base,
-                "up_order": up_order,
-                # A MEMBER IS DECLARED BUT NOT WALKED. Its compose variables are
-                # still emitted (compose.sh nmos, verify.sh and panic-reboot.sh
-                # all name them, and stacks.sh calls a file in ALL_DRIVEN_FILES
-                # `driven`), and up-stack.sh still finds it by folder name --
-                # it is only kept out of DOCKTOR_STACKS_FORWARD/REVERSE, because
-                # the pod root `include:`s it and `up.sh` would otherwise mount
-                # the same three containers twice.
-                # APK:plugin:* is the other shape of this and takes the harder
-                # road: skipped entirely above, then re-declared `driven` by name
-                # in stacks.sh. Membership belongs here, where the parent is.
-                "member_of": MEMBER_OF.get(folder_name)
-            }
-            stacks.append(stack_info)
-            
+        stack_info = {
+            "name": folder_name,
+            "compose_path": real_path,
+            "file_base": file_base,
+            "up_order": up_order,
+            # A MEMBER IS DECLARED BUT NOT WALKED. Its compose variables are
+            # still emitted (compose.sh nmos, verify.sh and panic-reboot.sh
+            # all name them, and stacks.sh calls a file in ALL_DRIVEN_FILES
+            # `driven`), and up-stack.sh still finds it by folder name --
+            # it is only kept out of DOCKTOR_STACKS_FORWARD/REVERSE, because
+            # the pod root `include:`s it and `up.sh` would otherwise mount
+            # the same three containers twice.
+            # APK:plugin:* is the other shape of this and takes the harder
+            # road: skipped entirely above, then re-declared `driven` by name
+            # in stacks.sh. Membership belongs here, where the parent is.
+            "member_of": MEMBER_OF.get(folder_name)
+        }
+        stacks.append(stack_info)
+        
     LEGACY_MAPPINGS["node"] = ("NODE", "BAREMETAL_COMPOSE_FILE")
 
     walked = [s for s in stacks if not s.get("member_of")]

@@ -58,11 +58,13 @@ esac
 IMAGE_REFS="$(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null)" || IMAGE_REFS=""
 
 DOCKERS="$DOCKERS_DIR" \
+K8DIR="$MANAGEMENT_SCRIPTS_DIR" \
 REPO="$REPO_ROOT" \
 IMAGES="$IMAGE_REFS" \
 MODE="$MODE" \
 python3 - <<'PY'
 import os
+import sys
 import re
 import json
 import time
@@ -415,10 +417,13 @@ def iso(stamp):
 
 
 rows = []
-# <stack>/Docker/<file>. A glob that matches nothing is not an error in Python,
-# so a wrong rung reads as a repository that declares no stacks.
-for path in sorted(glob.glob(os.path.join(dockers, "*", "Docker",
-                                          "docker-compose*.yml"))):
+# <stack>/Docker/<file> AT ANY DEPTH, through config_helper.compose_files —
+# the one walker. This was a one-rung glob, which since the pods landed matched
+# no stack at all and printed an empty table (a glob that matches nothing is
+# not an error in Python, so a wrong rung reads as a repository with no stacks).
+sys.path.insert(0, os.environ["K8DIR"])
+from config_helper import compose_files
+for path in compose_files(dockers):
     try:
         with open(path, encoding="utf-8", errors="replace") as handle:
             text = handle.read()
