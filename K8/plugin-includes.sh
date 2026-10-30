@@ -2,8 +2,8 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 #
-# 🧩 plugin-includes.sh — the discovery engine's `include:` list and the
-#    PLUGINS/ folder agree. Prints each violation and exits 1 if any.
+# 🧩 plugin-includes.sh — the discovery engine's `include:` list, its Cargo
+#    workspace `members`, and the PLUGINS/ folder agree. Prints each violation and exits 1 if any.
 #
 # WHY A CHECK AND NOT A GLOB. Compose has no glob `include:`, so
 # POD.THICK/DISCOVERY.Engine/Docker/docker-compose.yml names every plugin by
@@ -34,6 +34,21 @@
 #                imported resource"), so ONE plugin's edit to its copy breaks
 #                every plugin in the discovery include, not just its own.
 #                Comments are ignored; every other line must match.
+#   no member    a Rust plugin is not in the engine's Cargo `members`
+#                (DISCOVERY.Engine/SRC/Cargo.toml). A Rust plugin is a
+#                PLUGINS/* folder whose SRC/Cargo.toml — or, when SRC/ has
+#                none, a SRC/<crate>/Cargo.toml one level down — is a
+#                member-style crate: no [workspace] table of its own. A crate
+#                with its own workspace (SNMP, SQL, CHROMECAST's Chromecast/)
+#                builds on its own and is skipped; a folder with no Cargo.toml
+#                (BLUETOOTH, Python) is not Rust. Detected, never listed.
+#   no crate     a `members` path that holds no Cargo.toml — cargo refuses
+#                the whole workspace, so every plugin binary stops building.
+#
+# WHY MEMBERS STAY EXPLICIT (owner, 2026-10-30, PLAN-3396.01). A glob
+# `"../../PLUGINS/*/SRC"` would need an `exclude` per non-member and still
+# misses the nested crates; the list stays readable and greppable, and the two
+# checks above are what notice when it and PLUGINS/ disagree.
 #
 # Read line by line, not through a YAML library, so it runs wherever bash and
 # python3 do (CI, the DockTor image, a bare host).
@@ -153,9 +168,50 @@ for name in sorted(os.listdir(PLUGINS)):
     else:
         bad.append(f'unmarked    {rel(f)} — x-apk-plugin is `{mark}`; it is `true`, or the file says x-apk-standalone')
 
+# ── The engine's Cargo workspace members vs the Rust plugins ───────────────
+CARGO = os.path.join(THICK, 'DISCOVERY.Engine', 'SRC', 'Cargo.toml')
+OWN_WORKSPACE = re.compile(r'^\s*\[workspace[\].]', re.M)
+if not os.path.isfile(CARGO):
+    bad.append(f'no crate    no engine workspace at {rel(CARGO)}')
+else:
+    import glob
+    ctext = read(CARGO)
+    m = re.search(r'^\s*members\s*=\s*\[(.*?)\]', ctext, re.M | re.S)
+    body = re.sub(r'#[^\n]*', '', m.group(1)) if m else ''
+    cbase = os.path.dirname(CARGO)
+    members = set()
+    for raw in re.findall(r'"([^"]+)"', body):
+        hits = glob.glob(os.path.join(cbase, raw)) if any(c in raw for c in '*?[') else [os.path.join(cbase, raw)]
+        hits = [h for h in hits if os.path.isfile(os.path.join(h, 'Cargo.toml'))]
+        if not hits:
+            bad.append(f'no crate    {rel(CARGO)} member "{raw}" holds no Cargo.toml — cargo refuses the whole workspace')
+        members.update(os.path.realpath(h) for h in hits)
+
+    def member_crates(src):
+        """Member-style crate dirs a plugin's SRC/ holds (no [workspace] of their own)."""
+        top = os.path.join(src, 'Cargo.toml')
+        if os.path.isfile(top):
+            return [] if OWN_WORKSPACE.search(read(top)) else [src]
+        out = []
+        for sub in sorted(os.listdir(src)):
+            c = os.path.join(src, sub, 'Cargo.toml')
+            if os.path.isfile(c) and not OWN_WORKSPACE.search(read(c)):
+                out.append(os.path.join(src, sub))
+        return out
+
+    for name in sorted(os.listdir(PLUGINS)):
+        src = os.path.join(PLUGINS, name, 'SRC')
+        if not os.path.isdir(src):
+            continue
+        for crate in member_crates(src):
+            if os.path.realpath(crate) not in members:
+                want = os.path.relpath(crate, cbase)
+                bad.append(f'no member   {rel(crate)} is a Rust plugin crate but {rel(CARGO)} members do not list "{want}"')
+
+
 if bad:
     print('\n'.join(bad))
     print(f'❌ {len(bad)} plugin include problem(s)')
     sys.exit(1)
-print(f'✅ the engine include list and PLUGINS/ agree ({len(included)} included)')
+print(f'✅ the engine include list, Cargo members and PLUGINS/ agree ({len(included)} included, {len(members)} members)')
 PY
