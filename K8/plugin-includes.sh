@@ -144,7 +144,13 @@ for p in sorted(included | {os.path.normpath(ENGINE)}):
             bad.append(f'drift       {rel(p)} declares volume `{key}` unlike {rel(BASE)} — include: will refuse the whole engine stack')
 
 
-for name in sorted(os.listdir(PLUGINS)):
+def plugin_folders():
+    """PLUGINS/* stacks. A leading `_` is a support folder (`_template`, `_parked`),
+    never a plugin: the template is copied by new-plugin.sh, not run (PLAN-3411.01)."""
+    return [n for n in sorted(os.listdir(PLUGINS)) if not n.startswith(('_', '.'))]
+
+
+for name in plugin_folders():
     f = os.path.join(PLUGINS, name, 'Docker', 'docker-compose.yml')
     if not os.path.isfile(f):
         continue
@@ -199,7 +205,7 @@ else:
                 out.append(os.path.join(src, sub))
         return out
 
-    for name in sorted(os.listdir(PLUGINS)):
+    for name in plugin_folders():
         src = os.path.join(PLUGINS, name, 'SRC')
         if not os.path.isdir(src):
             continue
