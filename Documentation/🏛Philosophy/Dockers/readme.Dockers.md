@@ -222,15 +222,24 @@ and `prune.sh` refuses volumes for exactly this reason, in its own words: *"`doc
 prune` counts a volume as unused whenever no container is attached RIGHT NOW"*, which on a
 bench that has just been stopped is all of them.
 
-## 8. Configuration is COPYed into the image, because a bind cannot be spelled
+## 8. Configuration is COPYed into the image; a live bind is opt-in
 
-> **The law.** No compose bind mount in this repository may name a source path containing a
-> colon, and every directory under the checkout has one. Configuration therefore goes in at
-> build time, and the price is `--build` on every `up`.
+> **The law.** A container on this bench is a photograph of the tree at build time:
+> configuration goes in by `COPY`, and the price is `--build` on every `up`. Binding a source
+> tree in to edit it live is an opt-in overlay, never the default — and no bind may name a
+> source path containing a colon.
 
-Measured 2026-09-04 on Docker 29.1.3: compose re-serialises even the long `type: bind` form
-back into `source:target:mode` on its way to the daemon, which refuses the lot. There is no
-spelling that fixes compose.
+**Why the law first existed, and what is left of that reason.** Measured 2026-09-04 on
+Docker 29.1.3: compose re-serialises even the long `type: bind` form back into
+`source:target:mode` on its way to the daemon, which refuses any source with a colon in it.
+When every directory under the checkout was named `APK:…`, that made a bind impossible to
+spell, and COPY was forced. Since the POD.x rename (2026-10-16) the stack paths —
+`PODS/POD.x/…`, `Documentation/` — have no colon, and a bind of
+`${APKAUDIO_REPO}/Documentation` was measured working on 2026-10-30. The colon rule still
+stands for the few paths that keep one (`PROTOCOL.DEV.EMBER/SRC/Lawo:ember-plus-master`,
+the `IMPORT:file:*` folders), but it no longer decides the default. What decides it now is
+the photograph: a deployed node runs an image, not a checkout, so the bench runs what the
+node will run.
 
 The consequence is a property of every container here worth stating plainly: **a container
 on this bench is a photograph of the tree at build time.** Editing `conf/`, `aes70py/` or an
@@ -239,15 +248,14 @@ what `⚡ N containers are running an image that was built before the code insid
 manager's dashboard is measuring, and what `staleness.sh` compares: the image's build time
 against the newest file its Dockerfile COPYs in.
 
-**The one exception is an exception to the PATH, not to the law.** The checkout root is the
-one useful path in this repository with no colon in it, so `DockTor` binds *the root* and
-reaches its files underneath, because `docker compose build` hands the DAEMON a context path,
-so the checkout must exist at the same absolute path on both sides. `Ember-Provider` used to
-be the second: its CSVs are now COPYed like everything else, and binding the root to edit a
-tree live (re-read about once a second, no rebuild) is the opt-in overlay
-`PROTOCOL.DEV.EMBER/Docker/docker-compose.live.yml`, never the default. `${APKAUDIO_REPO}` is spelled identically as source and
-target for that reason: *"they are not allowed to differ, and writing them twice is how they
-come to."*
+**The standing binds are the exceptions, and each is named.** `DockTor` binds *the checkout
+root* and reaches its files underneath, because `docker compose build` hands the DAEMON a
+context path, so the checkout must exist at the same absolute path on both sides.
+`Ember-Provider` used to bind too: its CSVs are now COPYed like everything else, and binding
+the root to edit a tree live (re-read about once a second, no rebuild) is the opt-in overlay
+`PROTOCOL.DEV.EMBER/Docker/docker-compose.live.yml`, never the default. `${APKAUDIO_REPO}` is
+spelled identically as source and target for that reason: *"they are not allowed to differ,
+and writing them twice is how they come to."*
 
 ## 9. One container holds the docker socket, and the mount IS the privilege
 
