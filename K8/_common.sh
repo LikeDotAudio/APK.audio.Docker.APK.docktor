@@ -309,6 +309,22 @@ if [ "${APK_COMMON_CONFIG_KEY:-}" != "$DOCKERS_DIR" ] || [ -z "${APK_COMMON_CONF
 fi
 eval "$APK_COMMON_CONFIG_EVAL"
 
+# ── THE FOUR ALIAS ARRAYS ARE BUILT HERE, OFF THE FILES RESOLVED ABOVE, with
+# the compose base in front. config_helper.py names a stack's arrays after its
+# FOLDER, and the folders these four once matched (APK:BareMetal,
+# APK:audio:WebPortal, APK:discovery) are gone, so it emitted none of them:
+# COMPOSE_PLUGINS was only the `--profile <role>` pairs the loop below appends
+# and `compose.sh plugins up -d` ran `--profile` as a command; COMPOSE_CORE,
+# COMPOSE_NODE and COMPOSE_PORTAL were empty, so up.sh <service>,
+# rebuild-core.sh, verify.sh and panic-reboot.sh ran nothing. `core` is the
+# file holding the apk-audio service (DATABASE.server.SQL, COMPOSE_FILE);
+# `portal` is the broker repo's portal-broker file, which config_helper never
+# emits because it is not a stack's primary file.
+COMPOSE_CORE=("${COMPOSE_BASE[@]}" -f "$COMPOSE_FILE")
+COMPOSE_NODE=("${COMPOSE_BASE[@]}" -f "$BAREMETAL_COMPOSE_FILE")
+COMPOSE_PORTAL=("${COMPOSE_BASE[@]}" -f "$PORTAL_COMPOSE_FILE")
+COMPOSE_PLUGINS=("${COMPOSE_BASE[@]}" -f "$PLUGINS_COMPOSE_FILE")
+
 # THE NODE'S ROLE, AND THE DEFAULT THAT WAS DOCUMENTED BUT NEVER WRITTEN.
 # A terminal node declares its ROLE, not its plugins (APK:discovery/README.md
 # "Node roles"): every plugin container sits behind a `profiles:` naming its

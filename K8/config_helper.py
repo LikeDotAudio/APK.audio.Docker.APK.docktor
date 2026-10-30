@@ -6,21 +6,23 @@ import re
 
 PROJECT = re.compile(r'^name:\s*["\']?([^"\'\s#]+)', re.M)
 
-# Hardcoded legacy variable names so old scripts don't break
+# Legacy variable names so old scripts don't break. KEYED BY TODAY'S FOLDER
+# NAMES: a key naming a folder that no longer exists matches nothing and the
+# variable is simply never emitted (APK:BareMetal, APK:discovery and
+# APK:audio:WebPortal sat here after the pods landed, and COMPOSE_NODE /
+# COMPOSE_PLUGINS / COMPOSE_PORTAL with them). _common.sh builds COMPOSE_CORE,
+# COMPOSE_NODE, COMPOSE_PORTAL and COMPOSE_PLUGINS itself after the eval.
 LEGACY_MAPPINGS = {
-    "APK:BareMetal": ("CORE", "COMPOSE_FILE"),
+    "NODE.BareMetal": ("NODE", "BAREMETAL_COMPOSE_FILE"),
     "DATABASE.volume.Log-STORAGE": ("LOGGER", "LOGGER_COMPOSE_FILE"),
     "DATABASE.server.SQL": ("SQLCLUSTER", "SQLCLUSTER_COMPOSE_FILE"),
     "DATABUS.Broker.MQTT": ("MQTT", "MQTT_COMPOSE_FILE"),
-    "APK:audio:WebPortal": ("PORTAL", "PORTAL_COMPOSE_FILE"),
     "PROTOCOL.discovery.NMOS": ("NMOS", "NMOS_COMPOSE_FILE"),
     "PROTOCOL.DEV.AES70": ("AES70", "AES70_COMPOSE_FILE"),
     "PROTOCOL.DEV.EMBER": ("EMBER", "EMBER_COMPOSE_FILE"),
     "DATABASE.server.NETBOX": ("NETBOX", "NETBOX_COMPOSE_FILE"),
     "POD.protocols": ("PROTOCOLS", "PROTOCOLS_COMPOSE_FILE"),
-    "APK:discovery": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
-    "APK:plugins:Build": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
-    "APK:Docktor": ("MANAGER", "MANAGER_COMPOSE_FILE")
+    "DISCOVERY.Engine": ("PLUGINS", "PLUGINS_COMPOSE_FILE"),
 }
 
 # WHICH STACKS ARE CONTAINERS IN SOMEONE ELSE'S POD. A member declares a
@@ -110,8 +112,8 @@ def cmd_bash_eval(project_name, dockers_dir):
         elif folder_name == "DATABUS.Broker.MQTT": up_order = 2
         elif "Log STORAGE" in folder_name or "Log-STORAGE" in folder_name: up_order = 3
         elif any(k in folder_name for k in ("server:SQL", "cluster:SQL", "server.SQL", "cluster.SQL")): up_order = 4
-        elif folder_name == "APK:BareMetal": up_order = 6
-        elif folder_name in ("APK:discovery", "APK:plugins:Build"): up_order = 7
+        elif folder_name == "NODE.BareMetal": up_order = 6
+        elif folder_name == "DISCOVERY.Engine": up_order = 7
         elif folder_name == "POD.protocols": up_order = 8
 
         stack_info = {
@@ -133,7 +135,6 @@ def cmd_bash_eval(project_name, dockers_dir):
         }
         stacks.append(stack_info)
         
-    LEGACY_MAPPINGS["node"] = ("NODE", "BAREMETAL_COMPOSE_FILE")
 
     walked = [s for s in stacks if not s.get("member_of")]
     forward_stacks = sorted([s for s in walked if s["name"] != "APK:Docktor" and "manager" not in s.get("file_base", "")], key=lambda s: s["up_order"])
