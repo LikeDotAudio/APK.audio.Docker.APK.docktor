@@ -89,6 +89,9 @@ def group(path):
 
 def stack(path):
     dirs, files = entries(path)
+    # an app stack is its own content, SRC/ or not (TRUNK-CASTER keeps its nested repos in SRC/)
+    if 'display.json' in files and 'index.html' in files:
+        return
     if 'Docker' in dirs or 'SRC' in dirs:
         loose(path, files, STACK_FILES)
 
