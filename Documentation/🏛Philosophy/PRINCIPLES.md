@@ -80,7 +80,8 @@ Membership is read off the parent's own `include:` block, never typed: a stack t
 `up`/`down`/`rebuild-all` only through that parent (`config_helper.included_files()`), stays `driven` in
 `stacks.sh`, and is still reachable by its own name in `up-stack.sh`. The broker's `portal-broker` overlay is not a
 primary file, so the web stacks it includes are still walked on their own. A folder whose name starts with `_`
-(`PLUGINS/_template`) is a support folder, never a stack, and is not walked.
+(`PLUGINS/_template`) is a support folder, never a stack: it is not walked, and asking for it by name or path
+(`up-stack.sh _template`) is refused by `compose_for_stack`.
 
 ## Every image signs itself with its repository's commit
 

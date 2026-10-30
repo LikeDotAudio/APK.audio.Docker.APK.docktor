@@ -1118,6 +1118,25 @@ apply_stack_profiles() {
     return 0
 }
 
+# is_support_compose_file <path> — true when the file sits under a folder whose
+# name starts with `_` below PODS/ (PLUGINS/_template, _parked). Those are
+# SUPPORT FOLDERS, not stacks: config_helper.py leaves them out of the walk and
+# plugin-includes.sh out of the include list, but compose_for_stack's own
+# fallbacks (a path, or a folder found by name) still resolved them, so
+# `up-stack.sh _template` mounted the template's placeholder service
+# (LOOSE-template-by-name). Refused by the FILE's place, not by the name asked
+# for, so a path, an alias or a nested name all meet the same test.
+is_support_compose_file() {
+    local f="$1" rel
+    [ -n "$f" ] || return 1
+    f="$(cd "$(dirname -- "$f")" 2>/dev/null && pwd -P)/$(basename -- "$f")" || return 1
+    rel="${f#"$(cd "$DOCKERS_DIR" 2>/dev/null && pwd -P)"/}"
+    # Outside PODS/ is not ours to judge: only folders BELOW the root count.
+    [ "$rel" != "$f" ] || return 1
+    case "/$rel" in */_*/*) return 0;; esac
+    return 1
+}
+
 # compose_for_stack <stack directory name> — fill STACK_COMPOSE with ONE
 # stack's compose command (up-stack.sh's lookup, behind the dashboard's
 # per-stack fix button; up.sh would rebuild the other eight instead).
@@ -1125,10 +1144,23 @@ apply_stack_profiles() {
 # derived from the compose paths, so a renamed folder needs no edit here.
 # Arrays are copied whole, so COMPOSE_NODE keeps its hardware overlay.
 # Returns 1 with STACK_COMPOSE empty for an unknown name: callers must refuse
-# rather than default to remounting something nobody asked for.
+# rather than default to remounting something nobody asked for. The same for a
+# name that lands in a `_` support folder (is_support_compose_file above).
 compose_for_stack() {
     local want="$1"
     STACK_COMPOSE=()
+    _compose_for_stack_resolve "$want" || return 1
+    if is_support_compose_file "${STACK_COMPOSE_FILE:-}"; then
+        log_error "'$want' resolves to $STACK_COMPOSE_FILE, which is in a support folder (a leading '_'), not a stack — refused."
+        STACK_COMPOSE=()
+        STACK_COMPOSE_FILE=""
+        return 1
+    fi
+    return 0
+}
+
+_compose_for_stack_resolve() {
+    local want="$1"
 
     # 1. If want is an existing compose file path on disk
     if [ -f "$want" ]; then
