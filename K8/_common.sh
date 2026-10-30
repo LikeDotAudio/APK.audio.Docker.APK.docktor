@@ -1066,6 +1066,11 @@ for_each_stack() {
 # That is what a plugin IS — the base service carries the image, the capability
 # floor, the broker variables and the healthcheck — so it is a test of the file
 # rather than of its folder's name, and a plugin renamed or moved still matches.
+# OR IT SAYS SO: `x-apk-plugin: true` at the top level, the mark plugin-includes.sh
+# already reads. PLUGIN.SNMP builds its own image (switch-gui) and cannot extend
+# the base, so the base test alone missed it and `up-stack.sh PLUGIN.SNMP` ran
+# with no `--profile`, selecting nothing behind its `profiles: [switches]`
+# (LOOSE-plugin-snmp-pluginsnmps-compose-does).
 # STILL NOT EVERY STACK WITH PROFILES: the rule below admits the plugin files
 # and the discovery file and nothing else, so PROTOCOL.discovery.NMOS keeps its
 # conformance harness off (732 MB of that stack's 1,087, off unless
@@ -1073,7 +1078,7 @@ for_each_stack() {
 # in the file, so `build` stays off wherever it appears.
 is_plugin_compose_file() {
     [ -f "$1" ] || return 1
-    grep -q 'plugin-base\.yml' "$1" 2>/dev/null
+    grep -q -e 'plugin-base\.yml' -e '^x-apk-plugin:[[:space:]]*true' "$1" 2>/dev/null
 }
 
 apply_stack_profiles() {
