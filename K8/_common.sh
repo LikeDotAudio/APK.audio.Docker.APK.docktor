@@ -312,8 +312,9 @@ eval "$APK_COMMON_CONFIG_EVAL"
 # THE NODE'S ROLE, AND THE DEFAULT THAT WAS DOCUMENTED BUT NEVER WRITTEN.
 # A terminal node declares its ROLE, not its plugins (APK:discovery/README.md
 # "Node roles"): every plugin container sits behind a `profiles:` naming its
-# role, so an EMPTY role list selects NO profile and starts nothing but the one
-# profile-less service, DESKTOP_MONITOR. Compose still exits 0 — it did
+# role, so an EMPTY role list selects NO profile and starts nothing at all
+# (DESKTOP_MONITOR was the one profile-less service until PLAN-3410.01 gave it
+# the `desktop` role). Compose still exits 0 — it did
 # everything it was asked — which is how `✅ APK:discovery is mounted.` came to
 # be printed over an APK-Discovery-Engine that was never created, and why
 # stacks.sh then drew the whole stack as `idle` rather than as a fault.
@@ -335,6 +336,9 @@ eval "$APK_COMMON_CONFIG_EVAL"
 # `build` IS THE ONE EXCLUSION, and it is not a role: plugins-image exists to
 # be BUILT, and its `command: ["true"]` would leave an exited container behind
 # every `up`.
+# `desktop` (DESKTOP_MONITOR, PLAN-3410.01) arrives the same way, read off its
+# `profiles: [desktop]`: a workstation with a screen. A headless node that sets
+# its own COMPOSE_PROFILES / APKAUDIO_PLUGIN_ROLES without it runs no monitor.
 # ⚠️ SOME ROLES NEED A VALUE BEFORE THEIR CONTAINER CAN DO ANYTHING —
 #    `switches` wants APK_NETGEAR_HOST / APK_TRENDNET_HOST, `netbox-sync` wants
 #    NETBOX_API_TOKEN_WRITE, `puck` wants a SpaceNavigator plugged in. They are
@@ -362,7 +366,7 @@ plugin_roles_declared() {
 # The typed list survives ONLY as the answer when the compose file is not on
 # disk to be read — at which point nothing will mount anyway, and a wrong role
 # list is not what went wrong.
-export APKAUDIO_PLUGIN_ROLES="${APKAUDIO_PLUGIN_ROLES:-${COMPOSE_PROFILES:-$(plugin_roles_declared || printf 'discovery,l2,sound,control,vendors,switches,puck,netbox-sync')}}"
+export APKAUDIO_PLUGIN_ROLES="${APKAUDIO_PLUGIN_ROLES:-${COMPOSE_PROFILES:-$(plugin_roles_declared || printf 'discovery,l2,sound,control,vendors,switches,puck,netbox-sync,desktop')}}"
 for _apk_role in ${APKAUDIO_PLUGIN_ROLES//,/ }; do COMPOSE_PLUGINS+=(--profile "$_apk_role"); done
 unset _apk_role
 
