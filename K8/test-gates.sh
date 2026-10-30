@@ -43,9 +43,11 @@ run_gate "MQTT Broker candidate order verified." \
          "apkaudio-broker" \
          "$BAREMETAL_ROOT/test/check-broker-candidates.py"
 
+# The static-boot checker left the root .apk.scripts/ with the OS front end:
+# it lives in WEB.Frontend-Assets now, beside the shell it boots.
 run_gate "Static boot snapshots verified." \
          "apk-audio (Static Boot)" \
-         "$REPO_ROOT/.apk.scripts/check_static_boot.py"
+         "$(stack_dir "WEB.Frontend-Assets")/.apk.scripts/check_static_boot.py"
 
 if [ ${#failed[@]} -gt 0 ]; then
     echo "======================================================================"
