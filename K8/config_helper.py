@@ -93,10 +93,14 @@ def cmd_bash_eval(project_name, dockers_dir):
         except OSError:
             continue
         parent = os.path.basename(os.path.dirname(os.path.dirname(path)))
-        # ONLY A POD ROOT'S OWN FILE MAKES MEMBERS. DISCOVERY.Engine's file and
-        # the broker's portal-broker overlay `include:` stacks too, but those
-        # stacks are walked on their own (the broker must stay second up).
-        if not parent.startswith("POD.") or os.path.basename(path) != "docker-compose.yml":
+        # ANY STACK'S PRIMARY FILE MAKES MEMBERS: a pod root's (POD.protocols,
+        # POD.workers) and DISCOVERY.Engine's, which `include:`s every
+        # PLUGIN.*. Only pod roots counted here once, so each plugin was walked
+        # on its own AND again inside the engine -- 29 extra `up`s that mount
+        # nothing new (LOOSE-docktor-walks-template). The broker's
+        # portal-broker overlay is not a primary file, so the web stacks it
+        # `include:`s are still walked on their own (the broker stays second up).
+        if os.path.basename(path) != "docker-compose.yml":
             continue
         for child in included_files(os.path.realpath(path), text):
             member_of_path.setdefault(child, parent)
@@ -117,6 +121,13 @@ def cmd_bash_eval(project_name, dockers_dir):
         file_base = os.path.basename(path)
 
         if folder_name.startswith("APK:plugin:"):
+            continue
+
+        # A LEADING `_` IS A SUPPORT FOLDER, NOT A STACK: PLUGINS/_template is
+        # copied by new-plugin.sh, never run (plugin-includes.sh reads `_` the
+        # same way). Declared, it was walked by up.sh and rebuild-all as a real
+        # stack with a placeholder service (LOOSE-docktor-walks-template).
+        if folder_name.startswith("_"):
             continue
 
         # Only primary compose files represent standalone stacks

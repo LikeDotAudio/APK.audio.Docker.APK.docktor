@@ -75,9 +75,12 @@ include list and the `PLUGINS/` folder disagree, or when an included file's shar
 nothing in silence. `stacks.sh` leaves out `PLUGINS/`: a plugin's lifecycle belongs to the discovery engine, and
 the watchdog would otherwise remount every plugin the engine executed.
 
-A pod root's membership is read off its own `include:` block, never typed: a stack that a `POD.<x>/Docker/docker-compose.yml`
-`include:`s is walked by `up`/`down`/`rebuild-all` only through that pod root (`config_helper.included_files()`),
-stays `driven` in `stacks.sh`, and is still reachable by its own name in `up-stack.sh`.
+Membership is read off the parent's own `include:` block, never typed: a stack that another stack's primary
+`docker-compose.yml` `include:`s (a `POD.<x>` root, or `DISCOVERY.Engine` for every `PLUGIN.*`) is walked by
+`up`/`down`/`rebuild-all` only through that parent (`config_helper.included_files()`), stays `driven` in
+`stacks.sh`, and is still reachable by its own name in `up-stack.sh`. The broker's `portal-broker` overlay is not a
+primary file, so the web stacks it includes are still walked on their own. A folder whose name starts with `_`
+(`PLUGINS/_template`) is a support folder, never a stack, and is not walked.
 
 ## Every image signs itself with its repository's commit
 
