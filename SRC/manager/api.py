@@ -30,7 +30,7 @@ import socket
 import threading
 
 from .paths import DOCKERS_DIRECTORY, DOCKER_SCRIPTS_DIRECTORY, REPOSITORY_ROOT
-from .bus import emit
+from .bus import emit, BROKER_HOST, BROKER_PORT
 from . import palette
 from .runner import (run_management_script, cancel_running_scripts,
                      cancel_epoch, running_scripts)
@@ -1202,8 +1202,10 @@ def chat(message):
     published = False
     try:
         import paho.mqtt.publish as publish
-        publish.single(CHAT_TOPIC, json.dumps(payload), hostname="127.0.0.1",
-                       port=1883, keepalive=2)
+        # bus.py's broker, not a literal loopback: in the manager container
+        # 127.0.0.1 is the container itself (LOOSE-manager-manager-docktor-manager).
+        publish.single(CHAT_TOPIC, json.dumps(payload), hostname=BROKER_HOST,
+                       port=BROKER_PORT, keepalive=2)
         published = True
     except Exception as err:
         emit("CHAT_PUBLISH_FAILED", {"topic": CHAT_TOPIC, "error": str(err)})
