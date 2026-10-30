@@ -6,7 +6,8 @@
 #    loose file sits in a root folder. Prints each violation and exits 1 if any.
 #
 #   PODS/                      POD.<pod>/ folders and README.md, nothing else
-#   PODS/POD.<pod>/            GROUP.name stacks, one-word GROUP folders, Docker/
+#   PODS/POD.<pod>/            GROUP.name stacks, one-word GROUP folders, Docker/,
+#                              Documentation/ (a wiki — see .apk.scripts/wiki.py)
 #   <GROUP>/ (a group folder)  GROUP.name stacks or one-word sub-groups; files:
 #                              README.md, and display.json / manifest.json
 #                              where code reads one at that root
@@ -38,7 +39,7 @@ POD = re.compile(r'^POD\.[A-Za-z][A-Za-z0-9_-]*$')
 STACK = re.compile(r'^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9][A-Za-z0-9_+-]*)+$')
 GROUP = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
 SUPPORT = re.compile(r'^_[A-Za-z0-9_]+$')
-ROLE = {'Docker', 'SRC', 'DOCS'}
+ROLE = {'Docker', 'SRC', 'Documentation'}
 SKIP = {'.git', 'node_modules', '__pycache__', 'target'}
 OUT_OF_SCOPE = {os.path.join('POD.THIN', 'OS')}
 STACK_FILES = re.compile(r'^(README\.md|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore)$')
@@ -74,6 +75,13 @@ def group(path):
     if rel in OUT_OF_SCOPE:
         return
     dirs, files = entries(path)
+    # Two names equal but for case collide on a case-insensitive checkout (macOS,
+    # Windows): one overwrites the other, or the submodule clone fails.
+    seen = {}
+    for n in dirs + files:
+        if n.lower() in seen:
+            bad.append(f'case clash   {os.path.relpath(os.path.join(path, n), PODS)} vs {seen[n.lower()]}')
+        seen.setdefault(n.lower(), n)
     loose(path, files, GROUP_REPO_FILES if os.path.exists(os.path.join(path, '.git')) else GROUP_FILES)
     for d in dirs:
         child = os.path.join(path, d)

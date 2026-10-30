@@ -25,3 +25,12 @@
 | 🐍 Left Over Python — 1,483 files, and a quarter of them have nothing behind them | ✅ live | anywhere in NORTH-STAR.md(../000High%20Level/NORTH-STAR.md) as a thing; it is the material five | `APK:Documentation/101_🔍🧾🚦 Audits/Left Over Python.md` |
 | 🪨 Caveman Talk — cutting prose out of Claude, notes, and comments | — no subject | third-party caveman plugins, why they miss notes and comments, and the terse output style + CLAUDE.md rule that don't | `APK:Documentation/101_🔍🧾🚦 Audits/caveman talk.md` |
 
+<!-- wiki:index -->
+| Page | What |
+|---|---|
+| [2026-09-05-the-paths-the-flatten-moved-and-the-checkers-that-still-name-them.md](2026-09-05-the-paths-the-flatten-moved-and-the-checkers-that-still-name-them.md) | 🔍 The Paths The Flatten Moved, And The Checkers That Still Name Them |
+| [2026-09-06-the-front-end-carries-a-header-that-says-nothing-and-a-header-that-says-too-much.md](2026-09-06-the-front-end-carries-a-header-that-says-nothing-and-a-header-that-says-too-much.md) | 🧹 The Front End Carries A Header That Says Nothing, And A Header That Says Too Much |
+| [4-Data_two-state-bus-payloads.observed.json](4-Data_two-state-bus-payloads.observed.json) | 4-Data_two-state-bus-payloads.observed |
+| [caveman talk.md](caveman%20talk.md) | 🪨 Caveman Talk — cutting prose out of Claude, notes, and comments |
+| [Left Over Python.md](Left%20Over%20Python.md) | 🐍 Left Over Python — 1,483 files, and a quarter of them have nothing behind them |
+<!-- /wiki:index -->

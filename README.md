@@ -25,9 +25,9 @@ that happens on the bus. It is the only container that holds the Docker socket.
 | `SRC/docker scripts` | Symlink → `../K8` (the in-image name) |
 | `SRC/APK.audio:mount.sh`, `SRC/APK.audio:DeleteOldRebuildAndMount.sh` | Named front doors that dispatch to `K8/` (`up`/`watch`/`status`/`rebuild`/`down`, and `rebuild-all.sh`) |
 | `Docker/Dockerfile.manager`, `Docker/docker-compose.manager.yml` | The DockTor image and container |
-| `DOCS/CONTRACTS.md` | DockTor's bus topics and HTTP surface |
-| `DOCS/🏛Philosophy/` | Copies of the ecosystem's Dockers and Tests doctrine (canonical copies: `Documentation/🏛Philosophy/` in APK.audio) |
-| `DOCS/🔍Audits/` | Dated audit records (history, not current state) |
+| `Documentation/CONTRACTS.md` | DockTor's bus topics and HTTP surface |
+| `Documentation/🏛Philosophy/` | Copies of the ecosystem's Dockers and Tests doctrine (canonical copies: `Documentation/🏛Philosophy/` in APK.audio) |
+| `Documentation/🔍Audits/` | Dated audit records (history, not current state) |
 
 ## The container
 
