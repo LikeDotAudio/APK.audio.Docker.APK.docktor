@@ -53,8 +53,12 @@ fi
 # not share it.
 export APKAUDIO_REPO="${APKAUDIO_REPO:-$REPO_ROOT}"
 
+# The image signs itself with the commit of the stack's own repository: every
+# compose that bakes APK_IMAGE_REV defaults it to `unstamped` otherwise.
+stamp_image_rev "$STACK_COMPOSE_FILE"
+
 echo "🚀 Mounting one stack: $STACK"
-echo "   $STACK_COMPOSE_FILE"
+echo "   $STACK_COMPOSE_FILE  (APK_IMAGE_REV=$APK_IMAGE_REV)"
 echo "============================================================"
 
 log_step "Enforcing upstream pre-build container test gates..."

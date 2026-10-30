@@ -34,9 +34,10 @@ FROM docker:27-cli
 #    $SYS counters with mosquitto_sub and says "mosquitto-clients is not
 #    installed on this host" when it cannot — which is what the broker card said
 #    for as long as this line did not name it. topics.sh needs it to census the
-#    bus at all.
+#    bus at all. git is for stamp_image_rev (_common.sh): without it every image
+#    DockTor builds signs itself `unstamped` (LOOSE-upstack-image-rev).
 RUN apk add --no-cache python3 py3-pip bash curl coreutils docker-cli-compose \
-        mosquitto-clients
+        mosquitto-clients git
 
 # paho is the bus, and BEST EFFORT on purpose: bus.py returns a None client when
 # the import fails, so a wheel that will not build costs the broker

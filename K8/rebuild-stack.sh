@@ -43,6 +43,10 @@ fi
 
 export APKAUDIO_REPO="${APKAUDIO_REPO:-$REPO_ROOT}"
 
+# The image signs itself with the commit of the stack's own repository: every
+# compose that bakes APK_IMAGE_REV defaults it to `unstamped` otherwise.
+stamp_image_rev "$STACK_COMPOSE_FILE"
+
 log_step "Enforcing upstream pre-build container test gates..."
 if [ "${APKAUDIO_NO_GATES:-0}" = "1" ]; then
     log_warn "Test gates SKIPPED by APKAUDIO_NO_GATES=1."

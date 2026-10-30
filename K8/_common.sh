@@ -965,6 +965,8 @@ for_each_stack() {
             continue
         fi
         compose=("${STACK_COMPOSE[@]}")
+        # Per stack, before any build: each image signs itself with ITS repo.
+        stamp_image_rev "${STACK_COMPOSE_FILE:-}"
         is_manager=0
         [ -n "${STACK_COMPOSE_FILE:-}" ] && \
             [ "$STACK_COMPOSE_FILE" = "$MANAGER_COMPOSE_FILE" ] && is_manager=1
@@ -1166,6 +1168,42 @@ compose_for_stack() {
         return 0
     fi
     return 1
+}
+
+# stamp_image_rev [compose file] — export APK_IMAGE_REV (and APK_IMAGE_BUILT)
+# for the stack about to be BUILT, from the git repository that holds its
+# compose file — the stack's own submodule, so the stamp names the commit of
+# the code in the image. Every compose that bakes or passes it spells
+# ${APK_IMAGE_REV:-unstamped} (plugin-base.yml, BareMetal, PLUGIN.SNMP,
+# DATATYPE.wireless.CSV), and nothing exported it, so every image the verbs
+# built said `unstamped` (LOOSE-upstack-image-rev).
+# Same rule as BareMetal's container_image.stamp_environment(): `-dirty` when
+# the tree has uncommitted tracked changes (an image from a dirty tree is
+# reproducible from no commit), `unstamped` when git cannot answer — never a
+# guess. A value the CALLER exported before sourcing this file wins: that is a
+# deliberate pin, and a walk over many stacks must not overwrite it with the
+# first stack's rev. safe.directory: DockTor runs as root over a checkout the
+# host user owns, which git otherwise refuses as "dubious ownership".
+_APK_IMAGE_REV_PINNED="${APK_IMAGE_REV:-}"
+_APK_IMAGE_BUILT_PINNED="${APK_IMAGE_BUILT:-}"
+stamp_image_rev() {
+    local file="${1:-${STACK_COMPOSE_FILE:-}}" dir rev="unstamped"
+    if [ -n "$_APK_IMAGE_REV_PINNED" ]; then
+        export APK_IMAGE_REV="$_APK_IMAGE_REV_PINNED"
+    else
+        dir="$(dirname -- "$file" 2>/dev/null)"
+        if [ -n "$file" ] && [ -d "$dir" ] && command -v git >/dev/null 2>&1; then
+            local head
+            head="$(git -c safe.directory='*' -C "$dir" rev-parse --short HEAD 2>/dev/null)"
+            if [ -n "$head" ]; then
+                rev="$head"
+                [ -n "$(git -c safe.directory='*' -C "$dir" status --porcelain \
+                        --untracked-files=no 2>/dev/null | head -n 1)" ] && rev="$rev-dirty"
+            fi
+        fi
+        export APK_IMAGE_REV="$rev"
+    fi
+    export APK_IMAGE_BUILT="${_APK_IMAGE_BUILT_PINNED:-$(date -u +%Y-%m-%dT%H:%M:%S+00:00)}"
 }
 
 # ⚠️ THERE IS NO stage_mqtt_config() AND MUST NOT BE ONE. The broker runs the
