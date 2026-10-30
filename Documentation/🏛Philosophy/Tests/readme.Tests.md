@@ -52,7 +52,7 @@ To maximize confidence while keeping agent tool execution fast and cheap, all te
 ### Tier 0: Ultra-Fast Static Ratchets & Types (<500 ms)
 - **What it is:** Pure static checks, TypeScript typechecking (`tsc --noEmit`), regex ratchets, line count checkers, and link integrity guards.
 - **When to run:** Immediately after modifying any source file.
-- **Agent Rule:** Always execute targeted L0 checks first (e.g. `python3 .apk.scripts/check_plan_prefixes.py` or `./.apk.scripts/check.sh contracts`).
+- **Agent Rule:** Always execute targeted L0 checks first (e.g. `npm --prefix contracts test` or `./.apk.scripts/check.sh submodules-index`).
 
 ### Tier 1: Single-File Isolated Invariant Unit Tests (<3 seconds)
 - **What it is:** Pure-function mathematical assertions, state transition tests, and lightweight VM stub tests (such as `signal-laws.test.js`).
@@ -64,7 +64,7 @@ To maximize confidence while keeping agent tool execution fast and cheap, all te
 ### Tier 2: Hermetic Subsystem Tests (<20 seconds)
 - **What it is:** Subsystem integration tests running against in-memory SQLite, stubbed brokers, or compiled WASM modules.
 - **When to run:** When modifying subsystem APIs or data bus serializations.
-- **Agent Rule:** Execute via targeted `./.apk.scripts/check.sh <lane>` commands (e.g. `./.apk.scripts/check.sh scan-analyzer`).
+- **Agent Rule:** Execute via targeted `./.apk.scripts/check.sh <lane>` commands (e.g. `./.apk.scripts/check.sh datamigration`; `./.apk.scripts/check.sh --list` names every live lane, and any other name answers RETIRED).
 
 ### Tier 3: Heavy Integration & Rig Probes (Pre-Commit / On-Demand Only)
 - **What it is:** Full Docker container spin-up (MariaDB schema parity), PlatformIO firmware builds, or full headless browser contact sheet capture.

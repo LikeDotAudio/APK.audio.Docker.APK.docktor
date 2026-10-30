@@ -11,8 +11,9 @@
 # bus keeps only the latest value of every topic and none of the history".
 # THE HAZARD IS DRIFT, AND --check IS THE ANSWER: it walks every compose file
 # under PODS/, takes every container_name:, and fails on an entry with no
-# container or a container with no entry. No daemon needed, so
-# ./.apk.scripts/check.sh container-purpose runs it on any checkout.
+# container or a container with no entry. No daemon needed, so `purpose.sh
+# --check` runs on any checkout (the old check.sh container-purpose lane that
+# called it was retired in 2240c51e5).
 # It walks compose files rather than docker ps: the set that matters is what
 # this repository SHIPS, so a stranger container cannot redden the gate and a
 # stack that is down cannot make its entry look spare.

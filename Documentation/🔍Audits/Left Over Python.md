@@ -158,8 +158,8 @@ under the whole tree.
 
 **Nothing in this repository imports it and nothing publishes it.** `check_published_refs.py`'s
 published set does not contain it; `deploy_excludes.py` puts `.py` in `IGNORED_SUFFIXES`, so no
-Python ships to the web root at all. The single consumer is `check.sh console`, and what that lane
-reports today is:
+Python ships to the web root at all. The single consumer was `check.sh console` (a lane retired with the old check.sh in 2240c51e5), and what that lane
+reported then was:
 
 ```
 102 collected, 49 passed, 50 failed, 3 skipped, 0 collection error(s)  (floors: 102 collected, 49 passed)
@@ -171,7 +171,7 @@ are not in this repository and the tree is a read-only snapshot"*. The lane was 
 step 4) to catch collection errors, and it does. It was never a claim that the library works.
 
 The cost is not the disk. It is that **366 of the 486 lines of `prologue.baseline.json` are console
-library paths**, that `check.sh console` is one of the slower lanes on the board, and that a reader
+library paths**, that `check.sh console` was one of the slower lanes on the board (since retired), and that a reader
 scanning `APK:Softapps/` sees the largest folder in it and reasonably assumes it is the product.
 
 ## F2 · Fifteen protocol testers in the documentation hub have no caller, carry a generated header that states no fact, and document a path that has not existed since the flatten

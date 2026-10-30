@@ -24,8 +24,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 #    this only where the table said nothing.
 # The cache is machine state, not a record: what THIS bench answered, with
 # wall-clock stamps, and .gitignored for both reasons.
-# Below the source line on purpose — check.sh prologue measures the opening
-# comment run.
+# Below the source line on purpose — the old check.sh prologue lane (retired in
+# 2240c51e5) measured the opening comment run.
 # In .cache/ rather than the stack root, which keeps no loose files.
 PAGE_TITLE_CACHE="$(dirname "$MANAGEMENT_SCRIPTS_DIR")/.cache/page-titles.json"
 mkdir -p "$(dirname "$PAGE_TITLE_CACHE")" 2>/dev/null || true

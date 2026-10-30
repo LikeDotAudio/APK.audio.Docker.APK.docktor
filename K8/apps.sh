@@ -15,8 +15,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 #    here — the app plane is per-image, so enumerating it needs the image.
 # Every plane is read ONCE into a document: --json prints it, rows render FROM
 # it, so no row field can exist outside the document.
-# Below the source line on purpose — check.sh prologue measures the comment run
-# a file opens with.
+# Below the source line on purpose — the old check.sh prologue lane (retired in
+# 2240c51e5) measured the comment run a file opens with.
 
 MODE=rows
 if [ "${1:-}" = "--json" ]; then

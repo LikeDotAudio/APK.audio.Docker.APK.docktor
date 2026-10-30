@@ -73,7 +73,8 @@ services:
         #    bind back into source:target:mode UNLESS the mount carries this
         #    sub-key, and a checkout path holding a colon is then refused.
         #    `rprivate` is the default propagation and only selects which daemon
-        #    API carries the mount. check.sh compose-binds holds this at zero.
+        #    API carries the mount. (The old check.sh compose-binds lane held this at zero;
+        #    retired with the old check.sh in 2240c51e5.)
         bind:
           propagation: rprivate
       # LOGGER STORAGE: APK:Documentation/LOGS on the host. See the volumes:

@@ -153,7 +153,7 @@ else
 fi
 
 # Then: the overlay that was NAMED actually reached the node that came up.
-# check.sh node-hardware proves COMPOSE_NODE names the overlay when every device
+# The old check.sh node-hardware lane (retired in 2240c51e5) proved COMPOSE_NODE names the overlay when every device
 # it declares is present; a file-reading lane cannot ask whether the container
 # RECEIVED them, and the original defect was measured at that end
 # (HostConfig.Devices: null on a running node with the puck plugged in).

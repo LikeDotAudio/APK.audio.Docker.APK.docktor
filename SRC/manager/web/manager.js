@@ -10,7 +10,8 @@ const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 /* THREE CADENCES, DIFFERENT WORK (below the first line of code on purpose —
- * check.sh prologue measures the comment run a file OPENS with):
+ * the old check.sh prologue lane, retired in 2240c51e5, measured the comment
+ * run a file OPENS with):
  *   · METERS  /api/resources on 5s while "Live Resources" is armed. Numbers
  *             into cards that already exist; it never creates one.
  *   · SCAN    /api/containers on the ⏱ interval. The whole grid.

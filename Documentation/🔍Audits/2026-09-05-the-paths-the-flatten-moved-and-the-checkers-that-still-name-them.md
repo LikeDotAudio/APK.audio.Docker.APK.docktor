@@ -51,7 +51,7 @@ Severity: high — these are the tools the repository uses to find this exact de
 
 The 18 carry the signatures of two moves that have already happened: `Node:BareMetal` →
 `APK:BareMetal`, the lift of the crates out of `backend/ComProtocols/`, and `APK.audio:` →
-`APK:audio:`. Falsifiable: `check.sh scriptpaths` names each one with its line.
+`APK:audio:`. Falsifiable: `check.sh scriptpaths` named each one with its line (that lane was retired with the old check.sh in 2240c51e5).
 
 **F2 · One shell module tells a person to open five paths that do not resolve from the repository
 root.** Severity: medium. All five are in
