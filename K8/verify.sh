@@ -113,7 +113,7 @@ else
         case "$host" in localhost|127.0.0.1) ;; *) continue;; esac
 
         # One probe per ADDRESS, not per row: the portal answers on two rows
-        # of 8080 and NetBox on three of 8081 — one socket each.
+        # of 8080 and NetBox on three of 8082 — one socket each.
         case " $seen_addresses " in *" $host:$port "*) continue;; esac
         seen_addresses="$seen_addresses $host:$port"
         probed=$((probed + 1))

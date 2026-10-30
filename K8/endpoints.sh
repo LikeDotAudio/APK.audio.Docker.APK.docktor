@@ -252,13 +252,13 @@ emit_endpoint NMOS-Dev 3218/tcp 3218 open \
 # / and /graphql/ redirect 302 to login, /api/ answers 403 with NetBox own
 # message). Hence open, not copy: a browser CAN use them, it is just asked who
 # it is.
-emit_endpoint Netbox-App 8080/tcp 8081 open \
+emit_endpoint Netbox-App 8080/tcp 8082 open \
     "NetBox" "http://{host}:{port}/"
 
-emit_endpoint Netbox-App 8080/tcp 8081 open \
+emit_endpoint Netbox-App 8080/tcp 8082 open \
     "NetBox REST API" "http://{host}:{port}/api/"
 
-emit_endpoint Netbox-App 8080/tcp 8081 open \
+emit_endpoint Netbox-App 8080/tcp 8082 open \
     "NetBox GraphQL" "http://{host}:{port}/graphql/"
 
 # --- PROTOCOL.DEV.EMBER ---------------------------------------------------------

@@ -390,7 +390,7 @@ is not a port to leave to whoever remembered a compose command."*
 
 | container | image | published |
 |---|---|---|
-| `Netbox-App` | `netboxcommunity/netbox:v4.7.0-5.1.0` | `8081 → 8080`, loopback |
+| `Netbox-App` | `netboxcommunity/netbox:v4.7.0-5.1.0` | `8082 → 8080`, loopback |
 | `Netbox-Worker` | same | nothing |
 | `Netbox-Postgres` | `postgres:18-alpine` | nothing |
 | `Netbox-Valkey` | `valkey/valkey:9.1-alpine` | nothing |
