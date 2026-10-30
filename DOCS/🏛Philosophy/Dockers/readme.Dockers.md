@@ -34,7 +34,7 @@ in the same tree that deliberately does the opposite.
 | `DockTor/` | `apk-audio` | 1 | the tool that looks at the others — the only holder of the docker socket |
 | `Server:Discovery:NMOS/` | `nmos` | 4 (+2) | somebody else's specification furniture, plus the two devices we ship into it |
 | `PROTOCOL.DEV.AES70/` | `aes70` | 2 | somebody else's library, on an interpreter this bench does not otherwise have |
-| `Server:Ember/` | `ember` | 2 | a real Ember+ provider three of our own readers had been dialling for months |
+| `PROTOCOL.DEV.EMBER/` | `ember` | 2 | a real Ember+ provider three of our own readers had been dialling for months |
 | `Server:Netbox/` | `netbox` | 5 | the inventory, and a database nothing else may reach |
 
 ---
@@ -129,7 +129,7 @@ The same law explains the other three "why is this not just a folder" stacks:
   failing at resolution naming the *package*, so on a 3.11 bench the cause reads as a
   broken dependency. The container IS the interpreter.
 - **Ember** — the provider is a C++ build, and `cmake` cannot run on this source on the
-  host at all: *"Run cmake against `Server:Ember/` on the host and GNU make stops with
+  host at all: *"Run cmake against `PROTOCOL.DEV.EMBER/` on the host and GNU make stops with
   `target pattern contains no '%'` — a colon is make's rule separator."* Inside the image
   the source is at `/opt/ember` and make is content.
 - **NetBox** — five upstream images, no Dockerfile, nothing built and nothing bound. Two
@@ -424,11 +424,22 @@ because compose cannot express one across projects.
 
 Measured 2026-09-10 on this bench. These are findings, not laws.
 
-| what | measurement |
+### `PROTOCOL.DEV.EMBER/` — the Ember+ bench · project `ember`
+
+| container | image | published | why |
+|---|---|---|---|
+| `Ember-Provider` | `local` | `9000:9000` | a real Ember+ provider serving a GLOW tree over S101/TCP |
+| `Ember-Docs` | `local` | `3221:80` | Lawo's three Ember+ specification PDFs, offline |
+
+---
+
+## 7. Audit log — what broke and what fixed it
+
+| issue | what it was |
 |---|---|
-| a tenth compose file that is not a stack | `APK:Yo/Docker/docker-compose.yml` carries **no top-level `name:`**, so by this tree's own definition it is an overlay: `stacks.sh` skips it, no verb drives it, and `panic.sh` would remove its container host-wide with nothing to bring it back |
+| a tenth compose file that is not a stack | `APK:YoControl/Docker/docker-compose.yml` carries **no top-level `name:`**, so by this tree's own definition it is an overlay: `stacks.sh` skips it, no verb drives it, and `panic.sh` would remove its container host-wide with nothing to bring it back |
 | …and its port is already taken | it declares `ports: "8080:8080"` on `network_mode: host`, and `8080` is `Storage-Portal`'s. Two of the three postures in law 2 in one service block |
-| ~~stray output in the checkout root~~ **MOVED 2026-09-11** | two files whose NAMES contained a backslash — `ember-csv-logs\log_2026-9-6.log` and `…-7.log` — which is the shape of the Windows-backslash defect `Server:Ember/`'s own table documents. `WORKDIR /var/lib/ember` is what contains it inside the image, so these were written by something running outside one. They now sit in `APK:Documentation/LOGS/ember-csv-logs/`, renamed to the path upstream meant to write; that lane's `INDEX.md` declares where an application log file is allowed to land and keeps the original spellings. **The cause is closed too**: `include/Logger.hpp` took the one APK.audio edit in that vendored tree — a writable-first resolution of `$EMBER_LOG_DIR` → the LOGS lane via `$APKAUDIO_REPO` → relative `ember-csv-logs/`, joined with a forward slash. The container still takes the third branch by design (read-only checkout, `/var/lib/ember` scratch). Argued at `upstream.json`'s `the_one_edit` and at the Dockerfile's third-defect block |
+| ~~stray output in the checkout root~~ **MOVED 2026-09-11** | two files whose NAMES contained a backslash — `ember-csv-logs\log_2026-9-6.log` and `…-7.log` — which is the shape of the Windows-backslash defect `PROTOCOL.DEV.EMBER/`'s own table documents. `WORKDIR /var/lib/ember` is what contains it inside the image, so these were written by something running outside one. They now sit in `APK:Documentation/LOGS/ember-csv-logs/`, renamed to the path upstream meant to write; that lane's `INDEX.md` declares where an application log file is allowed to land and keeps the original spellings. **The cause is closed too**: `include/Logger.hpp` took the one APK.audio edit in that vendored tree — a writable-first resolution of `$EMBER_LOG_DIR` → the LOGS lane via `$APKAUDIO_REPO` → relative `ember-csv-logs/`, joined with a forward slash. The container still takes the third branch by design (read-only checkout, `/var/lib/ember` scratch). Argued at `upstream.json`'s `the_one_edit` and at the Dockerfile's third-defect block |
 | prose against a roster that shrank | `APK:DOCKERS/README.md` still calls the orchestrator *"agent #25 of `agents.json`"*; the roster is **9** entries, of which 2 are disabled by default |
 | one image is 1.23 GB | `storage-portal:local` — nginx plus static trees — against `aes70py-site:local`'s **64.5 MB** for the same nginx job. All three repo-root contexts share one `/.dockerignore` and none of them can trim the context for itself (README rule 3) |
 
@@ -436,7 +447,7 @@ Measured 2026-09-10 on this bench. These are findings, not laws.
 
 ## Where to start
 
-**Adding a tenth stack is a fixed price, and it is seven files.** `Server:Ember` paid it in
+**Adding a tenth stack is a fixed price, and it is seven files.** `PROTOCOL.DEV.EMBER` paid it in
 PLAN-670.01 and AES70 before it; the list is in `_common.sh`'s own note:
 
 1. `_common.sh` — the compose file path, its array, its per-stack verdict paragraph, and
