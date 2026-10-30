@@ -32,9 +32,9 @@ in the same tree that deliberately does the opposite.
 | `APK:BareMetal/` | `apk-audio` | 1 | the TERMINAL NODE image — one container per machine, host networking |
 | `Server:Broker:MQTT/` | `apk-audio` | 2 | the bus as a subject: a broker to work on, and the thing that records it |
 | `DockTor/` | `apk-audio` | 1 | the tool that looks at the others — the only holder of the docker socket |
-| `Server:Discovery:NMOS/` | `nmos` | 4 (+2) | somebody else's specification furniture, plus the two devices we ship into it |
-| `PROTOCOL.DEV.AES70/` | `aes70` | 2 | somebody else's library, on an interpreter this bench does not otherwise have |
-| `PROTOCOL.DEV.EMBER/` | `ember` | 2 | a real Ember+ provider three of our own readers had been dialling for months |
+| `POD.protocols/PROTOCOL.discovery.NMOS/` | `protocols` | 1 (+2) | somebody else's specification furniture and the device we ship into it, in one `NMOS-Dev` |
+| `POD.protocols/PROTOCOL.DEV.AES70/` | `protocols` | 1 | somebody else's library, on an interpreter this bench does not otherwise have |
+| `POD.protocols/PROTOCOL.DEV.EMBER/` | `protocols` | 1 | a real Ember+ provider three of our own readers had been dialling for months |
 | `Server:Netbox/` | `netbox` | 5 | the inventory, and a database nothing else may reach |
 
 ---
@@ -240,13 +240,13 @@ what `⚡ N containers are running an image that was built before the code insid
 manager's dashboard is measuring, and what `staleness.sh` compares: the image's build time
 against the newest file its Dockerfile COPYs in.
 
-**The two exceptions are exceptions to the PATH, not to the law.** The checkout root is the
-one useful path in this repository with no colon in it, so `DockTor` and
-`Ember-Provider` bind *the root* and reach their file underneath. Ember does it because the
-CSVs are re-read by a running provider every 250 ms — a file edited on the host is served
-within about a second, no rebuild, no restart — and the manager does it because
-`docker compose build` hands the DAEMON a context path, so the checkout must exist at the
-same absolute path on both sides. `${APKAUDIO_REPO}` is spelled identically as source and
+**The one exception is an exception to the PATH, not to the law.** The checkout root is the
+one useful path in this repository with no colon in it, so `DockTor` binds *the root* and
+reaches its files underneath, because `docker compose build` hands the DAEMON a context path,
+so the checkout must exist at the same absolute path on both sides. `Ember-Provider` used to
+be the second: its CSVs are now COPYed like everything else, and binding the root to edit a
+tree live (re-read about once a second, no rebuild) is the opt-in overlay
+`PROTOCOL.DEV.EMBER/Docker/docker-compose.live.yml`, never the default. `${APKAUDIO_REPO}` is spelled identically as source and
 target for that reason: *"they are not allowed to differ, and writing them twice is how they
 come to."*
 
@@ -345,41 +345,37 @@ the ninth compose file and the one `for_each_stack` does not drive — `manager.
 dashboard the rest of this ecosystem is watched from, and `up-stack.sh` refuses to remount
 this stack from inside it.
 
-### `Server:Discovery:NMOS/` — the specification bench · project `nmos`
+### `POD.protocols/PROTOCOL.discovery.NMOS/` — the specification bench · project `protocols`
 
 | container | image | published | what it is |
 |---|---|---|---|
-| `NMOS-Registry` | `nmos-cpp:local` | 3209 · 3210 · 3211 · 3213 · 10641 | IS-04 Registration + Query, IS-09 System |
-| `NMOS-Node` | `nmos-cpp:local` | 3212 · 3215 · 3216 · 3217 | the mock device — 55 senders, 55 receivers |
-| `NMOS-Sandbox` | `nmos-sandbox:local` | 3208 | nginx holding the dashboard |
-| `APK-NMOS-Bridge` | `apkaudio-nmos-bridge:local` | 3218, loopback | **ours** — one NMOS Device per element the DataBus carries |
+| `NMOS-Dev` | `apkaudio-nmos:local` | 3208 → 80 · 3209–3213 · 3215–3218 · 10641, loopback | registry (IS-04 Registration + Query, IS-09), the mock node (IS-04 Node, IS-05/08, IS-07), the sandbox dashboard's nginx and **our** DataBus bridge (3218), in one container |
 | `NMOS-Testing` | `nmos-testing:local` | 5000 · 5001 | the AMWA suite — `profiles: ["conformance"]`, 732 MB |
 | `APK-NMOS-Facade` | `apkaudio-nmos-facade:local` | nothing | **ours** — the controller under test; profiled, `restart: "no"` |
 
-Registry and node are **one image**; the entrypoint's `RUN_NODE` test picks the binary. Both
+The four former containers (Registry, Node, Sandbox, Bridge) are **one image and one
+container** now. Both
 upstream bases are pinned by digest — `rhastie/nmos-cpp@sha256:c54c8de…` and
 `amwa/nmos-testing@sha256:99a411d…` — never by tag, because *"`latest` on a conformance suite
 means the gate's meaning changes without a commit."*
 
-### `PROTOCOL.DEV.AES70/` — the AES70 workbench · project `aes70`
+### `POD.protocols/PROTOCOL.DEV.AES70/` — the AES70 workbench · project `protocols`
 
 | container | image | published | why |
 |---|---|---|---|
-| `AES70-Dev` | `aes70py-dev:local` (250 MB) | nothing | a controller is a client — it publishes nothing by definition |
-| `AES70-Site` | `aes70py-site:local` (64.5 MB) | `3220 → 80` | aes70py.org mirrored, 8 pages, offline |
+| `AES70-Dev` | `aes70py-dev:local` | `3220`, loopback | the aes70py controller workbench, and the aes70py.org mirror served from the same container |
 
 **What decided that this starts with the bench**, when *"a developer might want it"* is not
-a reason to start a container everywhere: `AES70-Site` publishes a page somebody at the
-bench opens, and *"a page that is only there when somebody remembered to type a compose
-command is a page nobody finds."* The workbench container rides along because neither
-declares a dependency in either direction.
+a reason to start a container everywhere: the site on 3220 is a page somebody at the bench
+opens, and *"a page that is only there when somebody remembered to type a compose command is
+a page nobody finds."* It used to be a second container, `AES70-Site`, in a project of its
+own; it is one `AES70-Dev` in the `protocols` pod now.
 
-### `Server:Ember/` — the Ember+ bench · project `ember`
+### `POD.protocols/PROTOCOL.DEV.EMBER/` — the Ember+ bench · project `protocols`
 
 | container | image | published | why |
 |---|---|---|---|
-| `Ember-Provider` | `ember-provider:local` | `9000`, loopback | a real GLOW tree over S101/TCP |
-| `Ember-Docs` | `ember-docs:local` | `3221 → 80` | Lawo's three specification PDFs, offline |
+| `Ember-Provider` | `ember-provider:local` | `9000` · `3221`, loopback | a real GLOW tree over S101/TCP, and nginx inside the same container serving Lawo's three specification PDFs on 3221 |
 
 This stack exists because three readers in this repository had been dialling `127.0.0.1:9000`
 for months — a protocol tester, an agent's `config.ini` published retained on the bus, and a
@@ -424,12 +420,11 @@ because compose cannot express one across projects.
 
 Measured 2026-09-10 on this bench. These are findings, not laws.
 
-### `PROTOCOL.DEV.EMBER/` — the Ember+ bench · project `ember`
+### `PROTOCOL.DEV.EMBER/` — the Ember+ bench · project `protocols`
 
 | container | image | published | why |
 |---|---|---|---|
-| `Ember-Provider` | `local` | `9000:9000` | a real Ember+ provider serving a GLOW tree over S101/TCP |
-| `Ember-Docs` | `local` | `3221:80` | Lawo's three Ember+ specification PDFs, offline |
+| `Ember-Provider` | `local` | `9000:9000` · `3221:3221` | a real Ember+ provider serving a GLOW tree over S101/TCP, with the spec PDFs' nginx inside it (no separate `Ember-Docs` since the pod merge) |
 
 ---
 
