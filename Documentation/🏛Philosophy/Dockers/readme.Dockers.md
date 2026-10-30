@@ -27,10 +27,10 @@ in the same tree that deliberately does the opposite.
 
 | stack | project | containers | why it is a stack of its own |
 |---|---|---|---|
-| `Server:Storage:SQL database/` | `apk-audio` | 5 | the state: MariaDB, its schema, the PHP that reads it, the nginx in front |
-| `APK:audio:WebPortal/` | `apk-audio` | 2 | the bus and the clock of the central bench |
-| `APK:BareMetal/` | `apk-audio` | 1 | the TERMINAL NODE image — one container per machine, host networking |
-| `Server:Broker:MQTT/` | `apk-audio` | 2 | the bus as a subject: a broker to work on, and the thing that records it |
+| `POD.database/DATABASE.server.SQL/` | `apk-audio` | 6 (+2) | the state: the SQL node(s), ProxySQL, its schema, backups, the PHP that reads it, the nginx in front |
+| `POD.databus/DATABUS.Broker.MQTT/` | `apk-audio` | 2 | the ONE bus (`Broker-Mosquitto`, loopback, pulled image) and the thing that records it |
+| `POD.THIN/WEB.*` + `POD.THICK/CLOCK.Heartbeat/` | `apk-audio` | 4 | the web tier — gateway, static, OS API — and the clock of the central bench |
+| `POD.THICK/NODE.BareMetal/` | `apk-audio` | 1 | the TERMINAL NODE image — one container per machine, host networking |
 | `DockTor/` | `apk-audio` | 1 | the tool that looks at the others — the only holder of the docker socket |
 | `POD.protocols/PROTOCOL.discovery.NMOS/` | `protocols` | 1 (+2) | somebody else's specification furniture and the device we ship into it, in one `NMOS-Dev` |
 | `POD.protocols/PROTOCOL.DEV.AES70/` | `protocols` | 1 | somebody else's library, on an interpreter this bench does not otherwise have |
@@ -208,15 +208,14 @@ then does not work on the day it is true."*
 > ever share a project pins `name:` explicitly, and the pinned name is the one already on
 > disk.
 
-Eleven named volumes, and **four separate `broker-data` keys** that would have collapsed
-onto one another when the stacks folded into `apk-audio`:
+There were once **four separate `broker-data` keys** that would have collapsed onto one
+another when the stacks folded into `apk-audio`. With one broker there are two left, and
+both are still pinned:
 
-| the key, in four compose files | pinned to |
+| the key, in two compose files | pinned to |
 |---|---|
-| `Server:Storage:SQL database/docker-compose.yml` | `apk-audio_broker-data` |
-| `APK:audio:WebPortal/docker-compose.yml` | `apkaudio_broker-data` |
-| `Server:Broker:MQTT/docker-compose.yml` | `apk-audio-mqtt_broker-data` |
-| `APK:BareMetal/docker-compose.broker.yml` (overlay) | `apkaudio-baremetal_broker-data` |
+| `POD.databus/DATABUS.Broker.MQTT/Docker/docker-compose.yml` | `apk-audio-mqtt_broker-data` |
+| `POD.THICK/NODE.BareMetal/Docker/docker-compose.broker.yml` (overlay) | `apkaudio-baremetal_broker-data` |
 
 `apkaudio-baremetal_baremetal-state` holds the MQTT exchange database — *"not a cache"* —
 and `prune.sh` refuses volumes for exactly this reason, in its own words: *"`docker volume
@@ -270,48 +269,59 @@ container, since a compose client cannot survive recreating the container it run
 
 ## The roll call
 
-### `Server:Storage:SQL database/` — the state · project `apk-audio`
+### `POD.database/DATABASE.server.SQL/` — the state · project `apk-audio`
 
 | container | image | published | why it is its own |
 |---|---|---|---|
-| `Storage-MariaDB` | `mariadb:11.4` | `3306`, every interface | the engine; the volume `apk-audio_mariadb-data` is the corpus |
+| `SQL-Node-1` | `sql-cluster-node:local` | nothing | the engine; `SQL-Node-2`/`-3` join it only under `profiles: ["cluster"]` |
+| `SQL-Proxy` | `sql-cluster-proxy:local` | `3306`, loopback | ProxySQL — every client's one address (aliases `sql-proxy`, `mariadb`, `Storage-MariaDB`) |
+| `SQL-Schema-Init` | `sql-cluster-node:local` | nothing | a one-shot; `restart: "no"`; owns every schema in the database (law 6) |
+| `SQL-Backup` | `sql-cluster-node:local` | nothing | the dumps, on their own clock |
 | `Storage-PHP` | `storage-php:local` | nothing | php-fpm — `nginx:alpine` has no interpreter (law 3) |
-| `Storage-Schema-Init` | `storage-php:local` | nothing | a one-shot; `restart: "no"`; owns every schema in the database (law 6) |
-| `Storage-Portal` | `storage-portal:local` | `8080 → 80` | nginx and the static trees |
+| `Storage-Portal` | `storage-portal:local` | `8080 → 80`, loopback | nginx and the static trees |
 
-The bus is not in this stack. `Storage-Broker` was decommissioned: the one house broker is
-`Broker-Mosquitto` in `PODS/POD.databus/DATABUS.Broker.MQTT/Docker/docker-compose.yml`, and
-`Storage-Broker` survives only as a network alias on it so an old `Storage-Broker:1883`
-still answers.
+There is no broker in this stack any more. `Storage-Broker` was the house bus here, on every
+interface, with its config baked in by a `Dockerfile.broker`; the bench now has ONE broker,
+`Broker-Mosquitto`, in `POD.databus/DATABUS.Broker.MQTT/` below, and `Storage-Broker` is
+only a network alias of it so old clients still resolve.
 
-### `DATABUS.Broker.MQTT/` — the bus · project `apk-audio`
+### `POD.databus/DATABUS.Broker.MQTT/` — the one bus · project `apk-audio`
 
 | container | image | published | why it is its own |
 |---|---|---|---|
-| `Broker-Mosquitto` | `eclipse-mosquitto:2.0` (pulled) | `127.0.0.1:1883` / `127.0.0.1:9001` | the bus every other process on the bench actually speaks on |
+| `Broker-Mosquitto` | `eclipse-mosquitto:2.0` (pulled) | `1883` / `9001`, loopback | the bus every other process on the bench speaks on; aliases `mqtt`, `broker`, `Storage-Broker`, `Portal-Broker` |
+| `Broker-SqlCapture` | `broker-sqlcapture:local` | nothing | records what changed on the bus, and when |
 
-`Broker-Mosquitto` is `restart: always` and not `unless-stopped`, and nothing builds it:
-it is the pulled `eclipse-mosquitto:2.0` with `SRC/mosquitto_local.conf` bind-mounted
-read-only from the checkout (`Docker/Dockerfile.broker` exists, but no compose file builds
-it). The bind source is a tracked file, never a path under `/tmp` — that is the fix for a
-real outage: the config used to be staged into `/tmp` and bound, `/tmp` is cleared on
-reboot, and the daemon creates a missing bind source as a root-owned directory — so the
-broker came back with a directory over its config and refused every connection on 1883
-until `sudo rm -rf`. DockTor never stops or removes it, and `ensure_broker` brings it up
-first and alone.
+`Broker-Mosquitto` is `restart: always`, labelled `apk.audio.protected`, and DockTor never
+stops or removes it (`ensure_broker` brings it up first and alone). Its image is pulled, not
+built: the config is `SRC/mosquitto_local.conf`, **bind-mounted read-only from the checkout**.
+That is the fix for a real outage: the config used to be staged into `/tmp` and bound,
+`/tmp` is cleared on reboot, and the daemon creates a missing bind source as a root-owned
+directory — so the broker came back with a directory over its config and refused every
+connection on 1883. A file that is always in the checkout cannot go missing that way.
 
-**Read the SECURITY note at the top of that compose file before touching a port.**
-`allow_anonymous true` and a loopback bind are a PAIR: `mosquitto_local.conf` listens on
-`0.0.0.0` and allows anonymous, so the loopback-only port mapping is the control. The bus is not a passive transport —
+**Read the SECURITY NOTE at the top of that compose file before touching a port.**
+`allow_anonymous true` and a loopback bind are a PAIR. The bus is not a passive transport —
 publishing to `APK.audio/System/Protocols/visa/Device/+/+/+/Write` executes that payload as
 SCPI on real lab hardware.
 
-### `APK:audio:WebPortal/` — the bus and the clock · project `apk-audio`
+`apkaudio-sql`'s DeltaEngine only ever ran in-process inside the orchestrator; here it is a
+container beside the broker it listens to (PLAN-298.01). **The database is deliberately not
+in this stack** — *"a second mariadb here would be a second copy of the one table that is
+supposed to be the timeline."*
 
-| container | image | published | why it is its own |
-|---|---|---|---|
-| `Portal-Broker` | `eclipse-mosquitto:2.0` | `1885` → 1883, `9003` → 9001, loopback | a second bus is a real second bus, so it is renumbered rather than shared |
-| `Portal-Heartbeat` | `portal-heartbeat:local` | nothing | law 1 — a clock that stops when a panel rebuild stops is not a clock |
+Beside it, `docker-compose.portal-broker.yml` is not a second stack: it declares no service
+of its own and `include:`s the four web stacks below plus this one, the one-command way to
+start the web tier. DockTor draws and mounts the stack by its `docker-compose.yml`.
+
+### The web tier — `POD.THIN/WEB.*` and `POD.THICK/CLOCK.Heartbeat` · project `apk-audio`
+
+| container | stack | image | published | why it is its own |
+|---|---|---|---|---|
+| `Portal-Gateway` | `WEB.Traffic-Router` | `portal-gateway:local` | `443`, loopback | Caddy — the one origin, auth on every write |
+| `Portal-WebStatic` | `WEB.Frontend-Assets` | `portal-web-static:local` | nothing | nginx over the FrontEnd, the OS and the Softapps |
+| `Portal-OsApi` | `WEB.OsApi` | `portal-os-api:local` | nothing | the OS's API, on the bridge |
+| `Portal-Heartbeat` | `CLOCK.Heartbeat` | `portal-heartbeat:local` | nothing | law 1 — a clock that stops when a panel rebuild stops is not a clock |
 
 **There is no `orchestrator:` service here and that is the decision.** It declared one for
 months and it never started once: the node declares the same program in `agents.json` and
@@ -320,7 +330,7 @@ ended in `address already in use`. *"Two declarations of one program is not a po
 renumber"* — both mounted and wrote the same `Gui_Frames`, so a WYSIWYG save landing in one
 was invisible to the other's cache.
 
-### `APK:BareMetal/` — the terminal node · project `apk-audio`
+### `POD.THICK/NODE.BareMetal/` — the terminal node · project `apk-audio`
 
 One container, `Node-BareMetal`, `network_mode: host`, `NET_RAW` + `NET_ADMIN` +
 `NET_BIND_SERVICE`, running as the invoking host user. Nine agents under a supervisor that
@@ -332,24 +342,6 @@ is PID 1; the status server answers `127.0.0.1:8100`. Two overlays beside it:
 the compose file and sets `APK_BAREMETAL_MQTT_HOST`. Everything else about a terminal
 machine is the same everywhere, which is the point of shipping one image — and it is why
 this stack is one container and not nine (law 1).
-
-### `Server:Broker:MQTT/` — the bus as a subject · project `apk-audio`
-
-| container | image | published | why it is its own |
-|---|---|---|---|
-| `Broker-Mosquitto` | `eclipse-mosquitto:2.0` | `1884` / `9002`, loopback | a broker to work ON, not the house broker |
-| `Broker-SqlCapture` | `broker-sqlcapture:local` | nothing | records what changed on the bus, and when |
-
-This folder held four mosquitto configs that three other stacks mounted, and started
-nothing. `apkaudio-sql`'s DeltaEngine already existed and only ever ran in-process inside
-the orchestrator; here it is a container beside the broker it listens to (PLAN-298.01).
-
-**The database is deliberately not in this stack** — *"a second mariadb here would be a
-second copy of the one table that is supposed to be the timeline."* And the capture's
-default host is `mqtt`, the *storage* stack's broker, not the one this stack starts:
-capturing its own broker recorded nothing but the agent's own status echo, and
-`bus_delta` held 0 rows across 45 sessions while the bus itself was busy. *"The failure is
-silent and reads as calm."*
 
 ### `DockTor/` — the tool · project `apk-audio`
 
