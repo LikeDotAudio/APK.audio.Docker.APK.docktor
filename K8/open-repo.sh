@@ -3,7 +3,7 @@
 # MIT Licence. Full text in LICENSE at the root.
 # 📂 Inspect or open Git repositories for the microservices.
 # Usage:
-#   ./open-repo.sh                             list all 10 microservice Git repos
+#   ./open-repo.sh                             list the microservice Git repos
 #   ./open-repo.sh <name|path>                 show Git status/log for a specific repo
 #   ./open-repo.sh <name|path> --open          open repository folder in system file manager / editor
 
@@ -25,10 +25,11 @@ done
 # every one of them named a directory that is not there and `open <name>`
 # answered "not found" for the entire ecosystem. The folder NAME is what this
 # table is about; WHERE that folder sits has one answer and it is in _common.sh.
-# Three names changed in the same move and are corrected here: the broker is
-# DATABUS.Broker.MQTT, NMOS is PROTOCOL.discovery.NMOS, and APK:Yo is
-# APK:YoControl. LOGGER STORAGE is added because it is a stack like the others
-# and was the one nobody could open at all.
+# Every key names a folder that exists under PODS today (POD.x / GROUP.name):
+# DATABUS.Broker.MQTT, PROTOCOL.discovery.NMOS, MANAGER.Docktor, NODE.BareMetal,
+# CONTROL.YoControl, WEB.Frontend-Assets and DISCOVERY.Engine (the plugin host).
+# An APK:-era name here resolves to a PODS/<name> that is not there. LOGGER
+# STORAGE is a stack like the others.
 declare -A REPO_MAP=(
     ["mqtt"]="DATABUS.Broker.MQTT|$(stack_dir 'DATABUS.Broker.MQTT')"
     ["apk-mqtt-broker"]="DATABUS.Broker.MQTT|$(stack_dir 'DATABUS.Broker.MQTT')"
@@ -41,20 +42,20 @@ declare -A REPO_MAP=(
     ["apk-ember-server"]="PROTOCOL.DEV.EMBER|$(stack_dir 'PROTOCOL.DEV.EMBER')"
     ["netbox"]="DATABASE.server.NETBOX|$(stack_dir 'DATABASE.server.NETBOX')"
     ["apk-netbox-server"]="DATABASE.server.NETBOX|$(stack_dir 'DATABASE.server.NETBOX')"
-    ["docktor"]="APK:Docktor|$(stack_dir 'APK:Docktor')"
-    ["apk-docktor"]="APK:Docktor|$(stack_dir 'APK:Docktor')"
+    ["docktor"]="MANAGER.Docktor|$(stack_dir 'MANAGER.Docktor')"
+    ["apk-docktor"]="MANAGER.Docktor|$(stack_dir 'MANAGER.Docktor')"
     ["aes70"]="PROTOCOL.DEV.AES70|$(stack_dir 'PROTOCOL.DEV.AES70')"
     ["apk-protocol-aes70"]="PROTOCOL.DEV.AES70|$(stack_dir 'PROTOCOL.DEV.AES70')"
-    ["baremetal"]="APK:BareMetal|$(stack_dir 'APK:BareMetal')"
-    ["apk-baremetal"]="APK:BareMetal|$(stack_dir 'APK:BareMetal')"
-    ["yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
-    ["apk-yo"]="APK:YoControl|$(stack_dir 'APK:YoControl')"
+    ["baremetal"]="NODE.BareMetal|$(stack_dir 'NODE.BareMetal')"
+    ["apk-baremetal"]="NODE.BareMetal|$(stack_dir 'NODE.BareMetal')"
+    ["yo"]="CONTROL.YoControl|$(stack_dir 'CONTROL.YoControl')"
+    ["apk-yo"]="CONTROL.YoControl|$(stack_dir 'CONTROL.YoControl')"
     ["logger"]="DATABASE.volume.Log-STORAGE|$(stack_dir 'DATABASE.volume.Log-STORAGE')"
-    # The WebPortal repository is APK:web:Frontend-Assets now; both old keys still open it.
-    ["static"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
-    ["webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
-    ["apk-webportal"]="APK:web:Frontend-Assets|$(stack_dir 'APK:web:Frontend-Assets')"
-    ["plugins"]="APK:discovery|$(stack_dir 'APK:discovery')"
+    # The WebPortal repository is WEB.Frontend-Assets now; both old keys still open it.
+    ["static"]="WEB.Frontend-Assets|$(stack_dir 'WEB.Frontend-Assets')"
+    ["webportal"]="WEB.Frontend-Assets|$(stack_dir 'WEB.Frontend-Assets')"
+    ["apk-webportal"]="WEB.Frontend-Assets|$(stack_dir 'WEB.Frontend-Assets')"
+    ["plugins"]="DISCOVERY.Engine|$(stack_dir 'DISCOVERY.Engine')"
 )
 
 if [ -z "$QUERY" ]; then
@@ -64,7 +65,7 @@ if [ -z "$QUERY" ]; then
     
     for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo logger static plugins; do
         IFS="|" read -r subpath repopath <<< "${REPO_MAP[$key]}"
-        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "PODS/$subpath" "$repopath"
+        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "PODS/${repopath#"$DOCKERS_DIR"/}" "$repopath"
     done
 
     echo -e "\n\033[33mUsage:\033[0m python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open <name> [--open]"
@@ -88,12 +89,12 @@ fi
 
 if [ -z "$MATCH" ]; then
     log_error "Could not resolve repository for '$QUERY'."
-    echo "Available keys: mqtt, sql, nmos, ember, netbox, docktor, aes70, baremetal, yo, webportal"
+    echo "Available keys: mqtt, sql, nmos, ember, netbox, docktor, aes70, baremetal, yo, logger, webportal, plugins"
     exit 1
 fi
 
 IFS="|" read -r SUBMODULE_REL STANDALONE_PATH <<< "$MATCH"
-SUBMODULE_FULL="$DOCKERS_DIR/$SUBMODULE_REL"
+SUBMODULE_FULL="$STANDALONE_PATH"  # stack_dir already placed the folder in its pod
 
 echo -e "\n🔍 \033[1mRepository Information: $QUERY\033[0m"
 echo -e "📁 Submodule Path: \033[36m$SUBMODULE_FULL\033[0m"
