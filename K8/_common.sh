@@ -1253,15 +1253,21 @@ prepare_for_up() {
 # directory (its labels), `--no-build --no-deps`, so nothing builds twice and no
 # neighbour is touched. Naming the service enables its profile, so the one-shot
 # runs once — what any mount of its stack does anyway.
+# IT KEEPS THE RUN STATE IT FOUND. Only a container that was running, or an
+# exited `restart: "no"` one-shot, is started on the new build; any other —
+# never started (`created`), or a long-runner somebody stopped — is recreated
+# with `--no-start` and stays down. Starting them all turned Plugin-BLUETOOTH,
+# left `created` by a hand `up` of a stack the pod does not include (its image
+# has no python3), into a crash loop of exit 127 on the next good build.
 # NEVER the manager (it would stop this script) or the broker (protected), and
 # never a container compose did not create (instrument_launcher.py owns those),
 # nor one whose compose file is outside this checkout's PODS/.
 # NEVER NON-ZERO: a refused recreate is a warning; the build itself was good.
 recreate_stale_builds() {
-    local name cfg_image img_id svc project files wd cur f
+    local name cfg_image img_id svc project files wd state policy cur f start
     local -A cur_id=()
     local -a cmd fs
-    while IFS='|' read -r name cfg_image img_id svc project files wd; do
+    while IFS='|' read -r name cfg_image img_id svc project files wd state policy; do
         name="${name#/}"
         [ -n "$svc" ] && [ -n "$files" ] && [ -n "$project" ] || continue
         case "$cfg_image" in *:local) ;; *) continue;; esac
@@ -1280,12 +1286,19 @@ recreate_stale_builds() {
             [ -f "$f" ] || { log_warn "$name is on an older build of $cfg_image, but its compose file $f is gone; left as it is."; continue 2; }
             cmd+=(-f "$f")
         done
-        log_step "$name is on an older build of $cfg_image (${img_id#sha256:}); recreating it on the current one..."
+        start=()
+        case "$state" in
+            running|restarting) ;;
+            exited) [ "$policy" = "no" ] || [ -z "$policy" ] || start=(--no-start) ;;
+            *) start=(--no-start) ;;
+        esac
+        log_step "$name is on an older build of $cfg_image (${img_id#sha256:}); recreating it on the current one${start:+ (left $state, not started)}..."
         announce STALE_BUILD_RECREATE "{\"container\":\"$name\",\"image\":\"$cfg_image\"}"
-        "${cmd[@]}" up -d --no-deps --no-build --force-recreate "$svc" \
+        if [ ${#start[@]} -eq 0 ]; then cmd+=(up -d); else cmd+=(up "${start[@]}"); fi
+        "${cmd[@]}" --no-deps --no-build --force-recreate "$svc" \
             || log_warn "Recreating $name failed; it is still on the older build of $cfg_image."
     done < <(docker ps -aq 2>/dev/null | xargs -r docker inspect -f \
-        '{{.Name}}|{{.Config.Image}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)
+        '{{.Name}}|{{.Config.Image}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{.State.Status}}|{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null)
     return 0
 }
 

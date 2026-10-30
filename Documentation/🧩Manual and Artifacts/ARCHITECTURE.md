@@ -49,6 +49,8 @@ Every build verb (`up.sh`, `up-stack.sh`, `rebuild*.sh`) ends a GOOD build in `c
 first runs `recreate_stale_builds`: any compose container of this checkout still on an older build of a
 `:local` tag — a shared one like `apk-plugins:local`, or an exited `restart: "no"` one-shot nothing else
 recreates — is recreated by its own compose files (`--no-build --no-deps`). Never the manager or the broker.
+It keeps the run state it found: only a running container or an exited one-shot is started on the new
+build; one never started (`created`) or a stopped long-runner is recreated `--no-start` and stays down.
 
 ## The container
 
