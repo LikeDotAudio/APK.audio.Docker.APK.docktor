@@ -13,8 +13,10 @@
 #                              where code reads one at that root
 #   GROUP.name/ (a stack)      any folders (its own source). A CONTAINER stack —
 #                              one with Docker/ or SRC/ — keeps no loose files
-#                              but README.md, LICENSE* and the dotfiles git and
-#                              docker need. An app stack (a Softapp: display.json
+#                              but README.md, LICENSE*, the dotfiles git and
+#                              docker need, and display.json (the launcher's
+#                              walk_project() reads it at the stack root and
+#                              stops there). An app stack (a Softapp: display.json
 #                              + index.html at its root) is its own content.
 #
 # A stack is anything spelled GROUP.name: an UPPERCASE group word, a dot, and a
@@ -43,7 +45,7 @@ SUPPORT = re.compile(r'^_[A-Za-z0-9_]+$')
 ROLE = {'Docker', 'SRC', 'Documentation'}
 SKIP = {'.git', 'node_modules', '__pycache__', 'target'}
 OUT_OF_SCOPE = {os.path.join('POD.THIN', 'OS')}
-STACK_FILES = re.compile(r'^(README\.md|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore)$')
+STACK_FILES = re.compile(r'^(README\.md|display\.json|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore)$')
 
 # A group root holds README.md and, where code reads one there, its contract:
 # display.json (the OS shell's group tile) or manifest.json (the bench family
