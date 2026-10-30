@@ -187,6 +187,17 @@ seen_paths = set()
 for path in compose_files(dockers):
     if "PLUGINS" in os.path.relpath(path, dockers).split(os.sep):
         continue
+    # ONE ROW PER STACK: ITS PRIMARY FILE. A second named file beside a
+    # docker-compose.yml is not a second stack of the same name — today that
+    # is DATABUS.Broker.MQTT's portal-broker.yml, an aggregate that only
+    # `include:`s the four web stacks and the broker file. Listed, it drew a
+    # 0-container DATABUS.Broker.MQTT row beside the real one, and a remount
+    # by that row would have rebuilt the web tier to bring up a broker.
+    # config_helper.cmd_bash_eval keeps to the same primary file, so the name
+    # up-stack.sh resolves and the row drawn here are one file.
+    if (os.path.basename(path) not in ("docker-compose.yml", "docker-compose.manager.yml")
+            and os.path.isfile(os.path.join(os.path.dirname(path), "docker-compose.yml"))):
+        continue
     real_path = os.path.realpath(path)
     if real_path in seen_paths:
         continue
