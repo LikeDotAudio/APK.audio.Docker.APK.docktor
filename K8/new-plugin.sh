@@ -2,10 +2,19 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 #
-# 🧩 new-plugin.sh NAME ROLE [--dry-run] — a new Generation B plugin, from the template (PLAN-3411.01).
+# 🧩 new-plugin.sh NAME ROLE [--python] [--dry-run] — a new Generation B plugin, from the template (PLAN-3411.01).
 #
 #   new-plugin.sh ZZTEST discovery --dry-run    print every file it would create and every edit, change nothing
 #   new-plugin.sh ZZTEST discovery              do it
+#   new-plugin.sh ZZTEST discovery --python --dry-run   the same plugin in Python
+#
+# --python (LOOSE-template-python-twin): _template/python/ is laid over the
+# template in place of its SRC/, Docker/, .github/ and README.md — a script on
+# apk_plugin_runner (DISCOVERY.Engine/SRC/RUNNER/python, the Python twin of the
+# runner crate) in apk-plugins-python:local, extending plugin-host-python. It
+# is include:d like any plugin, but is no Cargo member: there is no crate, so
+# the members/lockfile edits are skipped. Without --python, python/ is not
+# copied.
 #
 # WHAT IT DOES. Copies PODS/POD.THICK/PLUGINS/_template to PLUGINS/PLUGIN.<NAME>,
 # replacing the three placeholders in every path and file:
@@ -40,9 +49,11 @@ import os, re, shutil, subprocess, sys, tempfile
 
 root, args = sys.argv[1], sys.argv[2:]
 dry = '--dry-run' in args
-pos = [a for a in args if a != '--dry-run']
+python = '--python' in args
+flags = {'--dry-run', '--python'}
+pos = [a for a in args if a not in flags]
 if len(pos) != 2:
-    sys.exit('usage: new-plugin.sh NAME ROLE [--dry-run]   e.g. new-plugin.sh ZZTEST discovery --dry-run')
+    sys.exit('usage: new-plugin.sh NAME ROLE [--python] [--dry-run]   e.g. new-plugin.sh ZZTEST discovery --dry-run')
 name, role = pos
 if not re.fullmatch(r'[A-Z][A-Z0-9_]*', name):
     sys.exit(f'NAME is UPPER_SNAKE (PING, SOUNDCARD_IN), not {name!r}')
@@ -90,14 +101,29 @@ def sub(text):
     return text
 
 SKIP = {'target', '__pycache__', 'Cargo.lock'}
-files = []
-for d, dirs, names in os.walk(TEMPLATE):
-    dirs[:] = sorted(x for x in dirs if x not in SKIP)
-    for n in sorted(names):
-        if n in SKIP:
-            continue
-        src = os.path.join(d, n)
-        files.append((src, sub(os.path.relpath(src, TEMPLATE))))
+TWIN = os.path.join(TEMPLATE, 'python')
+# What the Python twin replaces wholesale; everything else (Documentation/,
+# .gitignore) is shared by both languages.
+REPLACED = ('SRC', 'Docker', '.github', 'README.md')
+if python and not os.path.isdir(TWIN):
+    sys.exit(f'--python, but no Python twin at {rel(TWIN)}')
+
+def walk(top, skip_top=()):
+    out = []
+    for d, dirs, names in os.walk(top):
+        at_top = d == top
+        dirs[:] = sorted(x for x in dirs if x not in SKIP and not (at_top and x in skip_top))
+        for n in sorted(names):
+            if n in SKIP or (at_top and n in skip_top):
+                continue
+            src = os.path.join(d, n)
+            out.append((src, sub(os.path.relpath(src, top))))
+    return out
+
+if python:
+    files = sorted(walk(TEMPLATE, ('python',) + REPLACED) + walk(TWIN), key=lambda pair: pair[1])
+else:
+    files = walk(TEMPLATE, ('python',))
 
 # The two engine edits, computed now so a dry run shows them exactly.
 include = f'  - path: "../../PLUGINS/{stack}/Docker/docker-compose.yml"'
@@ -114,7 +140,10 @@ if not mm:
 new_cargo = mtext[:mm.end() - 1] + member + '\n' + mtext[mm.end() - 1:]
 link_target = os.path.relpath(os.path.join(dest, 'SRC'), MEMBERS)
 
-print(f'🧩 {stack}: token `{token}`, crate apkaudio-{token}, bin apk-{token}, container Plugin-{name}, profile `{role}`')
+if python:
+    print(f'🧩 {stack} (Python): token `{token}`, script SRC/apkaudio_{token}.py on apk-plugins-python:local, container Plugin-{name}, profile `{role}`')
+else:
+    print(f'🧩 {stack}: token `{token}`, crate apkaudio-{token}, bin apk-{token}, container Plugin-{name}, profile `{role}`')
 if role not in known:
     print(f'   ℹ️  `{role}` is a NEW profile (known: {", ".join(sorted(known))}) — no node starts it until COMPOSE_PROFILES names it')
 print(f'   files it {"would create" if dry else "creates"} under {rel(dest)}/:')
@@ -122,8 +151,13 @@ for _, out in files:
     print(f'     {out}')
 print(f'   {"would " if dry else ""}create private repository {owner}/{repo} and `git submodule add {url} {rel(dest)}`')
 print(f'   {"would " if dry else ""}edit {rel(COMPOSE)}: + {include.strip()}')
-print(f'   {"would " if dry else ""}edit {rel(CARGO)}: + {member.strip()}  (link members/{stack} -> {link_target})')
-print(f'   {"would " if dry else ""}add apkaudio-{token} to {rel(os.path.join(ENGINE, "SRC", "Cargo.lock"))} (cargo update --workspace --offline)')
+if python:
+    print('   no Cargo member, link or lockfile entry: a Python plugin is no crate')
+else:
+    print(f'   {"would " if dry else ""}edit {rel(CARGO)}: + {member.strip()}  (link members/{stack} -> {link_target})')
+    print(f'   {"would " if dry else ""}add apkaudio-{token} to {rel(os.path.join(ENGINE, "SRC", "Cargo.lock"))} (cargo update --workspace --offline)')
+    if os.path.isdir(TWIN):
+        print(f'   (--python makes the Python twin instead, from {rel(TWIN)}/)')
 if dry:
     sys.exit(0)
 
@@ -149,6 +183,9 @@ run('git', '-C', root, 'submodule', 'add', '-b', 'main', url, rel(dest))
 print(f'   ✅ submodule {rel(dest)}')
 with open(COMPOSE, 'w', encoding='utf-8') as f:
     f.write(new_compose)
+if python:
+    print('   ✅ engine include')
+    sys.exit(0)
 with open(CARGO, 'w', encoding='utf-8') as f:
     f.write(new_cargo)
 os.makedirs(MEMBERS, exist_ok=True)
@@ -161,6 +198,17 @@ status=$?
 case " $* " in *" --dry-run "*) exit 0 ;; esac
 "$HERE/plugin-includes.sh" || exit 1
 NAME="$1"
+case " $* " in *" --python "*)
+cat <<EOF
+
+Next — commit the two edits it made (it commits nothing itself):
+  git -C PODS/POD.THICK/DISCOVERY.Engine commit -m "PLUGIN.$NAME: include" -- Docker/docker-compose.yml
+  git commit -m "PLUGIN.$NAME: new plugin submodule" -- .gitmodules PODS/POD.THICK/PLUGINS/PLUGIN.$NAME PODS/POD.THICK/DISCOVERY.Engine
+Then build and start it:
+  docker compose -f 'PODS/POD.THICK/DISCOVERY.Engine/Docker/docker-compose.yml' --profile build build plugins-python-image
+EOF
+exit 0 ;;
+esac
 cat <<EOF
 
 Next — commit the two edits it made (it commits nothing itself):
