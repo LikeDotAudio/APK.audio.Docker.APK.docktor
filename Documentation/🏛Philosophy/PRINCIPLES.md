@@ -62,7 +62,8 @@ refuses to recreate the manager from inside itself. Only `nuke.sh --yes-nuke-eve
 Roles are read off plugin compose `profiles:` (`plugin_roles_declared()`, `K8/_common.sh:348`); purpose and
 endpoints off `audio.apk.*` labels, then the compose files, then (only for a declared container nothing else
 describes) a plugin's retained `incoming/api` (`K8/purpose.sh`, `K8/endpoints.sh`). `K8/plugin-includes.sh` (run by `K8/naming.sh`) fails when the engine's
-include list and the `PLUGINS/` folder disagree.
+include list and the `PLUGINS/` folder disagree, or when an included file's shared volume block drifts from
+`plugin-base.yml`'s (one drifted copy breaks every plugin's `include:`).
 
 ## One walker finds every stack
 

@@ -26,6 +26,14 @@
 #   no profile   a service in a marked-true file has no `profiles:` — compose
 #                starts such a service on EVERY node, whatever role it declared
 #                (PLAN-3410.01: DESKTOP_MONITOR ran on headless servers)
+#   drift        an included file declares a top-level volume that
+#                Docker/plugin-base.yml also declares (apk-audio-logs,
+#                mac-lookup-cache), and its block differs from the base's.
+#                `include:` merges top-level sections and refuses a resource
+#                declared two ways ("volumes.apk-audio-logs conflicts with
+#                imported resource"), so ONE plugin's edit to its copy breaks
+#                every plugin in the discovery include, not just its own.
+#                Comments are ignored; every other line must match.
 #
 # Read line by line, not through a YAML library, so it runs wherever bash and
 # python3 do (CI, the DockTor image, a bare host).
@@ -89,6 +97,36 @@ def services_without_profile(text):
     if inside and svc and not has:
         out.append(svc)
     return out
+
+
+def top_volumes(text):
+    """{volume key: its block's lines} under the top-level `volumes:`."""
+    out, key, inside = {}, None, False
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if re.match(r'^\S', line):
+            inside, key = line.startswith('volumes:'), None
+            continue
+        if not inside:
+            continue
+        m = re.match(r'^  ([A-Za-z0-9_.-]+):\s*$', line)
+        if m:
+            key = m.group(1)
+            out[key] = []
+        elif key:
+            out[key].append(line.rstrip())
+    return out
+
+
+BASE = os.path.join(THICK, 'DISCOVERY.Engine', 'Docker', 'plugin-base.yml')
+base_volumes = top_volumes(read(BASE)) if os.path.isfile(BASE) else {}
+for p in sorted(included | {os.path.normpath(ENGINE)}):
+    if not os.path.isfile(p):
+        continue
+    for key, block in top_volumes(read(p)).items():
+        if key in base_volumes and block != base_volumes[key]:
+            bad.append(f'drift       {rel(p)} declares volume `{key}` unlike {rel(BASE)} — include: will refuse the whole engine stack')
 
 
 for name in sorted(os.listdir(PLUGINS)):
