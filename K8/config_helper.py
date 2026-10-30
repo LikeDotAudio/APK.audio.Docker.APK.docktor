@@ -28,13 +28,25 @@ LEGACY_MAPPINGS = {
 # WHICH STACKS ARE CONTAINERS IN SOMEONE ELSE'S POD. A member declares a
 # compose file of its own and is `include:`d by its parent's, so the parent is
 # what `up`/`down`/`rebuild-all` walk -- see "member_of" below.
-# ⚠️ THE PARENT MUST BE A STACK HERE TOO, or its members become unreachable:
-#    POD.protocols/Docker/docker-compose.yml is what makes this table true.
-MEMBER_OF = {
-    "PROTOCOL.discovery.NMOS": "POD.protocols",
-    "PROTOCOL.DEV.AES70": "POD.protocols",
-    "PROTOCOL.DEV.EMBER": "POD.protocols",
-}
+# READ OFF THE PARENT'S `include:` BLOCK, NOT TYPED HERE. This was a table
+# naming POD.protocols' three children; POD.workers then `include:`d
+# DATATYPE.wireless.CSV, the table did not know, and up.sh walked the worker
+# twice -- once on its own and once inside POD.workers
+# (LOOSE-manager-docktor-stackssh-now-lists). The include IS the membership,
+# so a new pod root or a new member needs no edit here. A POD ROOT is a
+# `POD.<x>` folder (the tree's naming rule), read from its docker-compose.yml.
+INCLUDE_BLOCK = re.compile(r'^include:[ \t]*\n((?:[ \t]+.*\n|[ \t]*\n|#.*\n)*)', re.M)
+INCLUDE_PATH = re.compile(r'^[ \t]*-?[ \t]*(?:path:[ \t]*)?["\']?([^"\'\s#]+\.ya?ml)["\']?[ \t]*(?:#.*)?$', re.M)
+
+
+def included_files(compose_path, text):
+    """Real paths of every compose file `compose_path`'s top-level `include:` names."""
+    match = INCLUDE_BLOCK.search(text if text.endswith('\n') else text + '\n')
+    if not match:
+        return []
+    base = os.path.dirname(compose_path)
+    return [os.path.realpath(os.path.join(base, rel))
+            for rel in INCLUDE_PATH.findall(match.group(1))]
 
 
 # NOT WALKED INTO: nothing under these holds a stack's Docker/ folder, and
@@ -71,6 +83,23 @@ def compose_files(dockers_dir):
 def cmd_bash_eval(project_name, dockers_dir):
     bash_lines = []
     stacks = []
+
+    # Membership first: which compose file is `include:`d by which pod root.
+    member_of_path = {}
+    for path in compose_files(dockers_dir):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        parent = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        # ONLY A POD ROOT'S OWN FILE MAKES MEMBERS. DISCOVERY.Engine's file and
+        # the broker's portal-broker overlay `include:` stacks too, but those
+        # stacks are walked on their own (the broker must stay second up).
+        if not parent.startswith("POD.") or os.path.basename(path) != "docker-compose.yml":
+            continue
+        for child in included_files(os.path.realpath(path), text):
+            member_of_path.setdefault(child, parent)
 
     # Every compose file, DEEPEST FIRST -- the order the four fixed-rung globs
     # this replaced walked in, which is what decides a folder-name tie below.
@@ -131,7 +160,7 @@ def cmd_bash_eval(project_name, dockers_dir):
             # APK:plugin:* is the other shape of this and takes the harder
             # road: skipped entirely above, then re-declared `driven` by name
             # in stacks.sh. Membership belongs here, where the parent is.
-            "member_of": MEMBER_OF.get(folder_name)
+            "member_of": member_of_path.get(real_path)
         }
         stacks.append(stack_info)
         

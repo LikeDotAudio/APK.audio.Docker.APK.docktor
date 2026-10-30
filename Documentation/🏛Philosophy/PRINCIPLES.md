@@ -73,6 +73,17 @@ include list and the `PLUGINS/` folder disagree, or when an included file's shar
 nothing in silence. `stacks.sh` leaves out `PLUGINS/`: a plugin's lifecycle belongs to the discovery engine, and
 the watchdog would otherwise remount every plugin the engine executed.
 
+A pod root's membership is read off its own `include:` block, never typed: a stack that a `POD.<x>/Docker/docker-compose.yml`
+`include:`s is walked by `up`/`down`/`rebuild-all` only through that pod root (`config_helper.included_files()`),
+stays `driven` in `stacks.sh`, and is still reachable by its own name in `up-stack.sh`.
+
+## Every image signs itself with its repository's commit
+
+`stamp_image_rev` (`K8/_common.sh`) exports `APK_IMAGE_REV` (short HEAD of the repository holding the stack's
+compose file, `-dirty` for uncommitted tracked changes, `unstamped` when git cannot answer) and `APK_IMAGE_BUILT`
+before `up-stack.sh`, `rebuild-stack.sh` and each stack of `for_each_stack` builds. A value the caller exported
+first is a pin and wins. The DockTor image carries `git` for this.
+
 ## Where the code still falls short
 
 - The dashboard runs the scripts **baked into the image**, not the bind-mounted checkout: an edit to
