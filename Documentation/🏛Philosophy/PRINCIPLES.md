@@ -46,9 +46,11 @@ authentication, so it binds `127.0.0.1` (`APK_MANAGER_BIND` in `Docker/docker-co
 
 ## The bus and the manager are protected
 
-`is_protected_container()` (`K8/_common.sh:639`) keeps DockTor and Broker-Mosquitto out of every routine
-verb; `ensure_broker()` (`K8/_common.sh:657`) brings the broker up first and alone; `K8/up-stack.sh`
-refuses to recreate the manager from inside itself. Only `nuke.sh --yes-nuke-everything
+`is_protected_container()` (`K8/_common.sh:673`) keeps DockTor and Broker-Mosquitto out of every routine
+verb; `ensure_broker()` (`K8/_common.sh:713`) brings the broker up first and alone — with the
+operator ACL overlay (`DATABUS.Broker.MQTT/Docker/docker-compose.operator.yml`) once the bench has minted
+`SRC/operator/passwd` and `acl`, so a broker the owner put on that ACL never comes back without it
+(`broker_compose_files`); `K8/up-stack.sh` refuses to recreate the manager from inside itself. Only `nuke.sh --yes-nuke-everything
 --include-manager`, typed at a host terminal, takes DockTor.
 
 ## Destruction needs consent typed by a person

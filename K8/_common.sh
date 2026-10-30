@@ -685,11 +685,31 @@ broker_compose_file() {
     printf '%s' "$out"
 }
 
+# broker_compose_files <compose file> — the `-f` list ensure_broker starts the
+# broker with, one word per line. The plain file; PLUS the operator overlay
+# beside it (docker-compose.operator.yml, PLAN-3394.01) when — and only when —
+# the bench has minted SRC/operator/ with both its passwd and its acl
+# (DATABUS.Broker.MQTT/SRC/mint_operator_credentials.sh). Started from the plain
+# file alone, a broker the owner had put on the operator ACL would come back
+# without it: anonymous could publish machine commands again
+# (LOOSE-ensure-broker-overlay). With nothing minted the overlay is not named,
+# because its config names a password file mosquitto would exit on.
+broker_compose_files() {
+    local file="$1" dir
+    dir="$(dirname "$file")"
+    printf '%s\n' -f "$file"
+    if [ -f "$dir/docker-compose.operator.yml" ] \
+        && [ -e "$dir/../SRC/operator/passwd" ] && [ -e "$dir/../SRC/operator/acl" ]; then
+        printf '%s\n' -f "$dir/docker-compose.operator.yml"
+    fi
+}
+
 # ensure_broker — bring Mosquitto up ALONE if it is not running: its own
 # service, --no-deps, no build (it is the pulled eclipse-mosquitto:2.0 with a
 # bind-mounted config; switching it to Dockerfile.broker means dropping
 # --no-build here in the same change). Nothing else in its
-# stack can hold it hostage. Returns non-zero only if it is still not running.
+# stack can hold it hostage. With the operator overlay once SRC/operator/ is
+# minted (broker_compose_files). Returns non-zero only if it is still not running.
 ensure_broker() {
     [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ] && return 0
     local file
@@ -698,9 +718,12 @@ ensure_broker() {
         log_error "ensure_broker: no compose file for $BROKER_STACK_NAME"
         return 2
     fi
+    local -a files
+    mapfile -t files < <(broker_compose_files "$file")
     log_step "The broker ($BROKER_CONTAINER) is not running — bringing it up first, alone"
+    [ ${#files[@]} -gt 2 ] && log_step "…with the operator ACL overlay (SRC/operator/ is minted)"
     announce BROKER_ENSURE "{\"container\":\"$BROKER_CONTAINER\",\"service\":\"$BROKER_SERVICE\"}"
-    docker compose -f "$file" up -d --no-deps --no-build "$BROKER_SERVICE"
+    docker compose "${files[@]}" up -d --no-deps --no-build "$BROKER_SERVICE"
     local status=$?
     announce BROKER_ENSURE_RESULT "{\"container\":\"$BROKER_CONTAINER\",\"exit_code\":$status}"
     [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ]

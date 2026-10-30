@@ -99,7 +99,7 @@ What DockTor actually does, and where:
 - **One container holds the socket, on loopback** (Dockers law 9): API bound to `127.0.0.1` because it stops
   containers and has no authentication — `Docker/docker-compose.manager.yml`, `serve` usage in `cli.py`.
 - **The bus and the manager are protected.** No routine verb stops DockTor or Broker-Mosquitto; `ensure_broker`
-  brings the broker up first and alone; `up-stack.sh` refuses to recreate the manager from inside itself; only
+  brings the broker up first and alone (with the operator ACL overlay once `SRC/operator/` is minted); `up-stack.sh` refuses to recreate the manager from inside itself; only
   `nuke.sh --yes-nuke-everything --include-manager`, from a host terminal, takes DockTor — `K8/_common.sh`,
   `K8/up-stack.sh`, `K8/nuke.sh`.
 - **Destruction needs consent typed by a person.** `nuke` without `--yes-nuke-everything` only rehearses, and
