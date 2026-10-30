@@ -278,17 +278,31 @@ container, since a compose client cannot survive recreating the container it run
 | `Storage-PHP` | `storage-php:local` | nothing | php-fpm — `nginx:alpine` has no interpreter (law 3) |
 | `Storage-Schema-Init` | `storage-php:local` | nothing | a one-shot; `restart: "no"`; owns every schema in the database (law 6) |
 | `Storage-Portal` | `storage-portal:local` | `8080 → 80` | nginx and the static trees |
-| `Storage-Broker` | `storage-broker:local` | `1883` / `9001`, every interface | the bus every other process on the bench actually speaks on |
 
-`Storage-Broker` is `restart: always` and not `unless-stopped`, and its config is baked
-into the image by `Server:Broker:MQTT/Docker/Dockerfile.broker`. That is the fix for a real
-outage: the config used to be staged into `/tmp` and bound, `/tmp` is cleared on reboot, and
-the daemon creates a missing bind source as a root-owned directory — so the broker came back
-with a directory over its config and refused every connection on 1883 until `sudo rm -rf`.
+The bus is not in this stack. `Storage-Broker` was decommissioned: the one house broker is
+`Broker-Mosquitto` in `PODS/POD.databus/DATABUS.Broker.MQTT/Docker/docker-compose.yml`, and
+`Storage-Broker` survives only as a network alias on it so an old `Storage-Broker:1883`
+still answers.
 
-**Read the SECURITY NOTE at the top of that compose file before touching a port.**
-`allow_anonymous true` and a loopback bind are a PAIR, and only the second half was ever a
-control; this stack publishes on all interfaces. The bus is not a passive transport —
+### `DATABUS.Broker.MQTT/` — the bus · project `apk-audio`
+
+| container | image | published | why it is its own |
+|---|---|---|---|
+| `Broker-Mosquitto` | `eclipse-mosquitto:2.0` (pulled) | `127.0.0.1:1883` / `127.0.0.1:9001` | the bus every other process on the bench actually speaks on |
+
+`Broker-Mosquitto` is `restart: always` and not `unless-stopped`, and nothing builds it:
+it is the pulled `eclipse-mosquitto:2.0` with `SRC/mosquitto_local.conf` bind-mounted
+read-only from the checkout (`Docker/Dockerfile.broker` exists, but no compose file builds
+it). The bind source is a tracked file, never a path under `/tmp` — that is the fix for a
+real outage: the config used to be staged into `/tmp` and bound, `/tmp` is cleared on
+reboot, and the daemon creates a missing bind source as a root-owned directory — so the
+broker came back with a directory over its config and refused every connection on 1883
+until `sudo rm -rf`. DockTor never stops or removes it, and `ensure_broker` brings it up
+first and alone.
+
+**Read the SECURITY note at the top of that compose file before touching a port.**
+`allow_anonymous true` and a loopback bind are a PAIR: `mosquitto_local.conf` listens on
+`0.0.0.0` and allows anonymous, so the loopback-only port mapping is the control. The bus is not a passive transport —
 publishing to `APK.audio/System/Protocols/visa/Device/+/+/+/Write` executes that payload as
 SCPI on real lab hardware.
 
