@@ -309,6 +309,24 @@ if [ "${APK_COMMON_CONFIG_KEY:-}" != "$DOCKERS_DIR" ] || [ -z "${APK_COMMON_CONF
 fi
 eval "$APK_COMMON_CONFIG_EVAL"
 
+# ── EVERY STACK FOLDER, AT ANY DEPTH, INTO THE INDEX. index_stack_dirs walks
+# four rungs (all ~1 400 folders there; the uncapped tree is ~5 000 and cost
+# ~0.1 s a source, PLAN-3319.01), so a stack five folders under PODS/ was a
+# name stack_dir() could not find while config_helper.compose_files() — which
+# walks at any depth — listed it. That walk is already done (and handed down
+# to child scripts with the eval), so its answer is laid over the index here:
+# <stack>/Docker/docker-compose*.yml → _STACK_DIRS[<stack>] = <stack>. A
+# STACK FOLDER WINS a name tie over any other folder the shallow walk met first.
+_apk_stack_overlay() {
+    local f d
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        d="${f%/Docker/*}"
+        [ "$d" != "$f" ] && _STACK_DIRS["${d##*/}"]="$d"
+    done <<< "${ALL_DRIVEN_FILES:-}"
+}
+_apk_stack_overlay
+
 # ── THE FOUR ALIAS ARRAYS ARE BUILT HERE, OFF THE FILES RESOLVED ABOVE, with
 # the compose base in front. config_helper.py names a stack's arrays after its
 # FOLDER, and the folders these four once matched (APK:BareMetal,
@@ -1096,10 +1114,13 @@ compose_for_stack() {
     clean_name="${clean_name// /_}"
     clean_name="${clean_name//./_}"
     local array_name="COMPOSE_BY_NAME_${clean_name}[@]"
-    local file_var="${clean_name}_COMPOSE_FILE"
     if declare -p "COMPOSE_BY_NAME_${clean_name}" &>/dev/null; then
         eval "STACK_COMPOSE=(\"\${${array_name}}\")"
-        STACK_COMPOSE_FILE="${!file_var:-$(stack_compose_file "$want")}"
+        # The array IS (<compose base> -f <file>), so its last word is the
+        # file. It was looked up as ${clean_name}_COMPOSE_FILE, which never
+        # matched (config_helper upper-cases that name), and fell back to a
+        # four-rung folder search a deeper stack was out of reach of.
+        STACK_COMPOSE_FILE="${STACK_COMPOSE[${#STACK_COMPOSE[@]}-1]}"
         apply_stack_profiles
         return 0
     fi
