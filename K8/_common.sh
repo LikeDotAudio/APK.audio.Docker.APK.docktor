@@ -1239,6 +1239,56 @@ prepare_for_up() {
     fi
 }
 
+# recreate_stale_builds — after a build, put every compose container that is
+# still on an OLDER build of a `:local` image back on the current one.
+# ONE TAG, MANY STACKS: apk-plugins:local is built by the DISCOVERY.Engine file
+# and by every plugin stack (plugin-base.yml), but a mount recreates only its
+# own services. The rest keep the image ID they were created with — and an
+# exited `restart: "no"` one-shot is never recreated by anything else, so
+# Plugin-NETBOX-Sync ran a days-old build (cf2436974f45) after ef40180 landed,
+# until it was recreated by hand. A long-runner at least shows in staleness.sh;
+# a one-shot that is restarted keeps its old image and reads green.
+# HOW: a container whose Config.Image is `<x>:local` and whose image ID is not
+# what that tag points at now is recreated by its OWN compose files, project and
+# directory (its labels), `--no-build --no-deps`, so nothing builds twice and no
+# neighbour is touched. Naming the service enables its profile, so the one-shot
+# runs once — what any mount of its stack does anyway.
+# NEVER the manager (it would stop this script) or the broker (protected), and
+# never a container compose did not create (instrument_launcher.py owns those),
+# nor one whose compose file is outside this checkout's PODS/.
+# NEVER NON-ZERO: a refused recreate is a warning; the build itself was good.
+recreate_stale_builds() {
+    local name cfg_image img_id svc project files wd cur f
+    local -A cur_id=()
+    local -a cmd fs
+    while IFS='|' read -r name cfg_image img_id svc project files wd; do
+        name="${name#/}"
+        [ -n "$svc" ] && [ -n "$files" ] && [ -n "$project" ] || continue
+        case "$cfg_image" in *:local) ;; *) continue;; esac
+        # This checkout's stacks only: another project on the same daemon is
+        # not this tool's to recreate.
+        case "$files" in "$DOCKERS_DIR"/*) ;; *) continue;; esac
+        [ "$name" = "$MANAGER_CONTAINER" ] || [ "$name" = "$BROKER_CONTAINER" ] && continue
+        [ -n "${cur_id[$cfg_image]+x}" ] \
+            || cur_id[$cfg_image]="$(docker image inspect -f '{{.Id}}' "$cfg_image" 2>/dev/null)"
+        cur="${cur_id[$cfg_image]}"
+        [ -n "$cur" ] && [ "$cur" != "$img_id" ] || continue
+        cmd=("${COMPOSE_BASE[@]}" -p "$project")
+        [ -n "$wd" ] && [ -d "$wd" ] && cmd+=(--project-directory "$wd")
+        IFS=',' read -ra fs <<< "$files"
+        for f in "${fs[@]}"; do
+            [ -f "$f" ] || { log_warn "$name is on an older build of $cfg_image, but its compose file $f is gone; left as it is."; continue 2; }
+            cmd+=(-f "$f")
+        done
+        log_step "$name is on an older build of $cfg_image (${img_id#sha256:}); recreating it on the current one..."
+        announce STALE_BUILD_RECREATE "{\"container\":\"$name\",\"image\":\"$cfg_image\"}"
+        "${cmd[@]}" up -d --no-deps --no-build --force-recreate "$svc" \
+            || log_warn "Recreating $name failed; it is still on the older build of $cfg_image."
+    done < <(docker ps -aq 2>/dev/null | xargs -r docker inspect -f \
+        '{{.Name}}|{{.Config.Image}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)
+    return 0
+}
+
 # clean_build_cache [what] — the sweep every build path ends with. `what` is
 # only the word that goes in the log line and the event.
 # ⚠️ IT RUNS AFTER A BUILD SUCCEEDS AND NOWHERE ELSE. After a FAILED build the
@@ -1253,6 +1303,9 @@ prepare_for_up() {
 # image bad, and this is called after the build has already been reported.
 clean_build_cache() {
     local what="${1:-build}"
+    # Every build path ends here after a GOOD build, so this is where a shared
+    # tag's other containers are moved onto it (recreate_stale_builds above).
+    recreate_stale_builds
     case "${APKAUDIO_BUILD_CACHE_CLEAN:-dangling}" in
         off|no|0|keep)
             log_warn "Build cache left in place (APKAUDIO_BUILD_CACHE_CLEAN=${APKAUDIO_BUILD_CACHE_CLEAN})."

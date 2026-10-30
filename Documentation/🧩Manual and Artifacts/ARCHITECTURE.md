@@ -45,6 +45,11 @@ execution log (SSE `/api/stream`) and each `@EVENT` line to `emit()` → `APK.au
 The exit code comes back with the text; a refresh re-reads containers and republishes changed retained
 state.
 
+Every build verb (`up.sh`, `up-stack.sh`, `rebuild*.sh`) ends a GOOD build in `clean_build_cache`, which
+first runs `recreate_stale_builds`: any compose container of this checkout still on an older build of a
+`:local` tag — a shared one like `apk-plugins:local`, or an exited `restart: "no"` one-shot nothing else
+recreates — is recreated by its own compose files (`--no-build --no-deps`). Never the manager or the broker.
+
 ## The container
 
 `Docker/Dockerfile.manager`: `docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt; it COPYs
