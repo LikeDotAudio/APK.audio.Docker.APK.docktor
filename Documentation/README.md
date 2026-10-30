@@ -18,3 +18,7 @@ The documentation for `MANAGER.Docktor`, in the same lanes as the APK.audio mono
 |---|---|
 | [CONTRACTS.md](CONTRACTS.md) | Contract Bindings — `MANAGER.Docktor` |
 <!-- /wiki:lanes -->
+
+<!-- wiki:smoke -->
+**Smoke test** — ✅ PASS 1/1 since 2026-10-30 12:51 EDT — [results](%F0%9F%A7%A9Manual%20and%20Artifacts/SMOKE.md)
+<!-- /wiki:smoke -->
