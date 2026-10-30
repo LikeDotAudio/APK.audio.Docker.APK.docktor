@@ -262,17 +262,6 @@ emit_endpoint Netbox-App 8080/tcp 8081 open \
 emit_endpoint Ember-Provider 9000/tcp 9000 copy \
     "Ember+ provider (S101)" "ember+s101://{host}:{port}"
 
-# --- Plugin-SNMP, the MIB-driven switch configuration console -------------
-# `apkaudio-mib`'s switch-gui binary: it parses a switch's SNMP MIB into a UI
-# and serves an APK-branded page that reads and writes the switch over SNMP.
-# One `open` row — the whole console is one page at /. It is DECLARED here so
-# DockTor holds the URL now; the row reads `down` until the container runs and
-# `open ↗` the moment it binds 8140. See
-# PLUGINS/PLUGIN.SNMP/SRC/src/bin/switch-gui.rs. Not vendor-specific: the MIB the
-# container is given decides which switch it configures (first: TEG-240WS).
-emit_endpoint Plugin-SNMP 8140/tcp 8140 open \
-    "Switch Config (MIB-driven)" "http://{host}:{port}/"
-
 # --- the node, from 'APK:BareMetal/docker-compose.yml' --------------------
 # NOT emit_endpoint: docker port returns nothing for a host-networked container,
 # so the published-port lookup would print down against a healthy node for ever.
@@ -360,71 +349,52 @@ if [ -z "$WANT" ] || [ "$WANT" = "APK-Discovery-Engine" ]; then
         "${disc_url}/status" "$disc_state"
 fi
 
-# --- AES67 / ST 2110-30 bridge, from 'PLUGIN.AES67/Docker/docker-compose.yml' --
-# The one plugin with pages of its own: host-networked, APK_AES67_HTTP_PORT (8130).
-if [ -z "$WANT" ] || [ "$WANT" = "Plugin-AES67" ]; then
-    aes_url="http://127.0.0.1:${APK_AES67_HTTP_PORT:-8130}"
-    if [ "$(docker inspect Plugin-AES67 --format '{{.State.Running}}' 2>/dev/null)" != true ]; then
-        aes_state="down"
-    elif curl -fsS --max-time 2 "$aes_url/api/settings" >/dev/null 2>&1; then
-        aes_state="up"
-    else
-        aes_state="declared"
-    fi
-    printf '%s\t%s\t%s\t%s\t%s\n' Plugin-AES67 open "AES67 / ST 2110-30 status" "${aes_url}/status" "$aes_state"
-    printf '%s\t%s\t%s\t%s\t%s\n' Plugin-AES67 open "AES67 / ST 2110-30 configuration" "${aes_url}/config" "$aes_state"
+# --- Plugins: the endpoints each container DECLARES (PLAN-3409.01) ----------
+# No plugin is named in this file. A plugin's compose service carries
+#     audio.apk.purpose: "<one line>"                       (purpose.sh reads it)
+#     audio.apk.endpoint.<n>: "<open|copy> <uri> <label>"   one row each
+# and this block reads them back with docker inspect, so a new plugin brings its
+# own rows. Compose resolves ${VAR:-default} inside a label, so a port that is
+# a setting (AES67's APK_AES67_HTTP_PORT) is the port the container really has.
+# STATE: down when the container is not running; an `open` http(s) row is
+# fetched (2 s) and reads up or declared by the answer; any other row of a
+# running container reads up, as the plugin rows always did.
+# Every running labelled container also gets its public config topic as a row.
+mapfile -t plugin_ids < <(docker ps -aq --filter "label=audio.apk.purpose" 2>/dev/null)
+if [ ${#plugin_ids[@]} -gt 0 ]; then
+    while IFS=$'\t' read -r p_cont p_running p_labels; do
+        p_cont="${p_cont#/}"
+        [ -n "$WANT" ] && [ "$WANT" != "$p_cont" ] && continue
+        if [ "$p_running" = true ]; then
+            proto_lower="$(echo "${p_cont#*-}" | tr '[:upper:]' '[:lower:]')"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$p_cont" copy "Plugin public config API" \
+                "mqtt://127.0.0.1:1883/APK.audio/System/Config/${proto_lower}" "up"
+        fi
+        while IFS=' ' read -r e_kind e_uri e_label; do
+            [ -n "$e_uri" ] || continue
+            if [ "$p_running" != true ]; then
+                e_state="down"
+            elif [ "$e_kind" = open ] && [[ "$e_uri" == http* ]]; then
+                if curl -fksS --max-time 2 -o /dev/null "$e_uri" 2>/dev/null; then
+                    e_state="up"
+                else
+                    e_state="declared"
+                fi
+            else
+                e_state="up"
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\n' "$p_cont" "$e_kind" "$e_label" "$e_uri" "$e_state"
+        done < <(python3 -c '
+import json, sys
+labels = json.loads(sys.argv[1] or "null") or {}
+keys = [k for k in labels if k.startswith("audio.apk.endpoint.")]
+for key in sorted(keys, key=lambda k: (len(k), k)):
+    print(" ".join(labels[key].split()))
+' "$p_labels")
+    done < <(docker inspect --format '{{.Name}}{{"\t"}}{{.State.Running}}{{"\t"}}{{json .Config.Labels}}' \
+                 "${plugin_ids[@]}" 2>/dev/null | sort)
 fi
-
-# --- Plugins (APK:PODS/POD:APK_THICK/APK:plugin:*) ----------------------
-# For each running plugin container, emit its socket and public bus API.
-mapfile -t plugin_containers < <(docker ps --filter "name=^Plugin-" --format '{{.Names}}' 2>/dev/null)
-for p_cont in "${plugin_containers[@]}"; do
-    [ -n "$WANT" ] && [ "$WANT" != "$p_cont" ] && continue
-    proto="${p_cont#Plugin-}"
-    proto_lower="$(echo "$proto" | tr '[:upper:]' '[:lower:]')"
-
-    printf '%s\t%s\t%s\t%s\t%s\n' \
-        "$p_cont" copy "Plugin public config API" \
-        "mqtt://127.0.0.1:1883/APK.audio/System/Config/${proto_lower}" "up"
-
-    case "$proto_lower" in
-        aes70)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "AES70 control socket" "tcp://127.0.0.1:6568" "up" ;;
-        ptp)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "PTP event socket" "udp://127.0.0.1:319" "up"
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "PTP general socket" "udp://127.0.0.1:320" "up" ;;
-        sap)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "SAP announcement multicast socket" "udp://239.255.255.255:9875" "up" ;;
-        dnssd)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "mDNS multicast socket" "udp://224.0.0.251:5353" "up" ;;
-        osc)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "OSC receive socket" "udp://127.0.0.1:8000" "up" ;;
-        chromecast)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "Cast V2 TLS socket" "tcp://127.0.0.1:8009" "up" ;;
-        appletv)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "AirPlay RTSP socket" "tcp://127.0.0.1:7000" "up" ;;
-        printers)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "IPP print socket" "tcp://127.0.0.1:631" "up" ;;
-        ravenna)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "RTSP streaming socket" "tcp://127.0.0.1:554" "up" ;;
-        midi)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" copy "RTP-MIDI socket" "udp://127.0.0.1:5004" "up" ;;
-        nmos)
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$p_cont" open "NMOS Node API" "http://127.0.0.1:3212/x-nmos/node/v1.3/self" "up" ;;
-    esac
-done
 
 # --- Discovered Instruments (APK:PODS/POD:APK_THICK/APK:INSTRUMENTS) ---------
 # For each running instrument container (labeled apk.audio.role=instrument or apk-*),

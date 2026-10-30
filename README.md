@@ -110,6 +110,11 @@ What DockTor actually does, and where:
   `x-apk-plugin: true` or `x-apk-standalone: "<why>"`; `K8/plugin-includes.sh` (run by `K8/naming.sh`) fails on
   an unmarked file, a marked one the list misses, a dangling path, or a marked service with no profile
   (PLAN-3395.01).
+- **A plugin describes itself; DockTor keeps no plugin table.** Each plugin compose service carries
+  `audio.apk.purpose` (+ `.what`, `.why`) and `audio.apk.endpoint.<n>: "<open|copy> <uri> <label>"`;
+  `K8/purpose.sh` and `K8/endpoints.sh` read them with `docker inspect`, then the compose files on disk, then a
+  plugin's retained `incoming/api` `description`. The written table in `purpose.sh` is for the containers
+  that are not plugins (PLAN-3409.01).
 
 ## Roadmap
 

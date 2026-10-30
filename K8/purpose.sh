@@ -5,7 +5,7 @@
 #   ./purpose.sh                     every container
 #   ./purpose.sh Broker-SqlCapture   one container
 #   ./purpose.sh --json [container]  the same document, keyed by container
-#   ./purpose.sh --check             every declared container has an entry
+#   ./purpose.sh --check             every declared container has an entry or a label
 # WHY THIS IS WRITTEN DOWN WHEN api.sh REFUSES TO BE: a reason is not a
 # measurement. No probe can emit "this is the delta capture, and without it the
 # bus keeps only the latest value of every topic and none of the history".
@@ -31,7 +31,21 @@ case "${1:-}" in
 esac
 WANT="${1:-}"
 
-export MODE WANT DOCKERS_DIR
+# THE PLUGINS' OWN WORDS (PLAN-3409.01). Every container carrying the
+# audio.apk.purpose label, as docker has it now: name, labels, running. One
+# docker call for the lot; none at all for --check, which reads compose files.
+APK_PURPOSE_INSPECT=""
+if [ "$MODE" != check ]; then
+    _apk_ids="$(docker ps -aq --filter label=audio.apk.purpose 2>/dev/null)"
+    if [ -n "$_apk_ids" ]; then
+        # shellcheck disable=SC2086  # one id per word, on purpose
+        APK_PURPOSE_INSPECT="$(docker inspect --format '{{.Name}}{{"\t"}}{{json .Config.Labels}}' $_apk_ids 2>/dev/null)"
+    fi
+    APK_PURPOSE_RUNNING="$(docker ps --format '{{.Names}}' 2>/dev/null)"
+    unset _apk_ids
+fi
+
+export MODE WANT DOCKERS_DIR APK_PURPOSE_INSPECT APK_PURPOSE_RUNNING
 
 python3 - <<'PY'
 import json
@@ -380,10 +394,10 @@ PURPOSE = {
         "written under /logs survive rebuilds, panics and nukes of the containers, "
         "because they live in the checkout rather than in any container."),
 
-    # --- APK:plugin:* -- one container per plugin, started by node role --------
-    # Every plugin runs a binary from apk-plugins:local
-    # built by APK:discovery, and speaks to the broker. The role is its
-    # compose profile; APKAUDIO_PLUGIN_ROLES in _common.sh decides which run here.
+    # --- APK:plugin:* -- NOT HERE (PLAN-3409.01) ---------------------------------
+    # A plugin container says what it is in its own compose file, as the labels
+    # audio.apk.purpose / .what / .why, and this script reads them (LABELLED
+    # below). A list of plugins here went stale the day a plugin was added.
     "APK-Discovery-Engine": (
         "Network discovery engine and dynamic plugin supervisor. Role: discovery",
         "apk-discovery-engine: passive network sniffer that watches the LAN for PTP clock "
@@ -392,204 +406,6 @@ PURPOSE = {
         "containers via the Docker socket on demand.",
         "Without the discovery engine, hardware and network streams on the LAN are invisible "
         "until configured by hand, and protocol plugins cannot auto-launch when devices appear."),
-
-    "Plugin-AES67": (
-        "AES67 / SMPTE ST 2110-30 senders and receivers on a sound card. Role: sound",
-        "apk-aes67 on host networking with /dev/snd: 16 senders and 16 receivers of up to "
-        "8 channels each, a user-space PTPv2 slave on UDP 319/320 (NET_BIND_SERVICE), SAP "
-        "announce and browse, and its own pages at :8130/status and :8130/config. Settings "
-        "live on the apk-audio-aes67-state volume.",
-        "It puts this machine's sound card on the AES67 / ST 2110 network: capture channels "
-        "out as multicast streams, and other devices' streams out of its outputs."),
-
-    "Plugin-AES67-Loopback": (
-        "One-shot: loads the host's snd-aloop virtual sound card for AES67. Role: sound",
-        "aes67-loopback runs once before Plugin-AES67 with CAP_SYS_MODULE, no network and "
-        "the host's /lib/modules read-only: modprobe snd-aloop id=AES67 unless that card "
-        "exists. Always exits 0 — Exited (0) is its healthy state.",
-        "It is what makes the AES67 network appear in the desktop's sound settings as "
-        "'Loopback'. Without it the plugin still runs, on physical cards only."),
-
-    "Plugin-AES70": (
-        "The AES70 (OCP.1) bridge. Role: control",
-        "apk-aes70: one outbound OCP.1 TCP client to the device named in config.ini "
-        "(APK_AES70_HOST / APK_AES70_PORT), republishing it under the plugin's topic. "
-        "Host networking so 127.0.0.1 in config.ini still means the host; it listens on nothing.",
-        "An AES70 device speaks OCP.1, not MQTT. Without this bridge its parameters are "
-        "not on the bus and nothing on the bench can read or move them."),
-
-    "Plugin-APPLETV": (
-        "AppleTV browse and control. Role: vendors",
-        "apk-appletv: finds AppleTVs on the LAN and controls them -- browse and control "
-        "in one process -- publishing to the broker only.",
-        "One process on purpose -- two would be two publishers on one retained tree. "
-        "Without it the AppleTVs in the room are absent from the bus."),
-
-    "Plugin-CHROMECAST": (
-        "Chromecast browse and control. Role: vendors",
-        "apk-chromecast: finds Chromecasts on the LAN and controls them -- browse and "
-        "control in one process -- publishing to the broker only.",
-        "Same single-publisher reason as AppleTV. Without it the Chromecasts in the "
-        "room are absent from the bus."),
-
-    "Plugin-DANTE": (
-        "Dante discovery: mDNS service tags and SAP. Role: discovery",
-        "apk-dante on host networking, listening for Audinate mDNS service tags and "
-        "SAP announcements and publishing the Dante devices and flows it finds.",
-        "mDNS and SAP multicast do not cross a Docker bridge, which is why it is on the "
-        "host. Without it the bench cannot see the Dante devices on the audio network."),
-
-    "Plugin-DESKTOP_MONITOR": (
-        "This machine's own telemetry. No role: every node",
-        "apk-desktop-monitor on apk-plugins:local, host networking, "
-        "publishing CPU, RAM, disks, network counters, temperatures and uptime.",
-        "Every node reports itself as a machine whatever role it plays. Host "
-        "networking is the measurement: interface counters and hostname are only the "
-        "host's inside the host's namespace. Without it the node is a name with no vitals."),
-
-    "Plugin-DNSSD": (
-        "DNS-SD continuous browse. Role: discovery",
-        "apk-dnssd: browses every DNS-SD service type on the LAN continuously and "
-        "publishes what it finds to the broker.",
-        "The general-purpose finder that replaced the retired discovery:MDNS stub; "
-        "without it services that announce over mDNS never appear on the bus."),
-
-    "Plugin-MIDI": (
-        "The MIDI bridge: ports <-> MQTT. Role: control",
-        "apk-midi on the compose bridge with /dev/snd, holding the ALSA sequencer: "
-        "input from MIDI ports is published under .../midi/Device/Input/..., and "
-        ".../midi/Device/Output/# is sent to the ports.",
-        "It is the only container that holds the ALSA sequencer, so a MIDI control "
-        "surface reaches the bus through this and nothing else."),
-
-    "Plugin-MILAN": (
-        "AVB / Milan AVDECC discovery. Role: l2",
-        "apk-milan on host networking with NET_RAW and NET_ADMIN, reading AVDECC at "
-        "Layer 2 over AF_PACKET and publishing under the bus token avb.",
-        "AVDECC is not IP, so no socket-level listener can hear it. One of only two "
-        "containers holding a raw capability; without it Milan entities are invisible."),
-
-    "Plugin-NETBOX": (
-        "The NetBox DCIM agent. Role: vendors",
-        "netbox-agent on the compose bridge, reading the NetBox inventory at "
-        "APK_NETBOX_URL (default the bench NetBox on 8081) with NETBOX_API_TOKEN from "
-        "the environment, and putting it on the bus.",
-        "It joins the inventory to the live bus: what NetBox says is installed can be "
-        "compared with what discovery actually hears. Without it the inventory is "
-        "only visible in NetBox's own UI."),
-
-    "Plugin-NETBOX-Sync": (
-        "Bus -> NetBox writer. Role: netbox-sync. Runs once and exits",
-        "netbox-sync, a one-shot (restart: no) beside Plugin-NETBOX: it drains what "
-        "discovery has put on the bus and creates the devices in NetBox. It needs "
-        "NETBOX_API_TOKEN_WRITE -- the read token gets 403 -- and exits at once without it.",
-        "It is how discovered hardware becomes inventory without typing it in. Its own "
-        "role because it WRITES to NetBox, so a node runs it only on purpose."),
-
-    "Plugin-NETGEAR": (
-        "Netgear M4350 switch tables. Role: switches",
-        "netgear-agent for one switch (APK_NETGEAR_HOST), reading its port, PoE and "
-        "neighbour tables with NETGEAR_USERNAME / NETGEAR_PASSWORD and publishing them. "
-        "One container per switch; it exits if the password is empty.",
-        "It shows which device is on which switch port and what PoE it draws. Meant to "
-        "replace the poll APK:OS/netgear_switches.py still does inside the web server."),
-
-    "Plugin-NMOS": (
-        "NMOS mDNS browse agent. Role: discovery",
-        "apk-nmos on host networking, finding NMOS APIs (registries, nodes) announced "
-        "over mDNS and publishing them in the nmos bus table.",
-        "It answers where the NMOS registries and nodes on the LAN are. Its sibling "
-        "Plugin-NMOS_CONTROL reads what is registered inside them; `role` separates their rows."),
-
-    "Plugin-NMOS_CONTROL": (
-        "NMOS IS-04 registry agent. Role: discovery",
-        "apk-nmos-control, reading the IS-04 Query API (APK_NMOS_REGISTRY_HOST:"
-        "APK_NMOS_QUERY_PORT, default the bench registry on 127.0.0.1:3211) and "
-        "publishing one row per Device into the nmos table under bus token nmos-control.",
-        "Browse finds a registry; this reads what is registered in it. Without it the "
-        "bus knows the registry exists and nothing about the devices and senders inside."),
-
-    "Plugin-OSC": (
-        "The OSC bridge. Role: control",
-        "apk-osc on the compose bridge, receiving OSC over UDP on a loopback-published "
-        "port (APK_OSC_PUBLISH / APK_OSC_PORT, default 9000) and republishing it to "
-        "APK.audio/Protocol/GuiOsc/....",
-        "It is how an OSC controller or app drives the bench. It used to sit on the web "
-        "portal's UDP 8000 inside the orchestrator."),
-
-    "Plugin-PLAYSTATION": (
-        "PlayStation discovery, power state and wake. Role: vendors",
-        "apkaudio-playstation, finding PlayStations on the LAN, reporting whether each "
-        "is on or in rest mode, and waking one on request over the bus.",
-        "Without it a PlayStation in the room is neither visible nor wakeable from the bench."),
-
-    "Plugin-PRINTERS": (
-        "Printer discovery. Role: discovery",
-        "apk-printers: finds network printers and publishes them to the broker.",
-        "It puts the printers on the LAN in the same inventory as everything else "
-        "discovery finds, instead of leaving them to each machine's print dialog."),
-
-    "Plugin-PTP": (
-        "PTP v1, v2 and gPTP listener. Role: l2",
-        "apk-ptp on host networking with NET_RAW and NET_BIND_SERVICE, listening to "
-        "PTP on 319/320 and gPTP at Layer 2, and publishing the clocks and grandmaster it hears.",
-        "Every AES67, Dante and AVB stream depends on a shared clock. This is how the "
-        "bench sees who is grandmaster and which domain each device follows; it is the "
-        "other of the two raw-capability containers."),
-
-    "Plugin-RAVENNA": (
-        "RAVENNA / AES67 browse. Role: discovery",
-        "apk-ravenna on host networking, browsing RAVENNA and AES67 streams and "
-        "devices and publishing them.",
-        "Without it AES67 and RAVENNA sources on the network are invisible to the bench."),
-
-    "Plugin-SAP": (
-        "SAP passive multicast listener. Role: discovery",
-        "apk-sap on host networking, listening to SAP announcements on multicast and "
-        "publishing the SDP stream descriptions they carry.",
-        "SAP is how AES67 senders advertise a stream. Without it those streams exist on "
-        "the wire and nowhere on the bus."),
-
-    "Plugin-SERIAL_COM": (
-        "This machine's serial ports on the bus. Role: instruments",
-        "apk-serial-com on apk-plugins:local, reading /sys for every real serial "
-        "port (USB adapters, CDC-ACM, onboard UARTs) and publishing each one retained "
-        "under APK.audio/System/Protocols/serial_com/incoming/, with the alias its "
-        "aliases file gives it. It never opens a port.",
-        "The Discovery Engine raises it when a serial port is present and executes it "
-        "when the last one is unplugged; its Serial tab shows the same ports beside "
-        "every USB device."),
-
-    "Plugin-SOUNDCARD_IN": (
-        "Sound card capture offered over WebRTC. Role: sound",
-        "soundcard-to-webrtc on host networking with /dev/snd, capturing the ALSA "
-        "default input and offering it as WebRTC in room APK_SOUNDCARD_ROOM, "
-        "signalled over the broker. It exits if the default card has no capture device.",
-        "It lets a browser tab listen to a physical input on this machine. Host "
-        "networking because WebRTC ICE needs the host's real addresses."),
-
-    "Plugin-SOUNDCARD_OUT": (
-        "WebRTC audio played on a sound card. Role: sound",
-        "webrtc-to-soundcard with /dev/snd, joining room APK_SOUNDCARD_ROOM over the "
-        "broker and playing what it receives on the ALSA default output. It exits if "
-        "that output cannot be opened.",
-        "The other half of SOUNDCARD_IN: audio from a browser or another node comes "
-        "out of this machine's speakers."),
-
-    "Plugin-SPACENAVIGATOR": (
-        "3Dconnexion SpaceNavigator on the bus. Role: puck",
-        "apk-spacenavigator on apk-plugins:local, reading the device at "
-        "APK_SPACENAVIGATOR_DEVICE (by-id path) and publishing six axes and two buttons. "
-        "Docker refuses to create it when that device is not plugged in.",
-        "It turns the puck into a controller anything on the bus can use. Its own "
-        "role, included in no default, because a device named in devices: must exist."),
-
-    "Plugin-TRENDNET": (
-        "TRENDnet switch tables over SNMP. Role: switches",
-        "trendnet-agent for one switch (APK_TRENDNET_HOST), reading its tables over SNMP "
-        "and publishing them. One container per switch.",
-        "It gives TRENDnet switches the same port-to-device view Plugin-NETGEAR gives "
-        "Netgear; with no host set it has nothing to poll."),
 
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (
@@ -628,6 +444,152 @@ if bad:
     sys.exit(2)
 
 
+# --- LABELLED: what a container says about itself (PLAN-3409.01) ------------
+# Three labels on the compose service, the plugin's own words:
+#   audio.apk.purpose        one line: what it is          -> the role field
+#   audio.apk.purpose.what   what runs, and how            -> what
+#   audio.apk.purpose.why    what stops working without it -> why
+# Read from, first to last, the first that answers winning per container:
+#   1. docker inspect of the containers that exist (APK_PURPOSE_INSPECT)
+#   2. the compose files under APK:PODS/, when this checkout has them (the
+#      manager image does not) -- which also gives the role: its `profiles:`
+#   3. the retained `incoming/api` document a running plugin publishes, its
+#      `description` field, for a container created before it had a label
+LABEL = "audio.apk.purpose"
+SERVICE = re.compile(r'^  ([A-Za-z0-9_.-]+):\s*$')
+
+
+def unquote(value):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    return value.replace("$$", "$")
+
+
+def compose_services(root):
+    """{container_name: {"labels": {...}, "profiles": [...], "file": path}}, read line by line."""
+    found = {}
+    if not root or not os.path.isdir(root):
+        return found
+    for base, directories, files in os.walk(root):
+        directories[:] = [d for d in directories if not d.startswith('.')
+                          and d not in ('node_modules', 'target')]
+        for filename in files:
+            if 'compose' not in filename.lower() or not filename.lower().endswith(('.yml', '.yaml')):
+                continue
+            path = os.path.join(base, filename)
+            try:
+                with open(path, encoding='utf-8', errors='replace') as handle:
+                    lines = handle.read().splitlines()
+            except OSError:
+                continue
+            inside, service, in_labels = False, None, False
+
+            def flush():
+                if service and service.get("name"):
+                    found.setdefault(service["name"], dict(service, file=os.path.relpath(path, root)))
+
+            for line in lines:
+                if not line.strip() or line.lstrip().startswith('#'):
+                    continue
+                if re.match(r'^\S', line):
+                    flush()
+                    inside, service, in_labels = line.startswith('services:'), None, False
+                    continue
+                if not inside:
+                    continue
+                if SERVICE.match(line):
+                    flush()
+                    service, in_labels = {"name": None, "labels": {}, "profiles": []}, False
+                    continue
+                if service is None:
+                    continue
+                m = re.match(r'^    ([A-Za-z_]+):\s*(.*)$', line)
+                if m:
+                    key, value = m.group(1), m.group(2)
+                    in_labels = key == 'labels' and not value
+                    if key == 'container_name':
+                        service["name"] = unquote(value)
+                    elif key == 'profiles':
+                        service["profiles"] = [unquote(x) for x in value.strip('[] ').split(',') if x.strip()]
+                    continue
+                if in_labels:
+                    m = re.match(r'^      ([A-Za-z0-9_.-]+):\s*(.*)$', line)
+                    if m:
+                        service["labels"][m.group(1)] = unquote(m.group(2))
+            flush()
+    return found
+
+
+def from_labels(labels):
+    if not labels or not labels.get(LABEL):
+        return None
+    return {"role": labels[LABEL], "what": labels.get(LABEL + ".what", ""),
+            "why": labels.get(LABEL + ".why", "")}
+
+
+def squash(name):
+    return re.sub(r'[^a-z0-9]', '', name.lower())
+
+
+def bus_descriptions(names):
+    """{container: description} from retained incoming/api, for names nothing labels."""
+    if not names:
+        return {}
+    import subprocess
+    host = os.environ.get("MQTT_HOST") or "127.0.0.1"
+    port = os.environ.get("MQTT_PORT") or "1883"
+    try:
+        out = subprocess.run(["mosquitto_sub", "-h", host, "-p", port, "-v", "-W", "1",
+                              "-t", "APK.audio/System/Protocols/+/incoming/api"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    by_token = {}
+    for line in out.splitlines():
+        _topic, _, payload = line.partition(" ")
+        try:
+            document = json.loads(payload)
+        except ValueError:
+            continue
+        if isinstance(document, dict) and document.get("token") and \
+                isinstance(document.get("description"), str) and document["description"].strip():
+            by_token[squash(document["token"])] = document["description"].strip()
+    # A container is matched to a token by its name after the first dash,
+    # squashed: NMOS_CONTROL and nmos-control are one word.
+    return {n: by_token[squash(n.split('-', 1)[-1])] for n in names
+            if '-' in n and squash(n.split('-', 1)[-1]) in by_token}
+
+
+DECLARED = compose_services(DOCKERS_DIR)
+LABELLED = {}
+for line in os.environ.get("APK_PURPOSE_INSPECT", "").splitlines():
+    name, _, labels = line.partition("\t")
+    try:
+        document = from_labels(json.loads(labels or "null"))
+    except ValueError:
+        document = None
+    if document:
+        LABELLED[name.lstrip("/")] = document
+for name, service in DECLARED.items():
+    if name not in LABELLED and name not in PURPOSE:
+        document = from_labels(service["labels"])
+        if document:
+            LABELLED[name] = document
+if MODE != "check":
+    running = [n for n in os.environ.get("APK_PURPOSE_RUNNING", "").splitlines() if n]
+    unknown = [n for n in running if n not in PURPOSE and n not in LABELLED
+               and (not WANT or n == WANT)]
+    for name, description in bus_descriptions(unknown).items():
+        LABELLED[name] = {"role": description, "what": "", "why": ""}
+for name, document in LABELLED.items():
+    profiles = DECLARED.get(name, {}).get("profiles") or []
+    if profiles and "Role:" not in document["role"]:
+        document["role"] = "%s. Role: %s" % (document["role"].rstrip("."), ", ".join(profiles))
+    for field in ("role", "what", "why"):
+        document[field] = " ".join(document[field].split())   # a label is a line
+
+
 # --check — the coverage gate. The compose files decide the set.
 CONTAINER_NAME = re.compile(r'^\s*container_name:\s*["\']?([^"\'\s#]+)', re.M)
 
@@ -659,11 +621,12 @@ if MODE == "check":
         sys.exit(1)
 
     declared = declared_containers(DOCKERS_DIR)
-    missing = sorted(set(declared) - set(PURPOSE))
+    described = set(PURPOSE) | set(LABELLED)
+    missing = sorted(set(declared) - described)
     stale = sorted(set(PURPOSE) - set(declared))
 
     for name in missing:
-        print("MISSING  %-24s declared by %s, and this table says nothing about it"
+        print("MISSING  %-24s declared by %s, with no audio.apk.purpose label and no entry here"
               % (name, declared[name]))
     for name in stale:
         print("STALE    %-24s has an entry here and is declared by no compose file"
@@ -677,6 +640,9 @@ if MODE == "check":
 documents = {name: {"container": name, "role": role, "what": what, "why": why}
              for name, (role, what, why) in PURPOSE.items()
              if not WANT or name == WANT}
+for name, document in LABELLED.items():
+    if name not in documents and (not WANT or name == WANT):
+        documents[name] = dict(document, container=name)
 
 if MODE == "json":
     print(json.dumps(documents, indent=2))
