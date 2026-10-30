@@ -103,6 +103,13 @@ What DockTor actually does, and where:
 - **Destruction needs consent typed by a person.** `nuke` without `--yes-nuke-everything` only rehearses, and
   nothing in the CLI supplies the token — `SRC/manager/cli.py`, `K8/nuke.sh`.
 - **Never `--remove-orphans`.** The project is shared with the stacks it watches — `K8/manager.sh` header.
+- **A role selects plugins; a plugin is never named in a list here.** The node's roles are read off the
+  `profiles:` of the plugin compose files (`desktop` among them since PLAN-3410.01) — `plugin_roles_declared`
+  in `K8/_common.sh`.
+- **The engine's include list and the PLUGINS/ folder agree, or the check fails.** Each plugin compose says
+  `x-apk-plugin: true` or `x-apk-standalone: "<why>"`; `K8/plugin-includes.sh` (run by `K8/naming.sh`) fails on
+  an unmarked file, a marked one the list misses, a dangling path, or a marked service with no profile
+  (PLAN-3395.01).
 
 ## Roadmap
 

@@ -26,6 +26,7 @@
 # shell shows ("Apple TV", "Bare Metal"), read straight off the directory.
 #
 # Usage: naming.sh [PODS-dir]      (default: the PODS this file lives under)
+# It then runs plugin-includes.sh (the engine include list vs PLUGINS/).
 
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -117,3 +118,10 @@ for line in bad:
 print(f'{len(bad)} naming violation(s) under {PODS}', file=sys.stderr)
 sys.exit(1 if bad else 0)
 PY
+rc=$?
+
+# THE PLUGIN INCLUDE LIST is checked here too, so the Naming workflow (and any
+# hook that runs naming.sh) runs it without a second step: a plugin folder the
+# discovery engine never includes is a folder that does nothing (PLAN-3395.01).
+bash "$HERE/plugin-includes.sh" "$PODS_DIR" || rc=1
+exit $rc
