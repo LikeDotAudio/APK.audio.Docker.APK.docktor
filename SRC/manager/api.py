@@ -23,7 +23,6 @@ the opposite of what the panic asked for.
 
 import os
 import re
-import glob
 import json
 import time
 import socket
@@ -418,7 +417,7 @@ CONTAINER_ACTIONS = {
     },
 }
 
-# Verbs that take a STACK NAME — the directory under APK:PODS/, which is
+# Verbs that take a STACK NAME — the directory under PODS/, which is
 # what stacks.sh prints and what every dark row already carries. A third table
 # for the CONTAINER_ACTIONS reason: different arity, scoped to one band row.
 # WHY UP-STACK EXISTS: the dark-stack band button used to be `up` — the whole
@@ -567,17 +566,36 @@ def action_table():
 NAME_HINTS = ("apk", "apkaudio")
 
 
-def declared_projects():
-    """Every `name:` declared by a compose file under APK:PODS/.
+def _compose_files():
+    """Every <stack>/Docker/docker-compose*.yml, at any depth.
 
-    <stack>/Docker/, one rung deeper than the <stack>/ this globbed before the
-    split. An empty answer raises nothing anywhere: is_ours() falls through to
-    the name hints for every container, so the whole bench reads as strangers
-    and the cards silently reorder.
+    THE SAME WALKER THE SCRIPTS USE (K8/config_helper.compose_files), so this
+    cannot see a different set of stacks than stacks.sh does. It was a one-rung
+    glob, which since the pods landed matched only pod aggregators.
+    The checkout named by APKAUDIO_REPO wins, as in _common.sh: inside the
+    DockTor image DOCKERS_DIRECTORY is /app/APK:DOCKERS, which holds no compose
+    file at all.
+    """
+    import sys
+    if DOCKER_SCRIPTS_DIRECTORY not in sys.path:
+        sys.path.insert(0, DOCKER_SCRIPTS_DIRECTORY)
+    from config_helper import compose_files
+    repo = os.environ.get("APKAUDIO_REPO") or ""
+    root = os.path.join(repo, "PODS") if repo and os.path.isdir(os.path.join(repo, "PODS")) \
+        else DOCKERS_DIRECTORY
+    return compose_files(root)
+
+
+def declared_projects():
+    """Every `name:` declared by a compose file under PODS/.
+
+    Every <stack>/Docker/ at any depth (_compose_files). An empty answer raises
+    nothing anywhere: is_ours() falls through to the name hints for every
+    container, so the whole bench reads as strangers and the cards silently
+    reorder.
     """
     projects = set()
-    for path in glob.glob(os.path.join(DOCKERS_DIRECTORY, "*", "Docker",
-                                       "docker-compose*.yml")):
+    for path in _compose_files():
         try:
             with open(path, encoding="utf-8") as handle:
                 for line in handle:
@@ -748,7 +766,7 @@ def snapshot(quiet=True, with_apps=True):
         # `palette.group_of(name)` — a reading of the container's NAME, which is
         # how Storage-MariaDB and Storage-Portal come to sit together — while
         # up-stack.sh, rebuild-stack.sh and down-stack.sh all take the DIRECTORY
-        # under APK:PODS/. The two differ on nearly every row ("Storage" is
+        # under PODS/. The two differ on nearly every row ("Storage" is
         # `DATABASE.server.SQL`), so the client is handed the answer rather than
         # left to guess it from a label it must not parse.
         # READ OFF THE CARDS' OWN `repo`, which stack_repo_map built from the

@@ -86,7 +86,7 @@ first_existing() {
     printf '%s' "$first"
 }
 
-# stack_dir <folder-name> — where a stack folder actually IS under APK:PODS.
+# stack_dir <folder-name> — where a stack folder actually IS under PODS/.
 # Dynamically finds the folder regardless of pod nesting depth.
 # ONE WALK, NOT ONE PER STACK (PLAN-3319.01). Every script sources this file,
 # and the legacy variables below resolved a dozen stacks with a `find` over the
@@ -567,7 +567,7 @@ node_hardware_report() {
 # ⚠️ EVERY SPELLING, AND THE LAST ONE IS THE WALK. Both of the two this file
 #    used to carry were wrong at once — `APK:docktor` is not the folder (it is
 #    `APK:Docktor`), and the relative fallback counted one `..` too many (K8/ is
-#    directly under the stack root, so `../../Docker` is APK:PODS/Docker). The
+#    directly under the stack root, so `../../Docker` is PODS/Docker). The
 #    variable therefore named a file that does not exist, and NOTHING SAID SO:
 #    · stacks.sh puts this path in its DRIVEN set, so DockTor's own row read
 #      `driven: no` — the dashboard drew it in the band for stacks nothing here
@@ -652,7 +652,9 @@ broker_compose_file() {
 }
 
 # ensure_broker — bring Mosquitto up ALONE if it is not running: its own
-# service, --no-deps, no build (it is a pulled image). Nothing else in its
+# service, --no-deps, no build (it is the pulled eclipse-mosquitto:2.0 with a
+# bind-mounted config; switching it to Dockerfile.broker means dropping
+# --no-build here in the same change). Nothing else in its
 # stack can hold it hostage. Returns non-zero only if it is still not running.
 ensure_broker() {
     [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ] && return 0
@@ -1055,7 +1057,7 @@ apply_stack_profiles() {
 # compose_for_stack <stack directory name> — fill STACK_COMPOSE with ONE
 # stack's compose command (up-stack.sh's lookup, behind the dashboard's
 # per-stack fix button; up.sh would rebuild the other eight instead).
-# The name is the directory under APK:PODS/ — what stacks.sh prints — and is
+# The name is the directory under PODS/ — what stacks.sh prints — and is
 # derived from the compose paths, so a renamed folder needs no edit here.
 # Arrays are copied whole, so COMPOSE_NODE keeps its hardware overlay.
 # Returns 1 with STACK_COMPOSE empty for an unknown name: callers must refuse
@@ -1124,8 +1126,11 @@ compose_for_stack() {
     return 1
 }
 
-# ⚠️ THERE IS NO stage_mqtt_config() AND MUST NOT BE ONE. The broker COPYs its
-# config in Dockerfile.broker. Never reintroduce a host bind for it: /tmp is
+# ⚠️ THERE IS NO stage_mqtt_config() AND MUST NOT BE ONE. The broker runs the
+# pulled eclipse-mosquitto:2.0 with DATABUS.Broker.MQTT/SRC/mosquitto_local.conf
+# bind-mounted straight from the checkout (Dockerfile.broker exists but nothing
+# builds it — see that repo's PRINCIPLES.md). Never stage that config elsewhere
+# and bind the copy: /tmp is
 # cleared on reboot, and the daemon creates a missing bind source as a
 # root-owned DIRECTORY that mosquitto cannot start over and the host user
 # cannot delete.

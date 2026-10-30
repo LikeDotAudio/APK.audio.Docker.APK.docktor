@@ -274,9 +274,11 @@ def read_stacks(quiet=True):
         # older stacks.sh without the ninth column. TEN since `idle`.
         f = (line.split('\t') + [''] * 10)[:10]
         # ONE COMPOSE FILE UNDER TWO NAMES IS ONE STACK. stacks.sh walks
-        # APK:PODS/, where the compatibility symlinks (APK:docktor -> Docktor,
-        # Server:Broker:MQTT -> POD.databus/…) sit beside the folders they name,
-        # so a file arrived twice and the watchdog remounted it twice. First wins.
+        # PODS/; the old root carried compatibility symlinks (APK:docktor ->
+        # Docktor, Server:Broker:MQTT -> POD.databus/…) beside the folders they
+        # named, so a file arrived twice and the watchdog remounted it twice.
+        # Those links are gone, but any symlink left in a pod would do the
+        # same, so the realpath guard stays. First wins.
         real = os.path.realpath(f[1])
         if real in seen:
             continue
@@ -426,9 +428,12 @@ def read_bus_topics(container_name=None, quiet=True):
 def read_container_purpose(container_name=None, quiet=True):
     """What each container IS and why the bench needs it, keyed by name.
 
-    The one reader whose script measures nothing: purpose.sh is a written table,
-    because a reason is not a probeable fact. Cheap enough to fetch per pane —
-    no docker call, no network.
+    Mostly a written table, because a reason is not a probeable fact, plus the
+    plugins' own `audio.apk.purpose` labels: purpose.sh makes two `docker ps`
+    and one `docker inspect`, and dials the broker (mosquitto_sub -W 1, about a
+    second) only for a running container a compose file declares that neither
+    the table nor a label describes — none while `purpose.sh --check` passes.
+    Cheap enough to fetch per pane.
     """
     return _script_json('purpose.sh', container_name, quiet=quiet)
 

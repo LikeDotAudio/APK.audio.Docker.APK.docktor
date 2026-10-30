@@ -21,8 +21,9 @@ elif ! "$MANAGEMENT_SCRIPTS_DIR/test-gates.sh"; then
 fi
 
 log_step "Preparing the host (skills, ports)..."
-# The broker config is COPYed into the image by Dockerfile.broker, so no host
-# path is left to go missing between a reboot and an up.
+# The broker config is bind-mounted from the broker repo's own SRC/ (a file
+# that is always in the checkout), not staged under /tmp, so no host path is
+# left to go missing between a reboot and an up.
 prepare_for_up || exit 1
 
 # WHICH NODE IS ABOUT TO BE MOUNTED: _common.sh decided at source time whether

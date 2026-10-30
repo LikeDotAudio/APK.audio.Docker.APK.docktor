@@ -64,11 +64,11 @@ if [ -z "$QUERY" ]; then
     
     for key in mqtt sql nmos ember netbox docktor aes70 baremetal yo logger static plugins; do
         IFS="|" read -r subpath repopath <<< "${REPO_MAP[$key]}"
-        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "APK:PODS/$subpath" "$repopath"
+        printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "PODS/$subpath" "$repopath"
     done
 
-    echo -e "\n\033[33mUsage:\033[0m python3 'APK:PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open <name> [--open]"
-    echo "Example: python3 'APK:PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open mqtt"
+    echo -e "\n\033[33mUsage:\033[0m python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open <name> [--open]"
+    echo "Example: python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open mqtt"
     exit 0
 fi
 

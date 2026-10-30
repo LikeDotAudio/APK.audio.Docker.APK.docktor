@@ -21,14 +21,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 STACK="${1:-}"
 if [ -z "$STACK" ]; then
-    log_error "Which pod? Name the directory under APK:PODS/."
+    log_error "Which pod? Name the directory under PODS/."
     echo "Usage: ./rebuild-stack.sh 'PROTOCOL.DEV.EMBER'"
     echo "       ./stacks.sh   # the names, one per row"
     exit 2
 fi
 
 if ! compose_for_stack "$STACK"; then
-    log_error "No compose file under APK:PODS/ is named by the pod '$STACK'."
+    log_error "No compose file under PODS/ is named by the pod '$STACK'."
     echo "  ./stacks.sh prints every pod this repository declares, one per row."
     exit 2
 fi

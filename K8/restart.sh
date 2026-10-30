@@ -8,9 +8,8 @@
 # to be bouncing one process. It also STARTS a stopped container, so this is the
 # single-container verb for both.
 # ⚠️ IT PICKS UP NOTHING NEW: same image, environment and mounts. A changed
-#    compose file needs up.sh, and a changed mosquitto_local.conf needs
-#    `up.sh mqtt` — the broker config is COPYed into the image now, which is
-#    what makes it survive a reboot.
+#    compose file needs up.sh. A changed mosquitto_local.conf IS picked up by
+#    a restart: the broker bind-mounts it from DATABUS.Broker.MQTT/SRC/.
 # Exits non-zero if any named container fails; every one is attempted first.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 

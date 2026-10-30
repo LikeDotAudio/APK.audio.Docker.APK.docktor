@@ -60,14 +60,26 @@ refuses to recreate the manager from inside itself. Only `nuke.sh --yes-nuke-eve
 ## A plugin describes itself; DockTor keeps no plugin table
 
 Roles are read off plugin compose `profiles:` (`plugin_roles_declared()`, `K8/_common.sh:348`); purpose and
-endpoints off `audio.apk.*` labels, then the compose files, then a plugin's retained `incoming/api`
-(`K8/purpose.sh`, `K8/endpoints.sh`). `K8/plugin-includes.sh` (run by `K8/naming.sh`) fails when the engine's
+endpoints off `audio.apk.*` labels, then the compose files, then (only for a declared container nothing else
+describes) a plugin's retained `incoming/api` (`K8/purpose.sh`, `K8/endpoints.sh`). `K8/plugin-includes.sh` (run by `K8/naming.sh`) fails when the engine's
 include list and the `PLUGINS/` folder disagree.
+
+## One walker finds every stack
+
+`config_helper.compose_files()` (`K8/config_helper.py`) is the only thing that looks for
+`<stack>/Docker/docker-compose*.yml`, at any depth; `stacks.sh`, `staleness.sh`, `remove-other-containers.sh`,
+`api.declared_projects()` and `config_helper` itself all ask it. A fixed number of rungs is a glob that matches
+nothing in silence. `stacks.sh` leaves out `PLUGINS/`: a plugin's lifecycle belongs to the discovery engine, and
+the watchdog would otherwise remount every plugin the engine executed.
 
 ## Where the code still falls short
 
 - The dashboard runs the scripts **baked into the image**, not the bind-mounted checkout: an edit to
   `K8/*.sh` does nothing until DockTor is rebuilt (see [DELIVERY](../%F0%9F%8C%8DPublishing/DELIVERY.md)).
-- In-image and comment paths still say `APK:DOCKERS` / `APK:PODS` (`SRC/manager/paths.py`,
-  `SRC/manager/__init__.py`), roots that no longer exist on the host checkout.
+- In-image paths still say `APK:DOCKERS` / `APK:docktor` (`Docker/Dockerfile.manager`, `SRC/manager/paths.py`);
+  the host checkout's root is `PODS/`.
+- No runner publishes a `description` in `incoming/api` yet, so `K8/purpose.sh`'s third source answers nothing.
+- Broker-Mosquitto runs the pulled `eclipse-mosquitto:2.0` with its config bind-mounted, not
+  `Dockerfile.broker` (Dockers law 8 bent; recorded in DATABUS.Broker.MQTT's PRINCIPLES), so `ensure_broker`
+  uses `up --no-build`.
 - `K8/purpose.sh` still keeps a written table for containers that are not plugins.

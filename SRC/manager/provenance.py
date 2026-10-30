@@ -6,7 +6,7 @@ OWNS the step from a path on disk to the GitHub page for it. The detail pane
 said which compose file built a container and nothing about where that file,
 or anything it pulls in, is kept.
 ONE LINK PER FILE, IN THE REPOSITORY THAT OWNS IT — not one repository per
-container. Every stack under APK:PODS/ is its own submodule with its own
+container. Every stack under PODS/ is its own submodule with its own
 remote, and a Dockerfile in one routinely COPYs out of another: Storage-Portal
 serves trees owned by WebPortal, BareMetal, Docktor and the root repository.
 Calling all of that "the SQL repo" would send a reader to the wrong home for

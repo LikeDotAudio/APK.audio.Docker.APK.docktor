@@ -10,7 +10,7 @@
 # measurement. No probe can emit "this is the delta capture, and without it the
 # bus keeps only the latest value of every topic and none of the history".
 # THE HAZARD IS DRIFT, AND --check IS THE ANSWER: it walks every compose file
-# under APK:PODS/, takes every container_name:, and fails on an entry with no
+# under PODS/, takes every container_name:, and fails on an entry with no
 # container or a container with no entry. No daemon needed, so
 # ./.apk.scripts/check.sh container-purpose runs it on any checkout.
 # It walks compose files rather than docker ps: the set that matters is what
@@ -61,50 +61,17 @@ DOCKERS_DIR = os.environ.get("DOCKERS_DIR", "")
 # Ordered by stack, the way the compose files are.
 PURPOSE = {
 
-    # --- Server:Storage:SQL database -- the core stack -------------------------
-    "Storage-Broker": (
-        "The house MQTT bus",
-        "A mosquitto 2.0 broker built from Dockerfile.broker with its config COPYed in "
-        "rather than bind-mounted, so it carries its own settings through a reboot with "
-        "no host path to go missing. It serves native MQTT on 1883 and MQTT over "
-        "WebSockets on 9001 -- the second one is what lets a browser tab be a client.",
-        "This is the bus every other process on the bench actually speaks on: the "
-        "manager's MQTT_HOST names it, the front ends subscribe over 9001, and the "
-        "delta capture records it. Three mosquittos run here and only this one keeps "
-        "1883/9001, so an address is also an answer to which broker it reached. The bus "
-        "is not a passive transport -- a VISA Write topic executes SCPI on real "
-        "hardware -- which is why its open config and a narrow bind are a pair."),
-
-    "Storage-MariaDB": (
-        "Decommissioned (Consolidated into SQL-Proxy in DATABASE.server.SQL)",
-        "The standalone MariaDB instance has been retired. SQL database services are consolidated "
-        "into DATABASE.server.SQL behind SQL-Proxy:3306, supporting both 'PROXY 1 server' and 'PROXY 3 cluster' modes.",
-        "Clients now connect through SQL-Proxy on port 3306."),
-
+    # --- DATABASE.server.SQL -- the core stack ---------------------------------
     "Storage-PHP": (
         "The interpreter behind /api/*",
         "php-fpm on 9000, published to nothing: it is reachable only from the compose "
         "network, and nginx fastcgi_passes the named endpoints to it. It reaches the "
-        "database as `mariadb` by service name, and its code is COPYed into the image, "
+        "database as `sql-proxy` (SCAN_DB_HOST), and its code is COPYed into the image, "
         "so editing an endpoint needs `up -d --build` and never a bare restart.",
         "The portal beside it is nginx over static trees and cannot execute anything. "
         "Without this tier nginx returned the PHP SOURCE of the corpus endpoints, the "
         "front end's JSON.parse threw on it, and the Scanalyze tab reported the "
         "database offline while the database was healthy two containers away."),
-
-    "Storage-Schema-Init": (
-        "The schema, applied on every up. Runs once and exits",
-        "A one-shot that runs the tracked .sql schemas through the PHP image that "
-        "already carries them. Every statement is CREATE TABLE IF NOT EXISTS, so it is "
-        "a no-op against a live corpus and a full provision against an empty one. Its "
-        "restart policy is `no` because a one-shot that has finished has exited -- an "
-        "Exited (0) here is the success state and not a stopped service.",
-        "It is the only thing on the `up` path that provisions the shared database, "
-        "including schemas it did not author: Broker-SqlCapture exits 1 while its "
-        "`bus_type` table is missing. That schema used to be hand-applied, and every "
-        "`down -v` threw it away and left the capture restart-looping forever against a "
-        "database that could never satisfy it. A new table belongs in this service, "
-        "never in a `docker exec` that cannot survive a volume recreation."),
 
     "Storage-Portal": (
         "The web shell on 8080 -- the front door",
@@ -172,15 +139,19 @@ PURPOSE = {
 
     # --- Server:Broker:MQTT -- the bus stack -----------------------------------
     "Broker-Mosquitto": (
-        "The bus stack's own broker, on 1884/9002",
-        "A second mosquitto 2.0, mounting its config read-only from the folder every "
-        "broker config in this repository lives in. It listens on 1883/9001 inside the "
-        "container like the others; only the host side is renumbered, so all three "
-        "brokers can run at once.",
-        "It is the broker you bring up when the bus itself is the thing being worked "
-        "on -- one you can reconfigure, restart and break without touching the one the "
-        "whole bench is talking on. It is not a second house bus: nothing defaults to "
-        "it."),
+        "The house MQTT bus -- the one broker",
+        "The pulled eclipse-mosquitto:2.0 image with SRC/mosquitto_local.conf "
+        "bind-mounted read-only from DATABUS.Broker.MQTT (not baked: no compose file "
+        "builds Docker/Dockerfile.broker yet, and the broker's PRINCIPLES.md records that "
+        "bend of Dockers law 8). Native MQTT on 127.0.0.1:1883, MQTT over WebSockets on "
+        "127.0.0.1:9001; it answers to mqtt, broker, mosquitto, Storage-Broker and "
+        "Portal-Broker on the compose network. Protected: DockTor never stops or "
+        "removes it, and ensure_broker raises it first and alone.",
+        "This is the bus every other process on the bench actually speaks on: the "
+        "manager's MQTT_HOST names it, the front ends subscribe over 9001, and the "
+        "delta capture records it. The bus is not a passive transport -- a VISA Write "
+        "topic executes SCPI on real hardware -- which is why its anonymous config and "
+        "a loopback bind are a pair."),
 
     "Broker-SqlCapture": (
         "The delta capture -- the bus, written down",
@@ -407,10 +378,41 @@ PURPOSE = {
         "Without the discovery engine, hardware and network streams on the LAN are invisible "
         "until configured by hand, and protocol plugins cannot auto-launch when devices appear."),
 
+    "APK-Docker-Gate": (
+        "The engine's one door to the Docker socket",
+        "The apk-docker-gate binary from the plugins image, and the only holder of "
+        "/var/run/docker.sock in the discovery stack. No network at all: it answers on a "
+        "unix socket in the apk-docker-gate volume, which only the engine also mounts, "
+        "with no capabilities and a read-only root. It keeps the inspects it needs to "
+        "recreate an executed plugin on a volume nothing else mounts.",
+        "It is what lets the discovery engine launch and execute plugin containers "
+        "without the engine itself holding root on the host: the socket stays behind "
+        "one small process with no network to be reached over."),
+
+    "Node-FramesRelay": (
+        "Unix-socket doors from the gateway to the host loopback",
+        "A node:22-alpine relay on the host network that listens on one socket per door "
+        "in /run/apk-frames (frames.sock, node.sock, aes67.sock) and dials that door's "
+        "loopback port: the orchestrator's frames API, the supervisor's /plugins gateway "
+        "on 8100, and the AES67 plugin's UI on 8130.",
+        "A host firewall drops connections from a bridge to the host, so Portal-Gateway "
+        "could not reach host-networked services on 127.0.0.1; a socket in a shared "
+        "volume crosses the namespaces without crossing the firewall. Without it "
+        "/api/frames and /plugins answer 502 through the gateway."),
+
+    "Scanalyzer-API": (
+        "Scanalyzer's corpus API (php-fpm)",
+        "php-fpm on scan-api:9000, no published port. The gateway and Storage-Portal "
+        "both reach it over FastCGI on apk-audio_default for the three Scanalyzer API "
+        "names; it reads the corpus through sql-proxy.",
+        "Without it the Scanalyzer soft app has no corpus behind it: its /scan-api and "
+        "relative api/*.php calls fail at the gateway and the portal."),
+
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (
         "The chat hub: WebSockets on one side, the bus on the other",
-        "A Rust WebSocket server on 8080 that accepts device connections into named "
+        "A Rust WebSocket server on 8150 (WS_PORT; not 8080, which is Storage-Portal's) "
+        "that accepts device connections into named "
         "rooms, broadcasts a message to everyone in a room, and relays the same traffic "
         "to and from the APK.audio/Yo/chat topics on the MQTT bus. It runs on the host "
         "network and reads its broker address from the environment.",
@@ -451,10 +453,13 @@ if bad:
 #   audio.apk.purpose.why    what stops working without it -> why
 # Read from, first to last, the first that answers winning per container:
 #   1. docker inspect of the containers that exist (APK_PURPOSE_INSPECT)
-#   2. the compose files under APK:PODS/, when this checkout has them (the
+#   2. the compose files under PODS/, when this checkout has them (the
 #      manager image does not) -- which also gives the role: its `profiles:`
 #   3. the retained `incoming/api` document a running plugin publishes, its
-#      `description` field, for a container created before it had a label
+#      `description` field, for a container a compose file declares and
+#      neither 1 nor 2 describes. NO RUNNER PUBLISHES `description` YET, so
+#      today this answers nothing; it is asked only when 1, 2 and the table
+#      all miss a declared name, which --check holds at zero.
 LABEL = "audio.apk.purpose"
 SERVICE = re.compile(r'^  ([A-Za-z0-9_.-]+):\s*$')
 
@@ -578,8 +583,15 @@ for name, service in DECLARED.items():
             LABELLED[name] = document
 if MODE != "check":
     running = [n for n in os.environ.get("APK_PURPOSE_RUNNING", "").splitlines() if n]
+    # ONLY NAMES A COMPOSE FILE DECLARES. The bus is asked about containers
+    # this checkout knows and nothing else describes; asked about every
+    # unlabelled running container it ran on every call -- the bench always
+    # has strangers and per-device children -- and `-W 1` made each one cost a
+    # full second for an answer no runner publishes yet (DISCOVERY.Engine
+    # RUNNER api.rs carries no `description`). With every declared container
+    # described (--check), this list is empty and no broker is dialled.
     unknown = [n for n in running if n not in PURPOSE and n not in LABELLED
-               and (not WANT or n == WANT)]
+               and n in DECLARED and (not WANT or n == WANT)]
     for name, description in bus_descriptions(unknown).items():
         LABELLED[name] = {"role": description, "what": "", "why": ""}
 for name, document in LABELLED.items():
@@ -595,7 +607,7 @@ CONTAINER_NAME = re.compile(r'^\s*container_name:\s*["\']?([^"\'\s#]+)', re.M)
 
 
 def declared_containers(root):
-    """Every `container_name:` any compose file under APK:PODS/ spells out."""
+    """Every `container_name:` any compose file under PODS/ spells out."""
     names = {}
     for base, directories, files in os.walk(root):
         directories[:] = [d for d in directories if not d.startswith('.')]
@@ -616,7 +628,7 @@ if MODE == "check":
         # A HARD FAILURE, NOT A SKIP: the manager image carries this folder
         # without the compose files, so a --check from inside the container
         # cannot see the set it is checking against.
-        sys.stderr.write("purpose.sh --check: no APK:PODS directory at %r\n"
+        sys.stderr.write("purpose.sh --check: no PODS directory at %r\n"
                          % DOCKERS_DIR)
         sys.exit(1)
 

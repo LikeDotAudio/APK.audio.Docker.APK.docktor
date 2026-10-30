@@ -72,7 +72,7 @@ for container in "$@"; do
         # No checkout bound means nothing to build from: refuse, as before.
         if [ ! -f "$manager_script" ] || [ ! -d "$DOCKERS_DIR" ]; then
             log_error "Refusing to rebuild $MANAGER_CONTAINER: no checkout is bound here to build it from."
-            echo "  From a host terminal:  ./APK:PODS/POD.manager/MANAGER.Docktor/K8/manager.sh up"
+            echo "  From a host terminal:  ./PODS/POD.manager/MANAGER.Docktor/K8/manager.sh up"
             announce CONTAINER_REBUILD_REFUSED "{\"container\":\"$container\",\"reason\":\"no_checkout\"}"
             worst=3
             continue

@@ -38,7 +38,7 @@ done
 # named variables, so clearing seven leaves one file and the parser untouched.
 if [ -n "$ONLY_STACK" ]; then
     if ! compose_for_stack "$ONLY_STACK"; then
-        log_error "No compose file under APK:PODS/ is named by the stack '$ONLY_STACK'."
+        log_error "No compose file under PODS/ is named by the stack '$ONLY_STACK'."
         exit 2
     fi
     BAREMETAL_COMPOSE_FILE="" MQTT_COMPOSE_FILE="" PORTAL_COMPOSE_FILE=""

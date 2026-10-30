@@ -159,7 +159,14 @@ emit_endpoint() {
     lan_endpoints "$container" "$cport" "$label" "$template"
 }
 
-# --- the core stack, from 'Server:Storage:SQL database/docker-compose.yml' ---------
+# --- the core stack, from POD.database/DATABASE.server.SQL/Docker/docker-compose.yml ---
+# LOOPBACK BY DEFAULT, AND THE ROW SAYS SO: the portal is published on
+# ${STORAGE_PORTAL_BIND:-127.0.0.1}:${PORT:-8080} (Dockers doctrine: bridge +
+# 127.0.0.1 mappings), so `localhost` is the one address that opens it, and
+# this dashboard is itself loopback-only, so whoever clicks the row is on the
+# bench host. Other machines reach the portal through its macvlan address,
+# which lan_endpoints prints as a separate `· LAN` copy row, or by setting
+# STORAGE_PORTAL_BIND. A {host} other than localhost here would be a lie.
 emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
     "Web Portal" "http://{host}:{port}"
 
@@ -396,7 +403,7 @@ for key in sorted(keys, key=lambda k: (len(k), k)):
                  "${plugin_ids[@]}" 2>/dev/null | sort)
 fi
 
-# --- Discovered Instruments (APK:PODS/POD:APK_THICK/APK:INSTRUMENTS) ---------
+# --- Discovered Instruments (PODS/POD:APK_THICK/APK:INSTRUMENTS) ---------
 # For each running instrument container (labeled apk.audio.role=instrument or apk-*),
 # link to its public API spec in OsApi and its WebSocket / SCPI sockets.
 mapfile -t inst_containers < <(docker ps --filter "label=apk.audio.role=instrument" --format '{{.Names}}' 2>/dev/null)
