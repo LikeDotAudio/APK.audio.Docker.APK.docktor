@@ -13,6 +13,8 @@ that happens on the bus. It is the only container that holds the Docker socket.
 | **Compose project** | `apk-audio` (`Docker/docker-compose.manager.yml`, service `manager`, container `DockTor`) |
 | **Pod** | `PODS/POD.manager/` |
 
+**Wiki:** [Documentation/README.md](Documentation/README.md) — principles, architecture, delivery, audits.
+
 ## Layout
 
 | Path | What |

@@ -7,6 +7,7 @@ The principles this code keeps, each pointed at the code that keeps it.
 <!-- wiki:index -->
 | Page | What |
 |---|---|
+| [PRINCIPLES.md](PRINCIPLES.md) | Principles — MANAGER.Docktor |
 | [Dockers/](Dockers/) | folder |
 | [Tests/](Tests/) | folder |
 <!-- /wiki:index -->
