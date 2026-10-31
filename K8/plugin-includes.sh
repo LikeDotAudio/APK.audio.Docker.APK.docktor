@@ -25,7 +25,15 @@
 #   dangling     the list names a path that does not exist
 #   no profile   a service in a marked-true file has no `profiles:` — compose
 #                starts such a service on EVERY node, whatever role it declared
-#                (PLAN-3410.01: DESKTOP_MONITOR ran on headless servers)
+#                (PLAN-3410.01: DESKTOP_MONITOR ran on headless servers).
+#                A plugin that MUST run on every node says so instead of hand-
+#                copying every role into `profiles:` — top-level
+#                    x-apk-every-role: true
+#                and its services carry NO `profiles:` (compose starts an
+#                unprofiled service whatever profiles are selected, i.e. on
+#                every role). With the marker, a `profiles:` line is the error:
+#   every role   x-apk-every-role: true, and a service still lists profiles
+#                (the list would drift from the pod's roles — PLUGIN.MACHINE)
 #   drift        an included file declares a top-level volume that
 #                Docker/plugin-base.yml also declares (apk-audio-logs,
 #                mac-lookup-cache), and its block differs from the base's.
@@ -114,6 +122,26 @@ def services_without_profile(text):
     return out
 
 
+def services_with_profile(text):
+    """Service names under the top-level `services:` that DO carry `profiles:`."""
+    names = []
+    inside, svc = False, None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if re.match(r'^\S', line):
+            inside, svc = line.startswith('services:'), None
+            continue
+        if not inside:
+            continue
+        m = re.match(r'^  ([A-Za-z0-9_.-]+):\s*$', line)
+        if m:
+            svc = m.group(1)
+        elif svc and re.match(r'^    profiles:', line) and svc not in names:
+            names.append(svc)
+    return names
+
+
 def top_volumes(text):
     """{volume key: its block's lines} under the top-level `volumes:`."""
     out, key, inside = {}, None, False
@@ -169,8 +197,14 @@ for name in plugin_folders():
     elif mark == 'true':
         if p not in included:
             bad.append(f'missing     {rel(f)} is x-apk-plugin: true but {rel(ENGINE)} does not include it')
-        for svc in services_without_profile(text):
-            bad.append(f'no profile  {rel(f)} service `{svc}` — it would start on every node')
+        every_role = re.search(r'^x-apk-every-role:\s*true\s*$', text, re.M)
+        if every_role:
+            for svc in services_with_profile(text):
+                bad.append(f'every role  {rel(f)} service `{svc}` lists profiles under x-apk-every-role: true — drop them')
+        else:
+            for svc in services_without_profile(text):
+                bad.append(f'no profile  {rel(f)} service `{svc}` — it would start on every node '
+                           f'(or mark the file x-apk-every-role: true if it must)')
     else:
         bad.append(f'unmarked    {rel(f)} — x-apk-plugin is `{mark}`; it is `true`, or the file says x-apk-standalone')
 

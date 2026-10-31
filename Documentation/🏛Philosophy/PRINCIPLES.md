@@ -106,8 +106,5 @@ first is a pin and wins. The DockTor image carries `git` for this.
   and exits (Dockerfile header).
 - In-image paths still say `APK:DOCKERS` / `APK:docktor` (`Docker/Dockerfile.manager`); the host checkout's root
   is `PODS/`. Kept by design: nothing outside the image resolves them, and `paths.py` walks from `__file__`.
-- Until `apkaudio_contracts` carries the broker-candidate module and the brand token, the image still COPYs
-  NODE.BareMetal's `mqtt_broker_discovery.py` and `contracts/tokens/brand.json` (handoff to contracts filed);
-  `brokers.py` already prefers the package.
 - No runner publishes a `description` in `incoming/api` yet, so `K8/purpose.sh`'s third source answers nothing.
 - `K8/purpose.sh` still keeps a written table for containers that are not plugins.

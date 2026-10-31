@@ -9,7 +9,7 @@
 # three stacks declare `context: ../..`, so a newest-mtime-under-context rule
 # would mark them stale on every edit anywhere in the repository.
 #     Dockerfile.manager  ->  manager/, docker scripts/, K8:runner.py,
-#                             contracts/python, brand.json, mqtt_broker_discovery.py
+#                             contracts/python
 #     APK:Yo/Dockerfile   ->  Cargo.toml, src/
 # AND ONLY THE STAGE THAT IS BUILT. Server:Discovery:NMOS/Docker/Dockerfile
 # declares five stages and its services each name one with `target:`. Reading

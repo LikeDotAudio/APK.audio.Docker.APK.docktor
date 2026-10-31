@@ -42,8 +42,7 @@ Page: `http://localhost:8765/`. `GET /api/routes` lists the API.
      `apkaudio-docktor` (`APK_DOCKTOR_MQTT_*`). Started by `serve()`. Topics in `Documentation/CONTRACTS.md`.
    - `bus.py` also owns the one paho constructor (`new_client(id, prefix)`, credentials by env prefix),
      `publish()` on the event session (chat uses it), `contract_topic()` and `DOCUMENT_VERSION`.
-   - `brokers.py` — the one import site of the broker-candidate module: `apkaudio_contracts.broker_candidates`
-     when the package carries it, else NODE.BareMetal's `mqtt_broker_discovery.py` (transitional).
+   - `brokers.py` — the one import site of the broker-candidate module, `apkaudio_contracts.broker_candidates`.
    - `schemas/*.schema.json` — the four retained ContainerManager documents; `test_report_documents.py` validates
      `report.py`'s output against them.
 3. **Client — `SRC/manager/web/`.** `index.html`, `manager.css`, `manager.js`; no framework, no build.
@@ -68,9 +67,8 @@ build; one never started (`created`) or a stopped long-runner is recreated `--no
 
 `Docker/Dockerfile.manager`: `docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt +
 `apkaudio_contracts` (pip-installed from `contracts/python`); it COPYs `SRC/manager`, `K8` and `bin/K8:runner.py`
-into `/app/APK:DOCKERS/…`, plus — until the contracts package carries them — `contracts/tokens/brand.json` at
-`/app/contracts/tokens/` (REPOSITORY_ROOT in the image) and BareMetal's `mqtt_broker_discovery.py` at its
-checkout-relative path, so `paths.py` has one spelling of each. `CMD` runs `K8:runner.py serve`.
+into `/app/APK:DOCKERS/…` and nothing else of any other repo: the brand accent and the broker list come from the
+installed package. `CMD` runs `K8:runner.py serve`.
 
 HTTP API: version `api.API_VERSION` (1), served by `/api/health` as `api_version` beside `document_version` and
 `contract_version`; every route also answers under `/api/v1/…`.

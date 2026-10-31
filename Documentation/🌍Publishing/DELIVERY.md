@@ -114,3 +114,22 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   Live after the owner rebuilds DockTor; the asker `apkaudio-baremetal-launcher` is admitted by
   DATABUS.Broker.MQTT's operator ACL (same batch).
 
+### Final round (2026-10-30)
+
+- **Nothing of another repo's copied in (DockTor #1)** — contracts 36273b972 ships `broker_candidates` and the
+  brand/state tokens as package data, so `brokers.py` imports `apkaudio_contracts.broker_candidates` only and
+  `paths.py` takes `ACCENT` from `apkaudio_contracts.tokens.BRAND_ACCENT_HEX`; the image's COPYs of NODE.BareMetal's
+  `mqtt_broker_discovery.py` and `contracts/tokens/brand.json` are deleted, along with `BAREMETAL_ROOT`. A host run
+  without the package installed uses the checkout's own `contracts/python` (put on `sys.path` in `paths.py`, one
+  place). Verified: 43 unit tests with and without contracts on `PYTHONPATH`; `docker build` + the tests inside the
+  image (accent `#f4902c`, `apkaudio_contracts.broker_candidates`).
+- **System/Chat from the contract (WB-04)** — delivered by the peer session in `c4600d5` (`systemChat` family).
+- **`x-apk-every-role: true` (for PLUGIN.MACHINE)** — `K8/plugin-includes.sh` accepts this top-level marker for a
+  plugin that must run on every node: its services carry no `profiles:` (compose starts them under any role), and
+  a `profiles:` line under the marker is the new `every role` error. Checked: the helpers on a sample file; the
+  current tree still passes.
+- **apk-yo purpose** — `K8/purpose.sh` now describes CONTROL.YoControl as the bus chat agent with an opt-in
+  WebSocket on WS_PORT, built from its own repo.
+- **NetBox port read, not restated** — `K8/endpoints.sh` takes Netbox-App's declared port from
+  DATABASE.server.NETBOX's `"127.0.0.1:<port>:8080"` line.
+

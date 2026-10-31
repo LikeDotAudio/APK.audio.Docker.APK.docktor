@@ -398,12 +398,13 @@ PURPOSE = {
 
     # --- APK:Yo ----------------------------------------------------------------
     "apk-yo": (
-        "The chat hub: WebSockets on one side, the bus on the other",
-        "A Rust WebSocket server on 8150 (WS_PORT; not 8080, which is Storage-Portal's) "
-        "that accepts device connections into named "
-        "rooms, broadcasts a message to everyone in a room, and relays the same traffic "
-        "to and from the APK.audio/Yo/chat topics on the MQTT bus. It runs on the host "
-        "network and reads its broker address from the environment.",
+        "The chat agent on the bus; a WebSocket door only where a bench opens one",
+        "A Rust chat agent (CONTROL.YoControl, built from its own repo) on the MQTT bus: "
+        "it keeps named rooms, broadcasts a message to everyone in a room, and carries "
+        "that traffic on the APK.audio/Yo/chat topics. A WebSocket and debug page on "
+        "WS_PORT (8150 by convention) exist only where a bench sets it; unset, it is bus "
+        "only, with no port of its own. It runs on the host network and reads its broker "
+        "address from the environment.",
         "It is how a touch panel, a SPOG dashboard, a WebPortal tab and a hardware node "
         "say something to each other in words rather than in parameters -- one room a "
         "person and a machine can both be in, tied to the bus so that anything already "

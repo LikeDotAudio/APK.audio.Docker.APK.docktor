@@ -45,20 +45,23 @@ DOCKER_SCRIPTS_DIRECTORY = K8_SCRIPTS_DIRECTORY
 # NO COMPOSE FILE PATHS HERE — they live in `docker scripts/_common.sh` beside
 # us and nowhere else, with the projects rule, the ordering and the UID/GID.
 
-# The bare-metal SOURCE tree, and it is the stack SRC/ rather than the stack
-# root. Needed for one thing that is NOT docker: the transitional home of the
-# broker-candidate module (brokers.py looks in apkaudio_contracts first).
-# ONE SPELLING, IN THE CHECKOUT AND IN THE IMAGE ALIKE (2026-10-30 audit,
-# DockTor #6): the image COPYs the module to the same PODS-relative place, so
-# the eight pre-2026-10-16 spellings (POD:APK_THICK, APK:BareMetal, …) that
-# this list used to try are gone, not kept "for a checkout that still has them".
-BAREMETAL_ROOT = os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'SRC')
+# THE CONTRACTS ARE A PACKAGE, NOT A PATH (2026-10-30 audit, DockTor #1). The
+# image pip-installs apkaudio_contracts from contracts/python, which carries the
+# broker-candidate list (broker_candidates) and the brand/state tokens as package
+# data (tokens) since contracts 36273b972 — so nothing of NODE.BareMetal's and no
+# loose token file is copied in any more. A host run from a checkout (K8:runner.py
+# without the package installed) gets the SAME package from the checkout's own
+# contracts/python, put on sys.path here and nowhere else.
+try:
+    import apkaudio_contracts  # noqa: F401
+except ImportError:
+    _CHECKOUT_CONTRACTS = os.path.join(REPOSITORY_ROOT, 'contracts', 'python')
+    if os.path.isdir(os.path.join(_CHECKOUT_CONTRACTS, 'apkaudio_contracts')):
+        import sys
+        sys.path.insert(0, _CHECKOUT_CONTRACTS)
 
-# THE BRAND TOKEN, read WITHOUT a fallback so a wrong path is an import error
-# and not a quietly different accent. contracts/ sits at the checkout root, and
-# the image stages it at /app/contracts — which is REPOSITORY_ROOT there too —
-# so one spelling serves both. The six BareMetal-era spellings are gone.
-BRAND_TOKENS = os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json')
+# THE BRAND ACCENT, WITHOUT A FALLBACK: a missing package is an import error,
+# not a quietly different accent.
+from apkaudio_contracts import tokens as _tokens  # noqa: E402
 
-with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
-    ACCENT = json.load(_tokens)['accent']['hex']
+ACCENT = _tokens.BRAND_ACCENT_HEX

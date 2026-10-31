@@ -4,48 +4,22 @@
 
 OWNS nothing but the lookup. The ORDER (configured first, loopback next, public
 brokers only behind the double opt-in) is not decided in DockTor and must not
-be copied into it: it is the house broker-candidate module, and this file only
-says which copy of it this process loads.
+be copied into it: it is `apkaudio_contracts.broker_candidates` (contracts
+36273b972, NODE.BareMetal's mqtt_broker_discovery API verbatim), pip-installed
+into the image. Until 2026-10-30 this file fell back to NODE.BareMetal's copy by
+sys.path; that fallback and the image's COPY of it are gone (DockTor #1).
 
-    module()       the candidate module, or raises ImportError naming both homes
+    module()       the candidate module (ImportError when the package is absent)
     public_hosts() the host names that are NOT ours (empty when unavailable)
-
-WHERE IT IS LOOKED FOR, in order (2026-10-30 audit, DockTor #1):
-  1. `apkaudio_contracts.broker_candidates` — the versioned contracts package,
-     pip-installed into the image from contracts/python. This is the home.
-  2. NODE.BareMetal's `Baremetal:Manager/mqtt_broker_discovery.py` under
-     paths.BAREMETAL_ROOT — the transitional home, while the contracts package
-     does not carry the module yet. Same API; it goes when (1) ships.
-Before this file the sys.path insert lived at three call sites in report.py.
 """
 
-import os
-import sys
-
-from .paths import BAREMETAL_ROOT
-
-_cached = None
+from . import paths  # noqa: F401 — puts a checkout's contracts/python on sys.path
 
 
 def module():
-    """The broker-candidate module. ImportError when neither home has it."""
-    global _cached
-    if _cached is not None:
-        return _cached
-    try:
-        from apkaudio_contracts import broker_candidates as found
-    except ImportError:
-        legacy = os.path.join(BAREMETAL_ROOT, "Baremetal:Manager")
-        if legacy not in sys.path:
-            sys.path.insert(0, legacy)
-        try:
-            import mqtt_broker_discovery as found
-        except ImportError as err:
-            raise ImportError(
-                "no broker-candidate module: neither apkaudio_contracts.broker_candidates "
-                f"nor mqtt_broker_discovery.py under {legacy}") from err
-    _cached = found
-    return found
+    """apkaudio_contracts.broker_candidates."""
+    from apkaudio_contracts import broker_candidates
+    return broker_candidates
 
 
 def public_hosts():

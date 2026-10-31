@@ -266,13 +266,21 @@ emit_endpoint NMOS-Dev 3218/tcp 3218 open \
 # / and /graphql/ redirect 302 to login, /api/ answers 403 with NetBox own
 # message). Hence open, not copy: a browser CAN use them, it is just asked who
 # it is.
-emit_endpoint Netbox-App 8080/tcp 8082 open \
+# THE DECLARED PORT IS READ, NOT RESTATED: DATABASE.server.NETBOX's compose
+# publishes `"127.0.0.1:<port>:8080"` and that line is the one source (its own
+# probe reads it too). These rows go entirely once Netbox-App is recreated with
+# its audio.apk.endpoint.* labels (self_described above).
+netbox_port="$(sed -n 's/^[[:space:]]*-[[:space:]]*"127\.0\.0\.1:\([0-9]*\):8080".*/\1/p' \
+               "$(stack_dir "DATABASE.server.NETBOX" 2>/dev/null)/Docker/docker-compose.yml" 2>/dev/null | head -n1)"
+netbox_port="${netbox_port:-8082}"
+
+emit_endpoint Netbox-App 8080/tcp "$netbox_port" open \
     "NetBox" "http://{host}:{port}/"
 
-emit_endpoint Netbox-App 8080/tcp 8082 open \
+emit_endpoint Netbox-App 8080/tcp "$netbox_port" open \
     "NetBox REST API" "http://{host}:{port}/api/"
 
-emit_endpoint Netbox-App 8080/tcp 8082 open \
+emit_endpoint Netbox-App 8080/tcp "$netbox_port" open \
     "NetBox GraphQL" "http://{host}:{port}/graphql/"
 
 # --- PROTOCOL.DEV.EMBER ---------------------------------------------------------

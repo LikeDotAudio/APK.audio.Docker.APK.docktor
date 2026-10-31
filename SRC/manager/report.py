@@ -38,8 +38,8 @@ def broker_candidates(say=None):
     candidate list in this tree. The window this came from kept a second copy,
     a hard-coded [("127.0.0.1", 1883)], and that is what every broadcast
     actually published to.
-    No fallback list, deliberately: brokers.module() raises naming both homes it
-    looked in, rather than a guess at the order costing nothing visible.
+    No fallback list, deliberately: brokers.module() raises when the contracts
+    package is absent, rather than a guess at the order costing nothing visible.
     """
     try:
         mqtt_broker_discovery = brokers.module()
