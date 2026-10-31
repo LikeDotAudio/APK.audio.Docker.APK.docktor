@@ -121,6 +121,13 @@ services:
       APK_DOCKTOR_MQTT_PASSWORD: "${APK_DOCKTOR_MQTT_PASSWORD:-}"
       APK_MQTT_USERNAME: "${APK_MQTT_USERNAME:-}"
       APK_MQTT_PASSWORD: "${APK_MQTT_PASSWORD:-}"
+      # THE INSTRUMENT LAUNCHER'S CREATES (NODE.BareMetal BM-11) are checked
+      # against these: the image(s) an instrument may run (the node's own
+      # APK_INSTRUMENT_IMAGE, same default) and, when set, the host trees an
+      # instrument may bind from (`;`-separated; default: the checkout's
+      # PODS/POD.THICK/INSTRUMENTS and PLUGINS under APKAUDIO_REPO).
+      APK_INSTRUMENT_IMAGE: "${APK_INSTRUMENT_IMAGE:-apk-plugins:local}"
+      APK_INSTRUMENT_BIND_ROOTS: "${APK_INSTRUMENT_BIND_ROOTS:-}"
       # THE OPERATOR HALF OF THE DOUBLE OPT-IN — OFF UNLESS THE OPERATOR SAYS 1.
       # candidates() reaches a public broker only when the CALLER passes
       # allow_public AND this variable is set. report.py is the caller and also

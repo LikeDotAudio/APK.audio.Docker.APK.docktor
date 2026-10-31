@@ -55,6 +55,17 @@ Allowed (the old `APK-Docker-Gate` list): `GET /containers/<n>/json`, `POST /con
 `<storage>/docker-kept/<n>.json`, or `APK_DOCKER_KEPT_DIR`), `POST /apk/recreate/<n>` (create + start from that kept
 inspect; 404 when none), `GET /apk/health` (the daemon's `/_ping`) — for `^(Plugin-|APK-|apk-)[A-Za-z0-9_.-]+$`
 names only. Anything else is a 403 without asking the daemon; a `reply` outside `…/docker/reply/` gets no answer.
+
+**The instrument launcher's three** (NODE.BareMetal `docktor_client.py`, identity `apkaudio-baremetal-launcher`;
+BM-11 — the node holds no socket):
+
+| Call | Admitted when |
+|---|---|
+| `GET /containers/json?all=<bool>&filters={"label":["apk.audio.role=instrument"]}` | exactly that filter (no other key); DockTor re-encodes it before forwarding |
+| `GET /images/<image>/json` | `<image>` (URL-decoded) is an instrument image: `APK_INSTRUMENT_IMAGE` (comma-separated), default `apk-plugins:local` |
+| `POST /apk/instrument/<name>` + `"body"`: the create document | `docker_bus.instrument_problems()` is empty: name `^apk-[a-z0-9_.-]+$`; keys only `Image Env Labels Cmd HostConfig`; the instrument image; `Labels["apk.audio.role"] == "instrument"` and no `com.docker.compose.*` / `apk.audio.protected` label; `HostConfig` keys only `NetworkMode` (= `host`), `RestartPolicy`, `Mounts`, `Binds` — so no `Privileged`, `CapAdd`, `Devices`, `PidMode`…; every mount a `bind` (keys `Type Source Target ReadOnly`) whose source is under the INSTRUMENTS or PLUGINS host tree (`APK_INSTRUMENT_BIND_ROOTS`, default `<APKAUDIO_REPO>/PODS/POD.THICK/{INSTRUMENTS,PLUGINS}`), no `..`. Answers the daemon's `201 {"Id"}` (or 409); the inspect is kept so `/apk/recreate/<name>` works |
+
+`"body"` on any other call is a 403. Tests: `SRC/manager/test_instrument_calls.py`.
 Tests: `SRC/manager/test_docker_bus.py`.
 
 ## HTTP — `127.0.0.1:8765`

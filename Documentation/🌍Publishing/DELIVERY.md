@@ -100,3 +100,17 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
 - `K8/topics.sh` attributes the agent id `BareMetal_MQTT_Exchange` (DATABUS.agent.MQTT's new AgentHeartbeat at
   `System/Agents/…`) to Node-BareMetal.
 
+### For NODE.BareMetal BM-11 (2026-10-30): the instrument launcher asks DockTor
+
+- **Three more docker-bus calls, checked** — `docker_bus.py` admits the instrument list (only the
+  `apk.audio.role=instrument` filter, re-encoded), the instrument image inspect (only `APK_INSTRUMENT_IMAGE`,
+  default `apk-plugins:local`), and a new `POST /apk/instrument/<name>` whose body `instrument_problems()` checks
+  field by field before `/containers/create` (rules in CONTRACTS.md: `^apk-` name, instrument image, host
+  networking, the role label, no compose/protected labels, no HostConfig key beyond NetworkMode/RestartPolicy/
+  Mounts/Binds, binds only under the INSTRUMENTS and PLUGINS trees). Broker-Mosquitto stays out of reach: its
+  name, image and compose labels are all refused. The inspect is kept so `/apk/recreate` works. The compose file
+  passes `APK_INSTRUMENT_IMAGE` / `APK_INSTRUMENT_BIND_ROOTS`. Tests: `test_instrument_calls.py` (7: admitted
+  calls, 11 refused shapes, 22 refused create documents, binds, settings, and the envelope against a fake daemon).
+  Live after the owner rebuilds DockTor; the asker `apkaudio-baremetal-launcher` is admitted by
+  DATABUS.Broker.MQTT's operator ACL (same batch).
+

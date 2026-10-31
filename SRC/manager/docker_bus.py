@@ -15,8 +15,22 @@ THE OLD APK-Docker-Gate's ALLOW-LIST, UNCHANGED (it was SRC/GATE/src/policy.rs
 in DISCOVERY.Engine): inspect, start, stop?t=, kill?signal=, delete?force=&v=
 for `^(Plugin-|APK-|apk-)[A-Za-z0-9_.-]+$` names, plus POST /apk/recreate/<n>,
 which builds the create body from the inspect THIS process kept when it
-executed that container — a requester never sends a body. Anything else is a
-403, answered without asking the daemon. The reply topic must sit under
+executed that container. Anything else is a 403, answered without asking the
+daemon.
+
+THE INSTRUMENT LAUNCHER'S THREE (2026-10-30, NODE.BareMetal BM-11: the node
+holds no socket any more and asks here, as apkaudio-baremetal-launcher):
+  GET  /containers/json?all=<bool>&filters={"label":["apk.audio.role=instrument"]}
+       — that filter and no other, re-encoded by DockTor before forwarding
+  GET  /images/<instrument image>/json — only the instrument image(s)
+  POST /apk/instrument/<name> with "body": the create document — the ONE call
+       that carries a body, and it is checked field by field (instrument_problems)
+       before /containers/create is asked: `^apk-` name, the instrument image,
+       host networking, the instrument role label, binds only under the
+       INSTRUMENTS and PLUGINS trees, and no other HostConfig key at all (no
+       Privileged, CapAdd, Devices, PidMode…). It may not claim a compose or
+       `apk.audio.protected` label, so it can never pass for Broker-Mosquitto
+       or any stack container. The inspect is kept, so /apk/recreate works. The reply topic must sit under
 REPLY_BASE, so a request cannot make DockTor publish anywhere else.
 
 OWNS its own MQTT session (bus.py's emit client registers no callbacks and is
@@ -31,6 +45,7 @@ import json
 import socket
 import threading
 import http.client
+import urllib.parse
 
 from .bus import BROKER_HOST, BROKER_PORT, SERVER_NAME, emit, new_client, credentials
 
@@ -56,6 +71,121 @@ CREDENTIAL_PREFIX = "APK_DOCKTOR_MQTT"
 DOCKER_SOCKET = os.environ.get("APK_DOCKER_UPSTREAM", "/var/run/docker.sock")
 
 _NAME = re.compile(r"^(Plugin-|APK-|apk-)[A-Za-z0-9_.-]+$")
+_INSTRUMENT_NAME = re.compile(r"^apk-[a-z0-9_.-]+$")
+INSTRUMENT_LABEL = ("apk.audio.role", "instrument")
+INSTRUMENT_FILTER = {"label": ["apk.audio.role=instrument"]}
+_RESTART = {"no", "unless-stopped", "always", "on-failure"}
+_CREATE_KEYS = {"Image", "Env", "Labels", "Cmd", "HostConfig"}
+_HOST_KEYS = {"NetworkMode", "RestartPolicy", "Mounts", "Binds"}
+_MOUNT_KEYS = {"Type", "Source", "Target", "ReadOnly"}
+# Labels an instrument may not carry: compose's own (it would pass for a stack
+# container, the broker's included) and the protected marker DockTor's
+# scripts leave alone.
+_FORBIDDEN_LABEL_PREFIXES = ("com.docker.compose.", "apk.audio.protected")
+
+
+def instrument_images():
+    """The image(s) an instrument container may run: APK_INSTRUMENT_IMAGE
+    (comma-separated), else apk-plugins:local — the launcher's own default."""
+    raw = os.environ.get("APK_INSTRUMENT_IMAGE") or "apk-plugins:local"
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def instrument_bind_roots():
+    """Host directories an instrument may bind from: APK_INSTRUMENT_BIND_ROOTS
+    (newline- or `;`-separated, because these paths may hold colons), else the
+    checkout's PODS/POD.THICK/INSTRUMENTS and PODS/POD.THICK/PLUGINS under
+    APKAUDIO_REPO (the host path the manager is bound at)."""
+    raw = os.environ.get("APK_INSTRUMENT_BIND_ROOTS")
+    if raw:
+        roots = [r.strip() for r in re.split(r"[;\n]", raw) if r.strip()]
+    else:
+        repo = os.environ.get("APKAUDIO_REPO")
+        if not repo:
+            from .paths import REPOSITORY_ROOT
+            repo = REPOSITORY_ROOT
+        roots = [os.path.join(repo, "PODS", "POD.THICK", "INSTRUMENTS"),
+                 os.path.join(repo, "PODS", "POD.THICK", "PLUGINS")]
+    return [os.path.normpath(r) for r in roots if os.path.isabs(r)]
+
+
+def _under(path, roots):
+    if not isinstance(path, str) or not os.path.isabs(path) or "\x00" in path:
+        return False
+    if ".." in path.split("/"):
+        return False
+    norm = os.path.normpath(path)
+    return any(norm == root or norm.startswith(root.rstrip("/") + "/") for root in roots)
+
+
+def _target_ok(target):
+    return (isinstance(target, str) and os.path.isabs(target) and ".." not in target.split("/")
+            and "\x00" not in target and os.path.normpath(target) not in ("/", "/var/run/docker.sock"))
+
+
+def instrument_problems(name, body):
+    """Every reason `body` may not become instrument container `name` ([] = ok)."""
+    out = []
+    if not (isinstance(name, str) and len(name) <= 128 and _INSTRUMENT_NAME.match(name)):
+        out.append("name must match ^apk-[a-z0-9_.-]+$")
+    if not isinstance(body, dict):
+        return out + ["body must be an object"]
+    extra = set(body) - _CREATE_KEYS
+    if extra:
+        out.append(f"keys not allowed: {sorted(extra)}")
+    if body.get("Image") not in instrument_images():
+        out.append(f"Image must be one of {sorted(instrument_images())}")
+    env = body.get("Env", [])
+    if not (isinstance(env, list) and all(isinstance(e, str) and "=" in e for e in env)):
+        out.append("Env must be a list of KEY=value strings")
+    cmd = body.get("Cmd")
+    if cmd is not None and not (isinstance(cmd, list) and all(isinstance(c, str) for c in cmd)):
+        out.append("Cmd must be a list of strings")
+    labels = body.get("Labels")
+    if not (isinstance(labels, dict) and all(isinstance(k, str) and isinstance(v, str)
+                                              for k, v in labels.items())):
+        out.append("Labels must be an object of strings")
+        labels = {}
+    if labels.get(INSTRUMENT_LABEL[0]) != INSTRUMENT_LABEL[1]:
+        out.append("Labels must carry apk.audio.role=instrument")
+    bad = sorted(k for k in labels if k.startswith(_FORBIDDEN_LABEL_PREFIXES))
+    if bad:
+        out.append(f"labels not allowed: {bad}")
+    host = body.get("HostConfig")
+    if not isinstance(host, dict):
+        return out + ["HostConfig must be an object"]
+    extra = set(host) - _HOST_KEYS
+    if extra:
+        out.append(f"HostConfig keys not allowed: {sorted(extra)}")
+    if host.get("NetworkMode") != "host":
+        out.append("NetworkMode must be host")
+    restart = host.get("RestartPolicy", {"Name": "no"})
+    if not (isinstance(restart, dict) and set(restart) <= {"Name", "MaximumRetryCount"}
+            and restart.get("Name") in _RESTART):
+        out.append("RestartPolicy not allowed")
+    roots = instrument_bind_roots()
+    mounts = host.get("Mounts", [])
+    if not isinstance(mounts, list):
+        out.append("Mounts must be a list")
+        mounts = []
+    for i, mount in enumerate(mounts):
+        if not (isinstance(mount, dict) and set(mount) <= _MOUNT_KEYS and mount.get("Type") == "bind"
+                and _under(mount.get("Source"), roots) and _target_ok(mount.get("Target"))
+                and isinstance(mount.get("ReadOnly", False), bool)):
+            out.append(f"Mounts[{i}] must be a bind from under {roots}")
+    binds = host.get("Binds", [])
+    if not isinstance(binds, list):
+        out.append("Binds must be a list")
+        binds = []
+    for i, bind in enumerate(binds):
+        # src:dst[:ro|rw] — split from the RIGHT, since a source may hold colons.
+        parts = bind.rsplit(":", 2) if isinstance(bind, str) else []
+        if len(parts) == 3 and parts[2] not in ("ro", "rw"):
+            parts = bind.rsplit(":", 1)
+        src, dst = (parts[0], parts[1]) if len(parts) >= 2 else (None, None)
+        if not (_under(src, roots) and _target_ok(dst)):
+            out.append(f"Binds[{i}] must be a bind from under {roots}")
+    return out
 _DIGITS = re.compile(r"^[0-9]{1,4}$")
 _SIGNAL = re.compile(r"^[A-Z0-9]{1,12}$")
 _BOOL = {"true", "false", "1", "0"}
@@ -64,6 +194,24 @@ _BOOL = {"true", "false", "1", "0"}
 def plugin_name(name):
     """A container the engine's launcher manages, and only those."""
     return len(name) <= 128 and bool(_NAME.match(name))
+
+
+def _instrument_list_query(query):
+    """all=<bool> and filters = exactly the instrument label filter, nothing else."""
+    try:
+        pairs = urllib.parse.parse_qs(query, keep_blank_values=True, strict_parsing=True)
+    except ValueError:
+        return False
+    if set(pairs) - {"all", "filters"} or "filters" not in pairs:
+        return False
+    if any(len(v) != 1 for v in pairs.values()):
+        return False
+    if "all" in pairs and pairs["all"][0] not in _BOOL:
+        return False
+    try:
+        return json.loads(pairs["filters"][0]) == INSTRUMENT_FILTER
+    except ValueError:
+        return False
 
 
 def _query_ok(query, allowed):
@@ -80,12 +228,23 @@ def _query_ok(query, allowed):
 
 
 def decide(method, target):
-    """('forward', keep_name|None) · ('recreate', name) · ('health', None) · ('deny', why)."""
+    """('forward', keep_name|None) · ('recreate', name) · ('health', None) ·
+    ('list', None) · ('instrument', name) · ('deny', why)."""
     path, _, query = target.partition("?")
     deny = ("deny", f"{method} {target}: not one of the calls the engine makes")
     if not path.startswith("/"):
         return deny
     seg = path[1:].split("/")
+    # THE INSTRUMENT LAUNCHER'S THREE (module docstring).
+    if method == "GET" and seg == ["containers", "json"]:
+        return ("list", None) if _instrument_list_query(query) else \
+            ("deny", f"{method} {target}: only the instrument-label list is answered")
+    if method == "GET" and len(seg) == 3 and seg[0] == "images" and seg[2] == "json" and not query:
+        image = urllib.parse.unquote(seg[1])
+        return ("forward", None) if image in instrument_images() else \
+            ("deny", f"{method} {target}: not the instrument image")
+    if method == "POST" and len(seg) == 3 and seg[:2] == ["apk", "instrument"] and not query:
+        return ("instrument", seg[2])
     if method == "GET" and seg == ["apk", "health"] and not query:
         return ("health", None)
     if method == "POST" and len(seg) == 3 and seg[:2] == ["apk", "recreate"] and not query:
@@ -206,8 +365,38 @@ class DockerBus:
             return 204, ""
         return 502, json.dumps({"message": f"created {name} but start answered {started}"})
 
-    def answer(self, method, target):
+    def instrument(self, name, body):
+        """POST /apk/instrument/<name>: create one instrument container, checked."""
+        problems = instrument_problems(name, body)
+        if problems:
+            print(f"🚫 [DOCKER-BUS] refused instrument {name}: {'; '.join(problems)}")
+            return 403, json.dumps({"message": f"refused by DockTor: {'; '.join(problems)}"})
+        created = daemon("POST", f"/containers/create?name={name}", json.dumps(body), self.upstream)
+        if not created:
+            return 502, json.dumps({"message": "the daemon did not answer"})
+        if created[0] == 201:
+            self.keep(name)
+            print(f"🎛️  [DOCKER-BUS] created instrument {name}")
+        return created
+
+    def list_instruments(self, target):
+        """The instrument list, re-encoded here: only the instrument filter goes out."""
+        _path, _, query = target.partition("?")
+        pairs = urllib.parse.parse_qs(query)
+        everything = pairs.get("all", ["0"])[0] in ("1", "true")
+        canonical = (f"/containers/json?all={'1' if everything else '0'}&filters="
+                     + urllib.parse.quote(json.dumps(INSTRUMENT_FILTER)))
+        result = daemon("GET", canonical, upstream=self.upstream)
+        return result if result else (502, json.dumps({"message": "the daemon did not answer"}))
+
+    def answer(self, method, target, body=None):
         kind, arg = decide(method, target)
+        if body is not None and kind != "instrument":
+            return 403, json.dumps({"message": f"refused by DockTor: {method} {target} takes no body"})
+        if kind == "instrument":
+            return self.instrument(arg, body)
+        if kind == "list":
+            return self.list_instruments(target)
         if kind == "deny":
             print(f"🚫 [DOCKER-BUS] refused {arg}")
             return 403, json.dumps({"message": f"refused by DockTor: {arg}"})
@@ -231,7 +420,7 @@ class DockerBus:
             return None
         if not reply.startswith(REPLY_BASE + "/") or "#" in reply or "+" in reply:
             return None
-        status, body = self.answer(method, path)
+        status, body = self.answer(method, path, req.get("body"))
         return reply, json.dumps({"id": rid, "status": status, "body": body})
 
 
