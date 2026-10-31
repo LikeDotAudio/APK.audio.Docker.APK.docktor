@@ -38,6 +38,14 @@ Smoke (`.apk.scripts/smoke.py`): HEAD is on origin — [SMOKE.md](../%F0%9F%A7%A
 - Nothing rebuilds the DockTor image when this repo changes; a stale image keeps running old scripts.
 - `verify.sh` and `test-gates.sh` need a live Docker host and are run by hand or from the dashboard.
 
+## Delivered 2026-10-31: portable file names (no `:` `|` or case twins)
+
+- The monorepo now checks out on Windows and macOS: no tracked name holds `<>:"|?*`, a trailing dot or space, a device name or a case-only twin. Colon folders became dot folders (the POD.x convention).
+- Renamed: `bin/K8:runner.py` → `bin/K8.runner.py`, `SRC/APK.audio:mount.sh` → `SRC/APK.audio.mount.sh`, `SRC/APK.audio:DeleteOldRebuildAndMount.sh` → `SRC/APK.audio.DeleteOldRebuildAndMount.sh`. The root door is `./K8.runner.py` (`package.json` scripts follow).
+- `Dockerfile.manager` copies to `/app/APK:DOCKERS/K8.runner.py` and its `CMD` runs that name; usage text in `cli.py`, `open-repo.sh` and the READMEs follows.
+- Verified: `./K8.runner.py` from the root prints its usage; root `.apk.scripts/check.sh` green.
+- Reaching a running node needs `up-stack.sh docktor` (the image still carries the old names until rebuilt).
+
 ## Delivered from the 2026-10-30 audit
 
 DockTor is the bench's container manager (`docker-compose.manager.yml`, container `DockTor`). Everything below
