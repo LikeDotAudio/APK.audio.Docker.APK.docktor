@@ -19,8 +19,9 @@ executed that container — a requester never sends a body. Anything else is a
 403, answered without asking the daemon. The reply topic must sit under
 REPLY_BASE, so a request cannot make DockTor publish anywhere else.
 
-OWNS its own MQTT client (bus.py's emit client registers no callbacks and is
-for events only). Started by serve() — the long-running process — and by
+OWNS its own MQTT session (bus.py's emit client registers no callbacks and is
+for events only), built by bus.new_client — one constructor for the package —
+under its own broker identity (CREDENTIAL_PREFIX below). Started by serve() — the long-running process — and by
 nothing that exits in a second.
 """
 
@@ -31,10 +32,27 @@ import socket
 import threading
 import http.client
 
-from .bus import BROKER_HOST, BROKER_PORT, SERVER_NAME, emit
+from .bus import BROKER_HOST, BROKER_PORT, SERVER_NAME, emit, new_client, credentials
 
-REQUEST_TOPIC = "APK.audio/System/ContainerManager/docker/request"
-REPLY_BASE = "APK.audio/System/ContainerManager/docker/reply"
+from .bus import CONTRACT_ROOT, contract_topic
+
+# THE CONTRACTS' FAMILIES (containerManagerDockerRequest / …Reply), NOT
+# bus.TOPIC_ROOT: TOPIC_ROOT is an operator override for the event tree, and the
+# engine spells this pair as a wire constant (DISCOVERY.Engine
+# launcher/docker/bus.rs), so it must not move with it.
+REQUEST_TOPIC = contract_topic("containerManagerDockerRequest",
+                               f"{CONTRACT_ROOT}/System/ContainerManager/docker/request")
+REPLY_BASE = contract_topic("containerManagerDockerReply",
+                            f"{CONTRACT_ROOT}/System/ContainerManager/docker/reply/_",
+                            client="_")[:-2]
+# WHO MAY ASK (2026-10-30 audit, DockTor #2). MQTT 3.1.1 does not tell a
+# subscriber who published, so the line is drawn AT THE BROKER: under
+# DATABUS.Broker.MQTT SRC/acl.local only apkaudio-docker-engine may publish
+# REQUEST_TOPIC and only apkaudio-docktor may hear it or write under REPLY_BASE.
+# This client connects as that identity from these two variables; unset, it
+# connects anonymously, which works only on a broker without the operator ACL
+# and is said out loud at start (DOCKER_BUS_SERVING "authenticated": false).
+CREDENTIAL_PREFIX = "APK_DOCKTOR_MQTT"
 DOCKER_SOCKET = os.environ.get("APK_DOCKER_UPSTREAM", "/var/run/docker.sock")
 
 _NAME = re.compile(r"^(Plugin-|APK-|apk-)[A-Za-z0-9_.-]+$")
@@ -230,11 +248,11 @@ def start_docker_bus():
         return None
     bus = DockerBus()
     client_id = f"DockTor_docker_{SERVER_NAME}_{os.getpid()}"
-    try:
-        client = mqtt.Client(client_id=client_id,
-                             callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-    except (AttributeError, TypeError, ValueError):
-        client = mqtt.Client(client_id=client_id)
+    client = new_client(client_id, CREDENTIAL_PREFIX)
+    authenticated = credentials(CREDENTIAL_PREFIX) is not None
+    if not authenticated:
+        print(f"⚠️ [DOCKER-BUS] {CREDENTIAL_PREFIX}_USERNAME/_PASSWORD unset: answering "
+              "anonymously, so any bus client can ask — set them on a bench with the operator ACL")
 
     def on_connect(c, *_args, **_kw):
         c.subscribe(REQUEST_TOPIC, qos=1)
@@ -256,5 +274,6 @@ def start_docker_bus():
     except Exception as err:
         print(f"⚠️ [DOCKER-BUS] could not reach the broker: {err}")
         return None
-    emit("DOCKER_BUS_SERVING", {"request": REQUEST_TOPIC, "socket": DOCKER_SOCKET})
+    emit("DOCKER_BUS_SERVING", {"request": REQUEST_TOPIC, "socket": DOCKER_SOCKET,
+                                "authenticated": authenticated})
     return client

@@ -23,9 +23,8 @@ Page and API at `http://localhost:8765/` — loopback only, there is no public U
 ## Test
 
 ```sh
-cd SRC && python3 -m pytest -q manager/test_readers_idle.py
-cd SRC && python3 -c "import manager.api, manager.serve, manager.cli"   # imports headless
-for f in K8/*.sh SRC/*.sh; do bash -n "$f"; done
+./check.sh              # py_compile, every unit test (36), bash -n K8/*.sh, compose config; starts nothing
+./check.sh --gates      # … plus K8/test-gates.sh
 K8/naming.sh            # includes plugin-includes.sh
 K8/test-gates.sh        # pre-build gates (against a bench)
 K8/verify.sh            # post-mount checks (against a running bench)
@@ -35,6 +34,53 @@ Smoke (`.apk.scripts/smoke.py`): HEAD is on origin — [SMOKE.md](../%F0%9F%A7%A
 
 ## Not automated
 
-- No CI workflow in this repository; nothing runs the tests above on push.
+- No CI workflow (the root CI verifies nothing by design); `./check.sh` is run by hand before a push.
 - Nothing rebuilds the DockTor image when this repo changes; a stale image keeps running old scripts.
 - `verify.sh` and `test-gates.sh` need a live Docker host and are run by hand or from the dashboard.
+
+## Delivered from the 2026-10-30 audit
+
+DockTor is the bench's container manager (`docker-compose.manager.yml`, container `DockTor`). Everything below
+reaches the dashboard only after the owner rebuilds it (`K8/up-stack.sh MANAGER.Docktor` from a host shell —
+the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash -n, compose config: 0 failed) and
+`docker build -f Docker/Dockerfile.manager .` with the unit tests run inside the image (OK, `api_version` 1,
+`contract_version` 0.2.0).
+
+- **Docker bus behind a broker identity** — `docker_bus.py` connects as `apkaudio-docktor`
+  (`APK_DOCKTOR_MQTT_USERNAME`/`_PASSWORD`, passed through `docker-compose.manager.yml`), and
+  DATABUS.Broker.MQTT's operator ACL (same batch, its DELIVERY) lets only `apkaudio-docker-engine` publish
+  `ContainerManager/docker/request` and only DockTor hear it or reply — a bus client can no longer stop or kill a
+  `Plugin-*` container. Broker-Mosquitto stays protected: nothing here restarts it. **Takes effect on the owner's
+  next mint + broker restart with the operator overlay**, and needs the engine's credentials first (handoff to
+  DISCOVERY.Engine, `launcher/docker/bus.rs`), or the engine loses Docker. Tests: `test_bus_identity.py`; the ACL
+  itself by the broker's `SRC/test_operator_acl.sh` checks 10–14. The HTTP API on :8765 stays unauthenticated
+  and loopback-only — Kept by design (PRINCIPLES.md: host networking, the bind is the boundary, `serve.py` warns
+  that widening needs an authenticating proxy).
+- **Schemas for the retained documents + a test + one check command** — `SRC/manager/schemas/` holds JSON Schemas
+  for `status`, `Manager`, `containers/…` and `…/apps/…`; `report.py` gained `status_document()` and
+  `app_document()` builders and `test_report_documents.py` validates every builder's output (dependency-free
+  validator). `./check.sh` runs it with all unit tests, bash -n and compose config (`--gates` adds
+  `K8/test-gates.sh`). No new CI gating: the root CI verifies nothing by design.
+- **One paho constructor, chat through the bus** — `bus.new_client()` builds every session (event,
+  docker bus) with one credential rule; `api.chat()` publishes on `bus.py`'s event session instead of a
+  `publish.single` of its own; `report.py` sends `APK_MQTT_*` credentials to our brokers only. The event and
+  docker-bus sessions stay two on purpose: the second carries its own broker identity and callbacks.
+- **Legacy path candidates deleted** — `paths.py` keeps one spelling each for the BareMetal SRC and the brand
+  token (the image now stages both at the same relative places as the checkout); the eight pre-2026-10-16
+  spellings are gone.
+- **Versioned API and documents** — `api.API_VERSION` (1) and every route under `/api/v1/…`;
+  `bus.DOCUMENT_VERSION` (1) as `doc_version` in every retained document; `/api/health` reports
+  `api_version`, `document_version` and `contract_version`. Tests in `test_api_routing.py`.
+- **api.py routing tests** — `test_api_routing.py`: every table's script exists; unknown verb 127; stack verb
+  names its stack; a stack verb in container scope refused; container verb argument order; the kill-pid prompt
+  pattern enforced server side; a bench verb without a prompt ignores extra arguments.
+- **Contracts package adopted** — the image pip-installs `apkaudio_contracts`; `bus.py` takes ROOT and
+  `broker_auth`, `docker_bus.py` the `containerManagerDocker*` families, and `test_bus_identity.py` holds every
+  DockTor topic equal to the contracts' builders.
+- **Hand endpoint rows yield to labels** — `K8/endpoints.sh` skips its hand rows for any container that carries
+  `audio.apk.purpose` + `audio.apk.endpoint.*` labels, and the plugin-config row is now for `Plugin-*`/`Worker-*`
+  only. Broker-Mosquitto's labels are in (DATABUS.Broker.MQTT); the other owners' are handoffs (see IMPROVEMENTS).
+- **Kept by design** — DockTor runs the baked copy of `K8/*.sh` (an edit needs a rebuild; the image must be a
+  whole program, Dockerfile header), and the in-image `/app/APK:DOCKERS/APK:docktor` spellings (nothing outside
+  the image resolves them).
+

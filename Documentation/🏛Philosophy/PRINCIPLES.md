@@ -46,6 +46,12 @@ authentication, so it binds `127.0.0.1` (`APK_MANAGER_BIND` in `Docker/docker-co
 containers, mounts no socket of its own: it asks DockTor over the bus (`SRC/manager/docker_bus.py`), and DockTor
 answers only the five container calls for `^(Plugin-|APK-|apk-)` names plus a recreate from an inspect it kept.
 
+WHO MAY ASK IS THE BROKER'S CALL, not DockTor's (2026-10-30 audit): MQTT 3.1.1 does not tell a subscriber who
+published, so a check inside DockTor would be a check of nothing. DockTor's docker-bus session connects as its
+own identity (`apkaudio-docktor`), and DATABUS.Broker.MQTT's operator ACL lets only `apkaudio-docker-engine`
+publish the request. The HTTP API stays unauthenticated **by design**: on host networking the loopback bind is
+the boundary, and widening it needs an authenticating proxy in front (`serve.py` says so at start).
+
 ## The bus and the manager are protected
 
 `is_protected_container()` (`K8/_common.sh:673`) keeps DockTor and Broker-Mosquitto out of every routine
@@ -96,10 +102,12 @@ first is a pin and wins. The DockTor image carries `git` for this.
 
 - The dashboard runs the scripts **baked into the image**, not the bind-mounted checkout: an edit to
   `K8/*.sh` does nothing until DockTor is rebuilt (see [DELIVERY](../%F0%9F%8C%8DPublishing/DELIVERY.md)).
-- In-image paths still say `APK:DOCKERS` / `APK:docktor` (`Docker/Dockerfile.manager`, `SRC/manager/paths.py`);
-  the host checkout's root is `PODS/`.
+  Kept by design: the image must be a whole program — a manager that is only the mount starts, finds no code
+  and exits (Dockerfile header).
+- In-image paths still say `APK:DOCKERS` / `APK:docktor` (`Docker/Dockerfile.manager`); the host checkout's root
+  is `PODS/`. Kept by design: nothing outside the image resolves them, and `paths.py` walks from `__file__`.
+- Until `apkaudio_contracts` carries the broker-candidate module and the brand token, the image still COPYs
+  NODE.BareMetal's `mqtt_broker_discovery.py` and `contracts/tokens/brand.json` (handoff to contracts filed);
+  `brokers.py` already prefers the package.
 - No runner publishes a `description` in `incoming/api` yet, so `K8/purpose.sh`'s third source answers nothing.
-- Broker-Mosquitto runs the pulled `eclipse-mosquitto:2.0` with its config bind-mounted, not
-  `Dockerfile.broker` (Dockers law 8 bent; recorded in DATABUS.Broker.MQTT's PRINCIPLES), so `ensure_broker`
-  uses `up --no-build`.
 - `K8/purpose.sh` still keeps a written table for containers that are not plugins.

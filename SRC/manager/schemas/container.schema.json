@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "apk.audio/ContainerManager/container.schema.json",
+  "title": "APK.audio/System/ContainerManager/containers/<Stack>/<Name> (retained)",
+  "description": "One container as DockTor publishes it (report.container_document). null means 'not read on this path', never 'none'.",
+  "type": "object",
+  "required": [
+    "doc_version",
+    "name",
+    "status",
+    "dead",
+    "ours",
+    "stack",
+    "image",
+    "network_mode",
+    "project",
+    "ports",
+    "published",
+    "resources",
+    "apps",
+    "apps_total",
+    "apps_running",
+    "staleness"
+  ],
+  "properties": {
+    "doc_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "dead": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "ours": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "stack": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string"
+    },
+    "network_mode": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "ports": {
+      "type": "string"
+    },
+    "published": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "resources": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "cpu_percent": {},
+        "memory": {},
+        "memory_percent": {},
+        "net_io": {},
+        "block_io": {},
+        "pids": {}
+      },
+      "additionalProperties": false
+    },
+    "apps": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "app",
+          "state",
+          "detail"
+        ],
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "apps_total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "apps_running": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "staleness": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "stale": {},
+        "behind": {},
+        "built": {},
+        "changed": {},
+        "newest": {}
+      },
+      "additionalProperties": false
+    }
+  }
+}

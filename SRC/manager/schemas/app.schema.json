@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "apk.audio/ContainerManager/app.schema.json",
+  "title": "APK.audio/System/ContainerManager/containers/<Stack>/<Name>/apps/<App> (retained)",
+  "description": "One app inside one container (report.app_document).",
+  "type": "object",
+  "required": [
+    "doc_version",
+    "container",
+    "stack",
+    "app",
+    "state",
+    "detail",
+    "timestamp"
+  ],
+  "properties": {
+    "doc_version": {
+      "const": 1
+    },
+    "container": {
+      "type": "string"
+    },
+    "stack": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "app": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  }
+}

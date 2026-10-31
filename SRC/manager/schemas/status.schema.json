@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "apk.audio/ContainerManager/status.schema.json",
+  "title": "APK.audio/System/ContainerManager/status (retained)",
+  "description": "The whole bench in one document (report.status_document).",
+  "type": "object",
+  "required": [
+    "doc_version",
+    "sender",
+    "timestamp",
+    "status",
+    "phase",
+    "total_containers",
+    "containers"
+  ],
+  "properties": {
+    "doc_version": {
+      "const": 1
+    },
+    "sender": {
+      "const": "APK.audio DockTor"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "status": {
+      "const": "active"
+    },
+    "phase": {
+      "enum": [
+        "manual",
+        "before",
+        "after",
+        "refresh",
+        "heartbeat"
+      ]
+    },
+    "total_containers": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "$ref": "container.schema.json"
+      }
+    },
+    "query": {
+      "type": "object",
+      "required": [
+        "script",
+        "argv"
+      ],
+      "properties": {
+        "script": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": [
+        "exit_code",
+        "ok",
+        "duration_s"
+      ],
+      "properties": {
+        "exit_code": {
+          "type": "integer"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "duration_s": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

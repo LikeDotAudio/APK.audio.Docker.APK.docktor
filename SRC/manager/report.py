@@ -18,15 +18,15 @@ and nowhere is one of the options."""
 
 import os
 import re
-import sys
 import json
 import time
 import threading
 
 from . import palette
-from .paths import BAREMETAL_ROOT
+from . import brokers
 from .bus import (emit, STATUS_TOPIC, MANAGER_TOPIC, CONTAINERS_TOPIC,
-                  SERVER_NAME, BROKER_HOST, BROKER_PORT)
+                  SERVER_NAME, BROKER_HOST, BROKER_PORT, DOCUMENT_VERSION,
+                  credentials)
 from .runner import run_management_script
 from .readers import read_containers
 
@@ -38,12 +38,11 @@ def broker_candidates(say=None):
     candidate list in this tree. The window this came from kept a second copy,
     a hard-coded [("127.0.0.1", 1883)], and that is what every broadcast
     actually published to.
-    No fallback list, deliberately: BAREMETAL_ROOT degrades QUIETLY, so a stale
-    spelling would cost the broker order without ever costing an error message.
+    No fallback list, deliberately: brokers.module() raises naming both homes it
+    looked in, rather than a guess at the order costing nothing visible.
     """
     try:
-        sys.path.insert(0, os.path.join(BAREMETAL_ROOT, "Baremetal:Manager"))
-        import mqtt_broker_discovery
+        mqtt_broker_discovery = brokers.module()
         # `configured` IS THE EXISTING DOOR: candidates() already puts a shop
         # own broker ahead of the loopback and drops it when it IS the loopback,
         # so passing bus.BROKER_HOST through costs no second ordering rule — and
@@ -79,21 +78,17 @@ def broker_candidates(say=None):
         # be two more strangers receiving this bench container names and host
         # ports with nobody reading. The one with a reader is the head of the
         # list: the PUBLIC pane connects to test.mosquitto.org and nothing else.
-        first_public = next((row for row in found
-                             if row[0] in {h for h, _, _ in
-                                           mqtt_broker_discovery.PUBLIC_MQTT_BROKERS}), None)
-        found = [row for row in found
-                 if row[0] not in {h for h, _, _ in mqtt_broker_discovery.PUBLIC_MQTT_BROKERS}
-                 or row is first_public]
+        public = brokers.public_hosts()
+        first_public = next((row for row in found if row[0] in public), None)
+        found = [row for row in found if row[0] not in public or row is first_public]
 
         return (found,
                 mqtt_broker_discovery.describe_posture(allow_public=True,
                                                        public_first=True))
     except Exception as err:
-        emit("BROKER_DISCOVERY_FAILED", {"error": str(err), "root": BAREMETAL_ROOT})
+        emit("BROKER_DISCOVERY_FAILED", {"error": str(err)})
         if say:
-            say(f"⚠️ Broker discovery unavailable — {err}. Nothing broadcast; "
-                f"expected mqtt_broker_discovery.py under {BAREMETAL_ROOT}/Baremetal:Manager.")
+            say(f"⚠️ Broker discovery unavailable — {err}. Nothing broadcast.")
         return None
 
 
@@ -155,6 +150,7 @@ def container_document(card):
     sample = card.get("resources")
     apps = card.get("apps")
     return {
+        "doc_version": DOCUMENT_VERSION,
         "name": card.get("name", ""),
         "status": card.get("status", ""),
         "dead": bool(card.get("dead")) if "dead" in card else None,
@@ -366,6 +362,7 @@ def manager_document(phase, documents, brokers, sending, retired):
     """
     apps = [app for document in documents for app in (document.get("apps") or [])]
     return {
+        "doc_version": DOCUMENT_VERSION,
         "sender": "APK.audio DockTor",
         "servername": SERVER_NAME,
         "pid": os.getpid(),
@@ -392,6 +389,32 @@ def manager_document(phase, documents, brokers, sending, retired):
                       "apps": sum(len(d.get("apps") or []) for d in sending),
                       "retired": len(retired)},
     }
+
+
+def status_document(phase, containers_info, query=None, response=None):
+    """The roll-up at STATUS_TOPIC: the whole bench, one retained document."""
+    document = {
+        "doc_version": DOCUMENT_VERSION,
+        "sender": "APK.audio DockTor",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "status": "active",
+        "phase": phase,
+        "total_containers": len(containers_info),
+        "containers": containers_info,
+    }
+    if query is not None:
+        document["query"] = query
+    if response is not None:
+        document["response"] = response
+    return document
+
+
+def app_document(container, app, timestamp):
+    """One app inside one container, at app_topic()."""
+    return {"doc_version": DOCUMENT_VERSION,
+            "container": container.get("name", ""), "stack": container.get("stack"),
+            "app": app.get("app", ""), "state": app.get("state", ""),
+            "detail": app.get("detail", ""), "timestamp": timestamp}
 
 
 def publish_status_report(phase, query=None, response=None, say=None, announce=True,
@@ -431,18 +454,7 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
         except Exception:
             pass
 
-    payload_dict = {
-        "sender": "APK.audio DockTor",
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "status": "active",
-        "phase": phase,
-        "total_containers": len(containers_info),
-        "containers": containers_info,
-    }
-    if query is not None:
-        payload_dict["query"] = query
-    if response is not None:
-        payload_dict["response"] = response
+    payload_dict = status_document(phase, containers_info, query, response)
 
     sending = list(per_container or [])
     # ONE CONNECTION, EVERY TOPIC: publish.multiple() opens the socket once. A
@@ -461,10 +473,7 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
             leaf = app_topic(name, app.get("app", ""))
             live_apps.add(leaf)
             messages.append((leaf, json.dumps(
-                {"container": name, "stack": document.get("stack"),
-                 "app": app.get("app", ""), "state": app.get("state", ""),
-                 "detail": app.get("detail", ""),
-                 "timestamp": payload_dict["timestamp"]}, indent=2)))
+                app_document(document, app, payload_dict["timestamp"]), indent=2)))
             published_apps += 1
         # An app that left this container plane — switched off in the roster or
         # removed from it — loses its topic here rather than at the next
@@ -482,12 +491,9 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
 
     # WHICH HOSTS ARE NOT OURS, asked of the shared list rather than matched on
     # a name here, so a public broker is still named in exactly one place.
-    public_hosts = set()
-    try:
-        import mqtt_broker_discovery
-        public_hosts = {row[0] for row in mqtt_broker_discovery.PUBLIC_MQTT_BROKERS}
-    except Exception:
-        pass
+    public_hosts = brokers.public_hosts()
+    # OUR CREDENTIALS GO TO OUR BROKERS ONLY: a stranger's broker is anonymous.
+    own_auth = credentials()
 
     reached = []
     for broker in candidate_brokers:
@@ -515,7 +521,9 @@ def publish_status_report(phase, query=None, response=None, say=None, announce=T
             publish.multiple([{"topic": topic, "payload": body,
                                "qos": 0, "retain": retain}
                               for topic, body in outgoing],
-                             hostname=host, port=port, keepalive=3)
+                             hostname=host, port=port, keepalive=3,
+                             auth=({"username": own_auth[0], "password": own_auth[1]}
+                                   if retain and own_auth else None))
             emit("STATUS_PUBLISHED", {"broker": f"{host}:{port}", "description": desc,
                                       "topic": STATUS_TOPIC, "phase": phase,
                                       "retained": retain,
@@ -569,11 +577,7 @@ def _is_refused(err):
 
 
 def _is_public(host):
-    try:
-        import mqtt_broker_discovery
-        return host in {h for h, _, _ in mqtt_broker_discovery.PUBLIC_MQTT_BROKERS}
-    except Exception:
-        return False
+    return host in brokers.public_hosts()
 
 
 def launch_broker_if_refused(host, port, err, say=None):

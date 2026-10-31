@@ -33,7 +33,10 @@ that happens on the bus. It is the only container that holds the Docker socket.
 
 ## The container
 
-`docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt. `network_mode: host`, `init: true`.
+`docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt + `apkaudio_contracts` (pip-installed from
+`contracts/python`). `network_mode: host`, `init: true`. Broker identities from the shell: `APK_MQTT_*` for the
+event session, `APK_DOCKTOR_MQTT_*` (`apkaudio-docktor`) for the docker bus, which the broker's operator ACL
+requires — blank is anonymous.
 Mounts: `/var/run/docker.sock`; the checkout at **the same absolute path** on both sides (`APKAUDIO_REPO`), so
 build contexts it hands the daemon resolve to the same bytes; `apk-audio-logs` (binds
 `Documentation/LOGS`) and `docktor-storage` (binds `Documentation/STORAGE/DockTor`). Healthcheck: `/api/health`
@@ -58,7 +61,8 @@ PODS/POD.manager/MANAGER.Docktor/K8/up-stack.sh 'PROTOCOL.DEV.EMBER'      # one 
 
 `GET /api/{health,routes,palette,actions,containers,resources,stacks,staleness,endpoints,volumes,cost,log,stream,queue}`,
 `GET /api/{container,surface,ping,config-script}/<name>`, `POST /api/{queue/cancel,chat,cost,log/clear}`,
-`POST /api/action/<key>`. Action keys (`action_table()`):
+`POST /api/action/<key>`. Every route also answers under `/api/v1/…`; `/api/health` reports `api_version`,
+`document_version` (the retained documents' `doc_version`) and `contract_version`. Action keys (`action_table()`):
 
 - bench: `up`, `rebuild-all`, `rebuild-core`, `down`, `remove-other`, `clear-dead`, `panic`, `verify`, `gates`,
   `clear-logs`, `free-ports`, `prune`, `clean-cache`, `clean-cache-all`, `storage-volume`, `list-pids`,
@@ -71,12 +75,11 @@ One action runs at a time; the rest queue (`/api/queue`).
 
 ## Testing
 
-Measured 2026-10-30:
-
-- `cd SRC && python3 -m pytest -q manager/test_readers_idle.py manager/test_docker_bus.py` — 14 passed.
-- `python3 -c "import manager.api, manager.serve, manager.cli"` from `SRC/` — imports headless, no display.
-- `bash -n` passes on every `K8/*.sh` and `SRC/*.sh`; every script named in `cli.py` / `api.py` exists.
-- Against a running bench: `K8/test-gates.sh` (pre-build gates) and `K8/verify.sh` (post-mount checks).
+`./check.sh` (measured 2026-10-30: 0 failed) — py_compile, the 36 unit tests (`test_docker_bus`,
+`test_readers_idle`, `test_report_documents` against `SRC/manager/schemas/`, `test_bus_identity`,
+`test_api_routing`) with the checkout's `contracts/python` on `PYTHONPATH`, `bash -n` on every `K8/*.sh`, and
+`docker compose config -q`. `./check.sh --gates` adds `K8/test-gates.sh`. It starts nothing.
+Against a running bench: `K8/verify.sh` (post-mount checks).
 
 ## Philosophy
 

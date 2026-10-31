@@ -40,7 +40,25 @@ BROKER_PORT = int(os.environ.get("MQTT_PORT")
                   or os.environ.get("APK_MQTT_PORT") or 1883)
 
 SERVER_NAME  = os.environ.get("SERVER_NAME", socket.gethostname() or "APKAudioServer")
-TOPIC_ROOT   = os.environ.get("TOPIC_ROOT", "APK.audio/System")
+# THE ROOT IS THE CONTRACTS' (apkaudio_contracts.ROOT, pip-installed into the
+# image from contracts/python). A host `--cli` run without the package keeps
+# the same literal, so the two cannot disagree while the contract says APK.audio.
+try:
+    from apkaudio_contracts import ROOT as CONTRACT_ROOT
+except Exception:
+    CONTRACT_ROOT = "APK.audio"
+TOPIC_ROOT   = os.environ.get("TOPIC_ROOT", f"{CONTRACT_ROOT}/System")
+
+
+def contract_topic(family, fallback, **args):
+    """The contracts' spelling of one topic family (apkaudio_contracts.families,
+    W01's builders), or `fallback` when the package is absent or older than the
+    family. test_bus_identity holds every fallback equal to the contract."""
+    try:
+        from apkaudio_contracts import families
+        return families.topic(family, **args)
+    except Exception:
+        return fallback
 EVENT_TOPIC  = f"{TOPIC_ROOT}/ContainerManager"
 STATUS_TOPIC = f"{EVENT_TOPIC}/status"
 
@@ -50,6 +68,13 @@ STATUS_TOPIC = f"{EVENT_TOPIC}/status"
 # leaves; the names live here because this module is where a topic of this
 # component is spelled.
 MANAGER_TOPIC = f"{EVENT_TOPIC}/Manager"
+# THE SHAPE VERSION OF EVERY RETAINED ContainerManager DOCUMENT (status,
+# Manager, containers/…, …/apps/…), carried as `doc_version` in each and pinned
+# by SRC/manager/schemas/*.schema.json (2026-10-30 audit, DockTor #3/#7).
+# Bump it when a field is removed or changes meaning; adding a field is not a
+# bump. A reader that sees a number it does not know can say so instead of
+# drawing a half-understood card.
+DOCUMENT_VERSION = 1
 CONTAINERS_TOPIC = f"{EVENT_TOPIC}/containers"
 
 _event_client = None
@@ -73,6 +98,66 @@ def add_sink(sink):
     _sinks.append(sink)
     return sink
 
+# ---------------------------------------------------------------------------
+# THE ONE PAHO CONSTRUCTOR (2026-10-30 audit, DockTor #5). The event client
+# below, docker_bus.py's request/reply client and the chat line all come from
+# here, so every session on this process speaks to BROKER_HOST:BROKER_PORT and
+# authenticates by the same rule.
+# CREDENTIALS BY PREFIX: `<prefix>_USERNAME` + `<prefix>_PASSWORD`, both set or
+# anonymous. The default prefix is the house pair APK_MQTT_* (what
+# apkaudio_contracts.broker_auth reads); docker_bus passes APK_DOCKTOR_MQTT, its
+# own broker identity, because the operator ACL lets only apkaudio-docktor hear
+# ContainerManager/docker/request (DATABUS.Broker.MQTT SRC/acl.local).
+# Never from a config file: those are published to the bus retained.
+# ---------------------------------------------------------------------------
+def credentials(prefix="APK_MQTT"):
+    """(username, password) from `<prefix>_USERNAME`/`_PASSWORD`, else None."""
+    env = {"APK_MQTT_USERNAME": os.environ.get(f"{prefix}_USERNAME") or "",
+           "APK_MQTT_PASSWORD": os.environ.get(f"{prefix}_PASSWORD") or ""}
+    try:
+        from apkaudio_contracts import broker_auth
+        return broker_auth.credentials(env)
+    except Exception:
+        user, password = env["APK_MQTT_USERNAME"], env["APK_MQTT_PASSWORD"]
+        return (user, password) if user.strip() and password else None
+
+
+def new_client(client_id, prefix="APK_MQTT"):
+    """A paho client with credentials applied. Raises ImportError without paho.
+
+    VERSION2 first: the two callback API versions differ only in callback
+    signatures, and every callback registered in this package takes *args.
+    VERSION1 and the bare constructor remain the fallback for older paho."""
+    import paho.mqtt.client as mqtt
+    try:
+        client = mqtt.Client(client_id=client_id,
+                             callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    except (AttributeError, TypeError, ValueError):
+        try:
+            client = mqtt.Client(client_id=client_id,
+                                 callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
+        except AttributeError:
+            client = mqtt.Client(client_id=client_id)
+    creds = credentials(prefix)
+    if creds:
+        client.username_pw_set(creds[0], creds[1])
+    return client
+
+
+def publish(topic, payload, retain=False):
+    """One message on the event client's broker. True when it went out."""
+    with _event_lock:
+        client = _event_publisher()
+        if client is None:
+            return False
+        try:
+            info = client.publish(topic, payload, retain=retain)
+            info.wait_for_publish(timeout=2)
+            return True
+        except Exception:
+            return False
+
+
 def _event_publisher():
     """One long-lived client, built on first use. None when there is no broker.
 
@@ -86,7 +171,7 @@ def _event_publisher():
     if _event_client is not None:
         return _event_client
     try:
-        import paho.mqtt.client as mqtt
+        import paho.mqtt.client  # noqa: F401 — no paho, no bus, no error
     except Exception:
         return None
     try:
@@ -96,20 +181,7 @@ def _event_publisher():
         return None
     client_id = f"ContainerManager_{SERVER_NAME}_{os.getpid()}"
     try:
-        # VERSION2 first, safe to prefer BECAUSE this client registers no
-        # callbacks — the two API versions differ solely in callback
-        # signatures, so the choice costs nothing and keeps paho 2.x from
-        # printing a deprecation warning over the tool own output. VERSION1
-        # and the bare constructor remain the fallback for older paho.
-        try:
-            client = mqtt.Client(client_id=client_id,
-                                 callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-        except (AttributeError, TypeError, ValueError):
-            try:
-                client = mqtt.Client(client_id=client_id,
-                                     callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
-            except AttributeError:
-                client = mqtt.Client(client_id=client_id)
+        client = new_client(client_id)
         client.connect(BROKER_HOST, BROKER_PORT, 60)
         client.loop_start()
         atexit.register(_close_event_publisher)

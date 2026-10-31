@@ -46,52 +46,19 @@ DOCKER_SCRIPTS_DIRECTORY = K8_SCRIPTS_DIRECTORY
 # us and nowhere else, with the projects rule, the ordering and the UID/GID.
 
 # The bare-metal SOURCE tree, and it is the stack SRC/ rather than the stack
-# root. Needed for the two things that are NOT docker: the brand token below,
-# and the broker-discovery module the MQTT broadcast imports.
-# ⚠️ Both degrade QUIETLY when this is wrong (discovery falls back to loopback
-#    inside an except), so a stale spelling costs a broker list without ever
-#    costing an error message. The brand token below is read WITHOUT a fallback
-#    precisely so this rung cannot go wrong in silence.
-def _find_first_existing_file(candidates):
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return candidates[0]
+# root. Needed for one thing that is NOT docker: the transitional home of the
+# broker-candidate module (brokers.py looks in apkaudio_contracts first).
+# ONE SPELLING, IN THE CHECKOUT AND IN THE IMAGE ALIKE (2026-10-30 audit,
+# DockTor #6): the image COPYs the module to the same PODS-relative place, so
+# the eight pre-2026-10-16 spellings (POD:APK_THICK, APK:BareMetal, …) that
+# this list used to try are gone, not kept "for a checkout that still has them".
+BAREMETAL_ROOT = os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'SRC')
 
-def _find_first_existing_dir(candidates):
-    for c in candidates:
-        if os.path.isdir(c):
-            return c
-    return candidates[0]
-
-BAREMETAL_SRC_CANDIDATES = [
-    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal'),
-    os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'BareMetal'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal'),
-    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'SRC'),
-    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal'),
-]
-BAREMETAL_ROOT = _find_first_existing_dir(BAREMETAL_SRC_CANDIDATES)
-
-# THE CONTRACTS MOVED UP TO THE CHECKOUT ROOT and this list did not follow, so
-# the open() below raised at IMPORT — not a missing accent, a package that
-# could not be imported at all, and with it the server, the CLI and every verb.
-# The root spelling is FIRST because that is where the tree keeps contracts now;
-# the two BareMetal spellings stay for a checkout that still carries its own.
-BRAND_TOKENS_CANDIDATES = [
-    os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD.THICK', 'NODE.BareMetal', 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'BareMetal', 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'BareMetal', 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'POD:APK_THICK', 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
-    os.path.join(DOCKERS_DIRECTORY, 'APK:BareMetal', 'contracts', 'tokens', 'brand.json'),
-]
-BRAND_TOKENS = _find_first_existing_file(BRAND_TOKENS_CANDIDATES)
+# THE BRAND TOKEN, read WITHOUT a fallback so a wrong path is an import error
+# and not a quietly different accent. contracts/ sits at the checkout root, and
+# the image stages it at /app/contracts — which is REPOSITORY_ROOT there too —
+# so one spelling serves both. The six BareMetal-era spellings are gone.
+BRAND_TOKENS = os.path.join(REPOSITORY_ROOT, 'contracts', 'tokens', 'brand.json')
 
 with open(BRAND_TOKENS, encoding='utf-8') as _tokens:
     ACCENT = json.load(_tokens)['accent']['hex']

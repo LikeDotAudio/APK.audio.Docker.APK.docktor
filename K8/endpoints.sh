@@ -135,9 +135,23 @@ lan_endpoints() {
 # The template carries {port}, substituted with whatever is really bound and
 # falling back to the compose-declared port. A row prints either way — an
 # endpoint that is down is still an endpoint.
+# A CONTAINER THAT DESCRIBES ITSELF WINS (2026-10-30 audit, DockTor #4).
+# The hand rows below are the transition, not the table: once the owning
+# compose file carries `audio.apk.purpose` + `audio.apk.endpoint.<n>` labels and
+# the container is recreated with them, the label block further down prints its
+# rows and this function prints none for it — so a row moves into its owner's
+# repo without ever showing twice, and the hand row is deleted afterwards.
+self_described() {
+    docker inspect --format '{{json .Config.Labels}}' "$1" 2>/dev/null \
+        | grep -q '"audio\.apk\.endpoint\.' \
+    && docker inspect --format '{{json .Config.Labels}}' "$1" 2>/dev/null \
+        | grep -q '"audio\.apk\.purpose"'
+}
+
 emit_endpoint() {
     local container="$1" cport="$2" declared="$3" kind="$4" label="$5" template="$6"
     [ -n "$WANT" ] && [ "$WANT" != "$container" ] && return 0
+    self_described "$container" && return 0
 
     local port state
     port="$(published_port "$container" "$cport")"
@@ -372,7 +386,10 @@ if [ ${#plugin_ids[@]} -gt 0 ]; then
     while IFS=$'\t' read -r p_cont p_running p_labels; do
         p_cont="${p_cont#/}"
         [ -n "$WANT" ] && [ "$WANT" != "$p_cont" ] && continue
-        if [ "$p_running" = true ]; then
+        # The public config row is a PLUGIN/WORKER convention (runner config
+        # at System/Config/<token>); infrastructure that labels its endpoints
+        # (Broker-Mosquitto, …) has no such topic, so it gets no such row.
+        if [ "$p_running" = true ] && [[ "$p_cont" == Plugin-* || "$p_cont" == Worker-* ]]; then
             proto_lower="$(echo "${p_cont#*-}" | tr '[:upper:]' '[:lower:]')"
             printf '%s\t%s\t%s\t%s\t%s\n' \
                 "$p_cont" copy "Plugin public config API" \

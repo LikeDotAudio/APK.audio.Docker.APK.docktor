@@ -109,6 +109,18 @@ services:
       # broker that was up, and failed quietly.
       MQTT_HOST: "${MQTT_HOST:-127.0.0.1}"
       MQTT_PORT: "${MQTT_PORT:-1883}"
+      # BROKER IDENTITIES, from the shell and never from a file in git
+      # (2026-10-30 audit, DockTor #2). Blank is anonymous, and works on the
+      # plain broker. On a bench running the operator ACL (DATABUS.Broker.MQTT
+      # SRC/acl.local) ContainerManager/docker/request is readable by
+      # apkaudio-docktor ONLY, so the docker-bus session needs this pair —
+      # minted by DATABUS.Broker.MQTT SRC/mint_operator_credentials.sh — or the
+      # discovery engine cannot reach Docker. APK_MQTT_* is the house pair for
+      # the event session and the retained status (left blank = anonymous).
+      APK_DOCKTOR_MQTT_USERNAME: "${APK_DOCKTOR_MQTT_USERNAME:-}"
+      APK_DOCKTOR_MQTT_PASSWORD: "${APK_DOCKTOR_MQTT_PASSWORD:-}"
+      APK_MQTT_USERNAME: "${APK_MQTT_USERNAME:-}"
+      APK_MQTT_PASSWORD: "${APK_MQTT_PASSWORD:-}"
       # THE OPERATOR HALF OF THE DOUBLE OPT-IN — OFF UNLESS THE OPERATOR SAYS 1.
       # candidates() reaches a public broker only when the CALLER passes
       # allow_public AND this variable is set. report.py is the caller and also

@@ -60,14 +60,31 @@ COPY ["PODS/POD.manager/MANAGER.Docktor/SRC/manager", "/app/APK:DOCKERS/APK:dock
 COPY ["PODS/POD.manager/MANAGER.Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
 COPY ["PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
 
+# THE CONTRACTS, AS THE VERSIONED PACKAGE (2026-10-30 audit, DockTor #1).
+# contracts/python is apkaudio_contracts (CONTRACT_VERSION in its __init__),
+# installed like any other dependency instead of read by path: bus.py takes
+# its topic ROOT and broker_auth from it, and brokers.py takes the broker
+# candidate list from `apkaudio_contracts.broker_candidates` once the package
+# carries it. `pip show apkaudio_contracts` in the image names the version.
+COPY ["contracts/python", "/tmp/apkaudio-contracts"]
+RUN pip3 install --no-cache-dir --break-system-packages /tmp/apkaudio-contracts \
+    && rm -rf /tmp/apkaudio-contracts
+
 # paths.py reads the brand accent out of contracts/tokens/brand.json and
 # DELIBERATELY HAS NO FALLBACK, so the token is not optional decoration here:
-# without it `import manager.paths` raises at the first line.
-COPY ["contracts/tokens/brand.json", "/app/APK:DOCKERS/APK:BareMetal/contracts/tokens/brand.json"]
+# without it `import manager.paths` raises at the first line. Staged at
+# /app/contracts — REPOSITORY_ROOT in the image — so paths.py has ONE spelling
+# for the checkout and the image alike. (Still a file of the contracts, not of
+# a sibling repo; it leaves when the package ships the token as package data —
+# handoff filed for contracts/.)
+COPY ["contracts/tokens/brand.json", "/app/contracts/tokens/brand.json"]
 
-# The broker order comes from this one module and there is no fallback list — a
-# guess at the order is the defect that removes.
-COPY ["PODS/POD.THICK/NODE.BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/APK:BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
+# TRANSITIONAL: the broker order's home is moving into apkaudio_contracts
+# (brokers.py tries it first). Until the package carries it, the BareMetal
+# module is staged at the SAME PODS-relative path it has in the checkout, so
+# paths.BAREMETAL_ROOT is one spelling and not ten. Delete this line when
+# `python3 -c "import apkaudio_contracts.broker_candidates"` succeeds here.
+COPY ["PODS/POD.THICK/NODE.BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py", "/app/APK:DOCKERS/POD.THICK/NODE.BareMetal/SRC/Baremetal:Manager/mqtt_broker_discovery.py"]
 
 RUN chmod +x "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts/"*.sh
 

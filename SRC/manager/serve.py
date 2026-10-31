@@ -54,6 +54,17 @@ CONTENT_TYPES = {
 }
 
 
+def _unversioned(route):
+    """`/api/v1/<x>` is `/api/<x>` (api.API_VERSION). Any other version is left
+    as it is, so it falls through to a 404 instead of being served as v1."""
+    prefix = f"/api/v{api.API_VERSION}"
+    if route == prefix:
+        return "/api"
+    if route.startswith(prefix + "/"):
+        return "/api" + route[len(prefix):]
+    return route
+
+
 class LogStream:
     """The one execution log, and everyone watching it.
 
@@ -262,7 +273,7 @@ class ManagerHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        route = parsed.path.rstrip("/") or "/"
+        route = _unversioned(parsed.path.rstrip("/") or "/")
         params = urllib.parse.parse_qs(parsed.query)
 
         if not route.startswith("/api"):
@@ -339,7 +350,7 @@ class ManagerHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        route = parsed.path.rstrip("/") or "/"
+        route = _unversioned(parsed.path.rstrip("/") or "/")
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b""
         try:

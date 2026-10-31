@@ -29,7 +29,8 @@ import socket
 import threading
 
 from .paths import DOCKERS_DIRECTORY, DOCKER_SCRIPTS_DIRECTORY, REPOSITORY_ROOT
-from .bus import emit, BROKER_HOST, BROKER_PORT
+from .bus import (emit, BROKER_HOST, BROKER_PORT, CONTRACT_ROOT, DOCUMENT_VERSION,
+                  publish as bus_publish)
 from . import palette
 from .runner import (run_management_script, cancel_running_scripts,
                      cancel_epoch, running_scripts)
@@ -58,6 +59,12 @@ from .ping import ping as ping_device
 # healthy while it restart-looped, because a terminal manager answered for it.
 # COMPUTED ONCE AT IMPORT: `containerised` is the /.dockerenv test, and the pid
 # is the pid owning the socket — resolvable from inside this container only.
+# THE HTTP API'S VERSION (2026-10-30 audit, DockTor #7). Served by
+# /api/health as `api_version`, and every route answers under /api/v1/… as well
+# as /api/… (serve.py), so a client can pin the version it was written for.
+# Bump on a removed route or a changed meaning; a new route is not a bump.
+API_VERSION = 1
+
 INSTANCE = {
     "pid": os.getpid(),
     "hostname": socket.gethostname(),
@@ -1206,7 +1213,7 @@ def surface(name, quiet=True):
 # the client offers the panic confirm, but a text field that can take the
 # ecosystem down without a dialog is one somebody empties by accident.
 # ---------------------------------------------------------------------------
-CHAT_TOPIC = "APK.audio/System/Chat"
+CHAT_TOPIC = f"{CONTRACT_ROOT}/System/Chat"
 PANIC_WORDS = ("panic", "sos", "stop")
 
 
@@ -1217,16 +1224,12 @@ def chat(message):
         return {"ok": False, "error": "Nothing to say."}
     payload = {"sender": "USER_CHAT", "message": text,
                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    published = False
-    try:
-        import paho.mqtt.publish as publish
-        # bus.py's broker, not a literal loopback: in the manager container
-        # 127.0.0.1 is the container itself (LOOSE-manager-manager-docktor-manager).
-        publish.single(CHAT_TOPIC, json.dumps(payload), hostname=BROKER_HOST,
-                       port=BROKER_PORT, keepalive=2)
-        published = True
-    except Exception as err:
-        emit("CHAT_PUBLISH_FAILED", {"topic": CHAT_TOPIC, "error": str(err)})
+    # bus.py's own event session — its broker, its credentials — not a second
+    # paho connection of this module's (2026-10-30 audit, DockTor #5).
+    published = bus_publish(CHAT_TOPIC, json.dumps(payload))
+    if not published:
+        emit("CHAT_PUBLISH_FAILED", {"topic": CHAT_TOPIC,
+                                     "error": f"no broker at {BROKER_HOST}:{BROKER_PORT}"})
     emit("CHAT", payload)
     return {"ok": True, "topic": CHAT_TOPIC, "published": published,
             "sounds_like_panic": text.lower() in PANIC_WORDS}
@@ -1395,11 +1398,23 @@ def cancel_queued(entry_id):
             "message": f"🗑️ Took #{entry_id} {entry['label']} out of the queue."}
 
 
+def _contract_version():
+    """apkaudio_contracts.CONTRACT_VERSION, or None when the package is absent."""
+    try:
+        from apkaudio_contracts import CONTRACT_VERSION
+        return CONTRACT_VERSION
+    except Exception:
+        return None
+
+
 def health():
     """The manager's own account of itself. Answers before docker is asked."""
     return {
         "ok": True,
         "component": "APK.audio DockTor API",
+        "api_version": API_VERSION,
+        "document_version": DOCUMENT_VERSION,
+        "contract_version": _contract_version(),
         "repository_root": REPOSITORY_ROOT,
         "scripts": DOCKER_SCRIPTS_DIRECTORY,
         # WHO, not just what. Every caller that has to tell one manager from

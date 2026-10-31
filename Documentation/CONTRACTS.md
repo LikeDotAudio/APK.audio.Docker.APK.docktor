@@ -2,7 +2,10 @@
 
 Part of the **APK.audio** contracts framework (`contracts/` at the APK.audio repository root:
 `@apkaudio/contracts` for TypeScript, `apkaudio-contracts` for Rust, `apkaudio_contracts` for Python).
-DockTor does not import `apkaudio_contracts`; its topics are spelled once, in `SRC/manager/bus.py`.
+DockTor's image pip-installs `apkaudio_contracts` from `contracts/python`. `SRC/manager/bus.py` takes the root and
+`broker_auth` from it, `docker_bus.py` the `containerManagerDockerRequest`/`…Reply` families, and
+`test_bus_identity.py` holds every DockTor topic equal to the contracts' spelling (a host `--cli` run without the
+package uses the same literals).
 
 ---
 
@@ -18,7 +21,15 @@ DockTor does not import `apkaudio_contracts`; its topics are spelled once, in `S
 | `…/ContainerManager/Manager` | yes | `report.py` | the publisher itself |
 | `…/ContainerManager/containers/<Stack>/<Name>` | yes | `report.py` | one container, in full |
 | `…/ContainerManager/containers/<Stack>/<Name>/apps/<App>` | yes | `report.py` | one app inside it |
-| `APK.audio/System/Chat` (`CHAT_TOPIC` in `api.py`, not under `TOPIC_ROOT`) | no | `POST /api/chat`, every action start/result | one human-readable line; published to `127.0.0.1:1883` directly, not via `bus.py`'s broker settings |
+| `APK.audio/System/Chat` (`CHAT_TOPIC` in `api.py`, not under `TOPIC_ROOT`) | no | `POST /api/chat`, every action start/result | one human-readable line; published on `bus.py`'s event session (same broker, same credentials) |
+
+**Every retained document carries `doc_version` (`bus.DOCUMENT_VERSION`, now 1)** and has a JSON Schema in
+`SRC/manager/schemas/` — `status.schema.json`, `manager.schema.json`, `container.schema.json`, `app.schema.json`.
+`SRC/manager/test_report_documents.py` builds each with `report.py`'s own builders and validates it. A field
+removed or changing meaning bumps `DOCUMENT_VERSION`; a field added does not.
+
+Credentials: `APK_MQTT_USERNAME`/`APK_MQTT_PASSWORD` for the event session and the retained status (sent to our
+brokers only, never a public one); blank is anonymous.
 
 Retained topics are published only when the container's **state** fingerprint changes, and a topic whose subject
 disappears is tombstoned with a zero-length retained payload.
@@ -26,7 +37,13 @@ disappears is tombstoned with a zero-length retained payload.
 ### Docker for the discovery engine — `SRC/manager/docker_bus.py`
 
 DockTor is the only holder of the Docker socket (Dockers golden rule, law 9), so the discovery engine asks here.
-Started by `serve()` (the long-running process), on its own client.
+Started by `serve()` (the long-running process), on its own session (built by `bus.new_client`) under its own
+broker identity: `APK_DOCKTOR_MQTT_USERNAME`/`APK_DOCKTOR_MQTT_PASSWORD` (`apkaudio-docktor`).
+
+**Who may ask is decided at the broker.** MQTT 3.1.1 does not tell a subscriber who published. Under
+DATABUS.Broker.MQTT's operator ACL (`SRC/acl.local`) only `apkaudio-docker-engine` may publish the request and only
+`apkaudio-docktor` may hear it or write a reply; anonymous clients and the operator are denied both. On the plain
+anonymous broker this session connects anonymously and says so (`DOCKER_BUS_SERVING` `"authenticated": false`).
 
 | Topic | Retain | Direction | What |
 |---|---|---|---|

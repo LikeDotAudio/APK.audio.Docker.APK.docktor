@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "apk.audio/ContainerManager/manager.schema.json",
+  "title": "APK.audio/System/ContainerManager/Manager (retained)",
+  "description": "What DockTor says about itself (report.manager_document).",
+  "type": "object",
+  "required": [
+    "doc_version",
+    "sender",
+    "servername",
+    "pid",
+    "status",
+    "phase",
+    "timestamp",
+    "uptime_s",
+    "topics",
+    "containers",
+    "apps",
+    "scan_interval_s",
+    "heartbeat_s",
+    "brokers",
+    "published"
+  ],
+  "properties": {
+    "doc_version": {
+      "const": 1
+    },
+    "sender": {
+      "const": "APK.audio DockTor"
+    },
+    "servername": {
+      "type": "string"
+    },
+    "pid": {
+      "type": "integer"
+    },
+    "status": {
+      "const": "active"
+    },
+    "phase": {
+      "enum": [
+        "manual",
+        "before",
+        "after",
+        "refresh",
+        "heartbeat"
+      ]
+    },
+    "timestamp": {
+      "type": "string"
+    },
+    "uptime_s": {
+      "type": "number"
+    },
+    "topics": {
+      "type": "object",
+      "required": [
+        "status",
+        "manager",
+        "containers"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "manager": {
+          "type": "string"
+        },
+        "containers": {
+          "type": "string"
+        }
+      }
+    },
+    "containers": {
+      "type": "object",
+      "required": [
+        "total",
+        "dead",
+        "ours"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ours": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "required": [
+        "total",
+        "running"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "running": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scan_interval_s": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "heartbeat_s": {
+      "type": "integer"
+    },
+    "brokers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^.+:[0-9]+$"
+      }
+    },
+    "published": {
+      "type": "object",
+      "required": [
+        "containers",
+        "apps",
+        "retired"
+      ],
+      "properties": {
+        "containers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "apps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retired": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
