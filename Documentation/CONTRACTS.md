@@ -70,6 +70,15 @@ Tests: `SRC/manager/test_docker_bus.py`.
 
 ## HTTP — `127.0.0.1:8765`
 
+**`GET /api/endpoints/labels`** (also `/api/v1/endpoints/labels`), read-only: the label-driven endpoint list,
+a bare JSON array, one element per `audio.apk.endpoint.<n>` label of any container that carries
+`audio.apk.purpose` (via `K8/endpoints.sh --labels`, no probing):
+`{"container", "stack", "kind": "open"|"copy", "url", "label", "purpose", "running"}` — `stack` is the compose
+stack folder (parent of the working_dir's `Docker/`). `GET /api/endpoints` (the dashboard's richer list with
+probe state and page titles) is unchanged. Not routed through the gateway yet (DockTor is loopback-only by
+design, PLAN-3361.01); a read-only gateway path is a handoff to WEB.Traffic-Router.
+
+
 The route table is `ROUTES` in `SRC/manager/api.py` and is served at `GET /api/routes`. No authentication; the
 loopback bind is the control.
 

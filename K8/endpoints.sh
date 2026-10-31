@@ -73,6 +73,32 @@ port_table_completeness() {
     return 1
 }
 
+# --labels: the SELF-DESCRIBED half only, as one JSON array, for api.py's
+# GET /api/endpoints/labels (browsers, NMOS.Server). No probing — it answers
+# what the containers declare, not whether a URL answers — and no hand row.
+# Each element: {name, running, labels} with only the audio.apk.* labels and
+# the compose working_dir (the stack folder).
+if [ "$WANT" = "--labels" ]; then
+    mapfile -t label_ids < <(docker ps -aq --filter "label=audio.apk.purpose" 2>/dev/null)
+    if [ ${#label_ids[@]} -eq 0 ]; then echo '[]'; exit 0; fi
+    docker inspect --format '{{json .}}' "${label_ids[@]}" 2>/dev/null | python3 -c '
+import json, sys
+out = []
+for line in sys.stdin:
+    try:
+        c = json.loads(line)
+    except ValueError:
+        continue
+    labels = (c.get("Config") or {}).get("Labels") or {}
+    keep = {k: v for k, v in labels.items()
+            if k.startswith("audio.apk.") or k == "com.docker.compose.project.working_dir"}
+    out.append({"name": (c.get("Name") or "").lstrip("/"),
+                "running": bool((c.get("State") or {}).get("Running")), "labels": keep})
+print(json.dumps(sorted(out, key=lambda r: r["name"])))
+'
+    exit 0
+fi
+
 if [ "$WANT" = "--completeness" ]; then
     port_table_completeness
     exit $?

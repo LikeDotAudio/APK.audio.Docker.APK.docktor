@@ -299,6 +299,10 @@ class ManagerHandler(BaseHTTPRequestHandler):
                 return self._json(api.staleness())
             if route == "/api/resources":
                 return self._json(api.resources(quiet=True))
+            if route == "/api/endpoints/labels":
+                # READ-ONLY, label-driven: what each container declares about
+                # itself, as a bare JSON array (owner decision 2026-10-30).
+                return self._json(api.label_endpoints(quiet=True))
             if route == "/api/endpoints":
                 return self._json(api.endpoints(quiet=True))
             if route == "/api/volumes":

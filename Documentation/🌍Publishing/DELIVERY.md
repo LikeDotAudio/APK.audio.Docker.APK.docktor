@@ -160,3 +160,13 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   broker's 2), and `endpoints.sh --completeness` still accounts for every published port. The dashboard picks this
   up when DockTor is rebuilt (it runs its baked K8 copy).
 
+### Label-driven endpoint list (owner decision 2026-10-30)
+
+- **`GET /api/endpoints/labels`** — read-only JSON array `[{container, stack, kind, url, label, purpose,
+  running}]` built from the `audio.apk.endpoint.*` / `audio.apk.purpose` labels (`K8/endpoints.sh --labels` →
+  `api.label_endpoints_from`). Listed in `/api/routes`; `/api/v1/…` alias. Tests: `test_label_endpoints.py`
+  (shape, order, stack, malformed labels, script failure); against the live bench it returns 33 rows. Reaches the
+  dashboard after the next DockTor rebuild (baked copy). Browsers off the bench reach it only once
+  WEB.Traffic-Router adds a read-only path — handoff filed (the gateway deliberately does not route DockTor, and
+  a bridged Caddy cannot dial the host loopback DockTor binds); NMOS.Server's consumption is a handoff to P07.
+

@@ -1031,6 +1031,40 @@ def endpoints(quiet=True):
     return {"endpoints": rows}
 
 
+def label_endpoints_from(containers):
+    """[{container, stack, kind, url, label, purpose, running}] from endpoints.sh
+    --labels output: one row per `audio.apk.endpoint.<n>` label, in label order.
+    `stack` is the compose stack folder (the parent of the working_dir's
+    Docker/), else the grid's group of the name."""
+    rows = []
+    for c in containers or []:
+        labels = c.get("labels") or {}
+        workdir = (labels.get("com.docker.compose.project.working_dir") or "").rstrip("/")
+        stack = (os.path.basename(os.path.dirname(workdir)) if os.path.basename(workdir) == "Docker"
+                 else os.path.basename(workdir)) or palette.group_of(c.get("name", ""))
+        keys = sorted((k for k in labels if k.startswith("audio.apk.endpoint.")),
+                      key=lambda k: (len(k), k))
+        for key in keys:
+            parts = " ".join(str(labels[key]).split()).split(" ", 2)
+            if len(parts) < 2 or parts[0] not in ("open", "copy"):
+                continue
+            rows.append({"container": c.get("name", ""), "stack": stack, "kind": parts[0],
+                         "url": parts[1], "label": parts[2] if len(parts) > 2 else "",
+                         "purpose": labels.get("audio.apk.purpose", ""),
+                         "running": bool(c.get("running"))})
+    return rows
+
+
+def label_endpoints(quiet=True):
+    """GET /api/endpoints/labels — the label-driven endpoint list, read-only."""
+    code, output = run_management_script("endpoints.sh", ["--labels"], quiet=quiet)
+    try:
+        containers = json.loads(output) if code == 0 else []
+    except ValueError:
+        containers = []
+    return label_endpoints_from(containers)
+
+
 # The file that built a container need not be inside the repository, so the
 # read is BOUNDED to the checkout: a manager over HTTP that hands back any path
 # the host can read is a file server.
@@ -1136,6 +1170,8 @@ ROUTES = (
      "what": "whether each stack's image was built after the files its "
              "Dockerfile COPYs were last written -- a container can be ok and stale at once"},
     {"method": "GET", "path": "/api/endpoints", "what": "every address the ecosystem answers on"},
+    {"method": "GET", "path": "/api/endpoints/labels",
+     "what": "the label-driven endpoint list: [{container, stack, kind, url, label, purpose, running}]"},
     {"method": "GET", "path": "/api/volumes",
      "what": "every volume with its size, the four docker totals, the disk "
              "under them and the sampled history of all of it (&hours=, &fast=1)"},
