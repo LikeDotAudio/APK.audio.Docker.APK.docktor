@@ -138,7 +138,7 @@ body {
  * browser drops would leave a working control that shows no answer.
  * SO THE FOCUS RING IS DRAWN ON THE SPAN TOO (the input outline is off screen
  * with it). :focus-visible, not :focus, so a mouse click leaves no ring.
- * DARK INK ON THE ACCENT FILL, #101014: white on #f4902c is about 2.2:1.
+ * DARK INK ON THE ACCENT FILL, #101014: white on the brand orange is about 2.2:1.
  * NO `gap` ON THE GROUP: a gap applies BETWEEN THE SEGMENTS as well, and 5px of
  * ground between them is three pills rather than one control. The lead carries
  * the spacing instead. */
@@ -858,12 +858,13 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
  * THE LINE KEEPS THE COLOUR IT LANDED IN: repainting on the quarter would make
  * every line agree with the dial and mean nothing — the content is in the
  * disagreement between an old line and the hand that is up now.
- * THE FOUR HEXES ARE THIS FILE OWN, and that is not the exception the header
+ * THE THREE HEXES ARE THIS FILE'S OWN (the orange quarter is the brand accent,
+ * var(--accent) off /api/palette), and that is not the exception the header
  * forbids: they are not states, and palette.py has no opinion about the third
  * quarter of a minute. Spelled once here, read by both the dial and the log, so
  * the legend cannot drift from the thing it is a legend for. */
 :root {
-  --lane-orange: rgb(244, 144, 44);
+  --lane-orange: var(--accent); /* the brand accent, /api/palette (brand.json) */
   --lane-yellow: #fdd835;
   --lane-green:  #43a047;
   --lane-blue:   #1e88e5;
@@ -889,8 +890,8 @@ code.self-held-cmd { margin-left: 14px; margin-bottom: 9px; max-width: 260px; }
 }
 
 .swimlane-header {
-  background: rgba(244, 144, 44, 0.12);
-  border-bottom: 1px solid rgba(244, 144, 44, 0.25);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   color: #ffffff;
   padding: 4px 10px;
   font-size: 11px;
