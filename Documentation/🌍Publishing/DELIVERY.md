@@ -153,4 +153,10 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   may not send any. Tests in `test_instrument_calls.py`.
 - **Broker endpoint rows removed** — Broker-Mosquitto carries its `audio.apk.endpoint.*` labels live, so its two
   hand rows in `K8/endpoints.sh` are gone; the label block prints the same two rows.
+- **Hand-kept endpoint table gone (DockTor #4)** — Storage-Portal, SQL-Proxy, Netbox-App, NMOS-Dev and
+  Ember-Provider were recreated with their `audio.apk.endpoint.*` labels (checked with `docker inspect`), so their
+  18 hand rows, and the now-unused `emit_endpoint` / `self_described` / `published_port` / `lan_endpoints`
+  helpers, are deleted from `K8/endpoints.sh`. The label block prints the same rows (2+1+3+10+1, plus the
+  broker's 2), and `endpoints.sh --completeness` still accounts for every published port. The dashboard picks this
+  up when DockTor is rebuilt (it runs its baked K8 copy).
 
