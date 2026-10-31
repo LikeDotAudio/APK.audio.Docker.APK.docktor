@@ -109,22 +109,28 @@ services:
       # broker that was up, and failed quietly.
       MQTT_HOST: "${MQTT_HOST:-127.0.0.1}"
       MQTT_PORT: "${MQTT_PORT:-1883}"
-      # THE OPERATOR HALF OF THE DOUBLE OPT-IN, TYPED HERE ON PURPOSE.
+      # THE OPERATOR HALF OF THE DOUBLE OPT-IN — OFF UNLESS THE OPERATOR SAYS 1.
       # candidates() reaches a public broker only when the CALLER passes
       # allow_public AND this variable is set. report.py is the caller and also
-      # asks for public_first, so with this line the manager status report goes
-      # to test.mosquitto.org FIRST and the bench own broker second.
-      # WHY FOR THIS CONTAINER AND NOWHERE ELSE: the audience is the DataBus
-      # display PUBLIC pane, served from apk.audio, which cannot reach this
-      # bench at all — and a local broker that is DOWN is the state that page
-      # most needs told, which is precisely when a local-first order published
-      # nothing. The telemetry probes pass no allow_public, so this variable
-      # cannot put a puck on a desk or a hardware inventory on a public bus
-      # however it is exported. Do not promote it to a shell profile.
-      # WHAT LEAVES: container names, statuses and published host ports. Unset
-      # this and the manager is local-only again; the broker own bridge still
-      # relays the same topic, and stopping THAT is a separate act.
-      APK_ALLOW_PUBLIC_BROKERS: "${APK_ALLOW_PUBLIC_BROKERS:-1}"
+      # asks for public_first, so with =1 the manager status report goes to
+      # test.mosquitto.org FIRST and the bench own broker second; with 0 (the
+      # default, owner decision 2026-10-30, LOOSE-manager-docktor-dockerdockercomposemanageryml-defaults-apkallowpublicbrokers1)
+      # it goes to the bench broker only.
+      # WHO OPTS IN, AND WHERE: the bench whose DockTor feeds the DataBus
+      # display PUBLIC pane served from apk.audio — that page cannot reach a
+      # bench at all, and a local broker that is DOWN is the state it most
+      # needs told. On that bench, start the manager once with
+      #     APK_ALLOW_PUBLIC_BROKERS=1 PODS/POD.manager/MANAGER.Docktor/K8/up-stack.sh MANAGER.Docktor
+      # The container then carries =1, and the recreates DockTor makes of
+      # itself interpolate this line inside it, so the opt-in sticks until the
+      # manager is next brought up from a shell that does not export it.
+      # The telemetry probes pass no allow_public, so this variable cannot put
+      # a puck on a desk or a hardware inventory on a public bus however it is
+      # exported. Do not promote it to a shell profile.
+      # WHAT LEAVES WHEN =1: container names, statuses and published host
+      # ports. The broker own bridge relays the same topic regardless, and
+      # stopping THAT is a separate act.
+      APK_ALLOW_PUBLIC_BROKERS: "${APK_ALLOW_PUBLIC_BROKERS:-0}"
       # THE COMPOSE FILES RUN BY THIS CONTAINER ARE THE ONES UNDER THE BOUND
       # CHECKOUT, not the ones COPYed into the image — and the working directory
       # does not decide that, because _common.sh walks up from its OWN location

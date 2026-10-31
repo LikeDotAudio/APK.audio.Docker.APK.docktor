@@ -30,6 +30,9 @@ Page: `http://localhost:8765/`. `GET /api/routes` lists the API.
      cost ledger, page titles…).
    - `diagnose.py` — `diagnose_state()`: a container's state into a colour and a sentence.
    - `report.py` — the retained topic tree; `run_reported()` wraps a script run with bus reporting.
+     It publishes to the bench broker only, unless the manager was started with
+     `APK_ALLOW_PUBLIC_BROKERS=1` (default `0`, `Docker/docker-compose.manager.yml`) — the opt-in for the
+     bench that feeds the apk.audio DataBus PUBLIC pane, which then gets the status first.
    - `api.py` — `action_table()`, `ROUTES`, `run_action()`, `chat()`; `command_queue.py` serialises
      actions.
    - `serve.py` — `ManagerHandler` / `ManagerServer` (stdlib `ThreadingHTTPServer`), `LogStream` (SSE).
