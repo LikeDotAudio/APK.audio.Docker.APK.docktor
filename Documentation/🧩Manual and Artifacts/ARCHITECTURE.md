@@ -70,6 +70,17 @@ build; one never started (`created`) or a stopped long-runner is recreated `--no
 into `/app/APK:DOCKERS/…` and nothing else of any other repo: the brand accent and the broker list come from the
 installed package. `CMD` runs `K8:runner.py serve`.
 
+**Two listeners.** The API and the dashboard on `127.0.0.1:8765` (loopback, unauthenticated, can stop the
+bench), and a read-only **labels listener** on `APK_MANAGER_LABELS_BIND:APK_MANAGER_LABELS_PORT` (default
+`172.17.0.1:8766`, the docker0 gateway; `off` disables it) that serves ONLY `GET`/`HEAD /api/endpoints/labels`
+(and `/api/v1/…`), 404 for every other path and 405 for every other method (`serve.py` `LabelsHandler`, answer
+cached 5 s). It exists so bridge containers — Portal-OsApi via `host.docker.internal:8766` — can read the
+label-driven endpoint list without the main API leaving loopback. ⚠️ **Host firewall requirement:** the docker
+bridges (172.16.0.0/12 by default, including `apk-audio_default`) must be allowed to reach `172.17.0.1:8766`; a
+host firewall that drops bridge → host traffic (ufw/nftables default-deny on INPUT) leaves OsApi answering 503
+"docktor unreachable". Nothing else of DockTor is reachable on that address. A bind that fails (no docker0, port
+taken by another DockTor) is logged and does not stop the main API.
+
 HTTP API: version `api.API_VERSION` (1), served by `/api/health` as `api_version` beside `document_version` and
 `contract_version`; every route also answers under `/api/v1/…`.
 

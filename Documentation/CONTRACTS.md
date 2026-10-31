@@ -75,8 +75,9 @@ a bare JSON array, one element per `audio.apk.endpoint.<n>` label of any contain
 `audio.apk.purpose` (via `K8/endpoints.sh --labels`, no probing):
 `{"container", "stack", "kind": "open"|"copy", "url", "label", "purpose", "running"}` — `stack` is the compose
 stack folder (parent of the working_dir's `Docker/`). `GET /api/endpoints` (the dashboard's richer list with
-probe state and page titles) is unchanged. Not routed through the gateway yet (DockTor is loopback-only by
-design, PLAN-3361.01); a read-only gateway path is a handoff to WEB.Traffic-Router.
+probe state and page titles) is unchanged. Also served — and NOTHING else — by the labels listener on `172.17.0.1:8766` (`APK_MANAGER_LABELS_*`) for
+bridge containers; Portal-OsApi relays it at its own `GET /api/endpoints`. The main API stays loopback-only
+(PLAN-3361.01).
 
 
 The route table is `ROUTES` in `SRC/manager/api.py` and is served at `GET /api/routes`. No authentication; the

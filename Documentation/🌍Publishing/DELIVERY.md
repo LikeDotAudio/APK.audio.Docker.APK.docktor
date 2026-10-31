@@ -169,4 +169,12 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   dashboard after the next DockTor rebuild (baked copy). Browsers off the bench reach it only once
   WEB.Traffic-Router adds a read-only path — handoff filed (the gateway deliberately does not route DockTor, and
   a bridged Caddy cannot dial the host loopback DockTor binds); NMOS.Server's consumption is a handoff to P07.
+- **The labels listener (W05's handoff)** — a second, read-only HTTP listener on the docker0 gateway
+  (`APK_MANAGER_LABELS_BIND`, default `172.17.0.1`; `APK_MANAGER_LABELS_PORT`, default `8766`; passed through
+  `docker-compose.manager.yml`) serves ONLY `GET`/`HEAD /api/endpoints/labels` and its `/api/v1` alias; every
+  other path is 404 and every other method 405 (`serve.py` `LabelsHandler`), answers cached 5 s. The main
+  `127.0.0.1:8765` bind is unchanged. Portal-OsApi reads it at `host.docker.internal:8766`. Tests:
+  `test_labels_listener.py` (the one read, 14 other paths 404, 7 methods 405 incl. an invented one, caching,
+  address settings, an unbindable address is not fatal). Live after the next DockTor rebuild; host firewall
+  requirement in ARCHITECTURE.md.
 

@@ -704,6 +704,102 @@ def _bind_or_wait(bind, port, url, open_browser, takeover=True):
             time.sleep(PORT_WAIT_SECONDS)
 
 
+# ---------------------------------------------------------------------------
+# THE LABELS LISTENER — a second door that opens onto ONE read (owner decision
+# 2026-10-30, W05's handoff). The main API stays on 127.0.0.1:8765: it is
+# unauthenticated and can stop the bench. Portal-OsApi, on a docker bridge,
+# cannot dial the host loopback, so this listener binds the docker0 gateway
+# address (APK_MANAGER_LABELS_BIND, default 172.17.0.1) on
+# APK_MANAGER_LABELS_PORT (8766) and answers exactly
+#     GET|HEAD /api/endpoints/labels   (and /api/v1/endpoints/labels)
+# with the label-driven endpoint list. Every other path is 404 and every other
+# method 405 — nothing else of DockTor is reachable through it. The answer is
+# cached for LABELS_CACHE_SECONDS so a client looping on it cannot make DockTor
+# run docker inspect in a loop. APK_MANAGER_LABELS_BIND=off (or empty) turns it
+# off. A HOST FIREWALL must let the docker bridges reach 172.17.0.1:8766
+# (ARCHITECTURE.md).
+# ---------------------------------------------------------------------------
+LABELS_ROUTE = "/api/endpoints/labels"
+LABELS_CACHE_SECONDS = 5.0
+_labels_cache = {"at": 0.0, "body": None}
+_labels_lock = threading.Lock()
+
+
+def labels_body():
+    """The cached JSON body of the label-driven endpoint list."""
+    with _labels_lock:
+        now = time.monotonic()
+        if _labels_cache["body"] is None or now - _labels_cache["at"] >= LABELS_CACHE_SECONDS:
+            _labels_cache["body"] = json.dumps(api.label_endpoints(quiet=True)).encode("utf-8")
+            _labels_cache["at"] = now
+        return _labels_cache["body"]
+
+
+class LabelsHandler(BaseHTTPRequestHandler):
+    """GET/HEAD LABELS_ROUTE and nothing else."""
+    server_version = "DockTor-labels"
+    sys_version = ""
+
+    def log_message(self, *args):
+        pass
+
+    def _answer(self, code, body=b"", content_type="application/json", head=False, extra=()):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        for key, value in extra:
+            self.send_header(key, value)
+        self.end_headers()
+        if not head and body:
+            self.wfile.write(body)
+
+    def _read(self, head):
+        route = _unversioned(urllib.parse.urlparse(self.path).path.rstrip("/") or "/")
+        if route != LABELS_ROUTE:
+            return self._answer(404, b'{"error": "not found"}', head=head)
+        return self._answer(200, labels_body(), head=head)
+
+    def do_GET(self):
+        self._read(head=False)
+
+    def do_HEAD(self):
+        self._read(head=True)
+
+    def _refuse(self):
+        self._answer(405, b'{"error": "method not allowed"}', extra=(("Allow", "GET, HEAD"),))
+
+    def __getattr__(self, name):
+        # Any other method — POST, PUT, DELETE, PATCH, OPTIONS, an invented one —
+        # is a 405, never the stdlib's 501 and never a route of the main API.
+        if name.startswith("do_"):
+            return self._refuse
+        raise AttributeError(name)
+
+
+def labels_listener_address():
+    """(bind, port) for the labels listener, or None when it is off."""
+    bind = os.environ.get("APK_MANAGER_LABELS_BIND", "172.17.0.1").strip()
+    if not bind or bind.lower() == "off":
+        return None
+    return bind, int(os.environ.get("APK_MANAGER_LABELS_PORT") or 8766)
+
+
+def start_labels_listener(address=None):
+    """Serve LabelsHandler on a thread. None (logged, not fatal) when it cannot bind."""
+    address = address or labels_listener_address()
+    if not address:
+        return None
+    try:
+        httpd = ManagerServer(address, LabelsHandler)
+    except OSError as err:
+        LOG.publish("line", f"⚠️ labels listener not started on {address[0]}:{address[1]}: {err}")
+        return None
+    threading.Thread(target=httpd.serve_forever, name="labels-listener", daemon=True).start()
+    emit("MANAGER_LABELS_SERVING", {"bind": address[0], "port": address[1], "route": LABELS_ROUTE})
+    return httpd
+
+
 def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     """Run the manager API and its client until interrupted.
 
@@ -739,6 +835,7 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     # 9), so the discovery engine raises and reaps plugins by asking here.
     from .docker_bus import start_docker_bus
     start_docker_bus()
+    start_labels_listener()
 
     if open_browser:
         # Opt-in, and never in a container: there is no browser there, and

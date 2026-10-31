@@ -101,6 +101,13 @@ services:
       #    what the socket gets, so widening it hands the bench to the LAN.
       APK_MANAGER_BIND: 127.0.0.1
       APK_MANAGER_PORT: 8765
+      # THE SECOND DOOR, AND IT OPENS ONTO ONE READ. GET /api/endpoints/labels
+      # only (404 for any other path, 405 for any other method; serve.py
+      # LabelsHandler), on the docker0 gateway so bridge containers
+      # (Portal-OsApi, via host.docker.internal) can reach it while the API
+      # above stays loopback. `off` turns it off. Firewall: ARCHITECTURE.md.
+      APK_MANAGER_LABELS_BIND: "${APK_MANAGER_LABELS_BIND:-172.17.0.1}"
+      APK_MANAGER_LABELS_PORT: "${APK_MANAGER_LABELS_PORT:-8766}"
       # Read by bus.py and handed to mqtt_broker_discovery.candidates() as the
       # `configured` broker — the slot that exists for "this shop named its own".
       # 127.0.0.1 BECAUSE THE MANAGER IS ON THE HOST STACK NOW. It was
