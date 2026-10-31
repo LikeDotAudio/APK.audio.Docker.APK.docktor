@@ -141,10 +141,8 @@ PURPOSE = {
     # --- Server:Broker:MQTT -- the bus stack -----------------------------------
     "Broker-Mosquitto": (
         "The house MQTT bus -- the one broker",
-        "The pulled eclipse-mosquitto:2.0 image with SRC/mosquitto_local.conf "
-        "bind-mounted read-only from DATABUS.Broker.MQTT (not baked: no compose file "
-        "builds Docker/Dockerfile.broker yet, and the broker's PRINCIPLES.md records that "
-        "bend of Dockers law 8). Native MQTT on 127.0.0.1:1883, MQTT over WebSockets on "
+        "broker-mosquitto:local, built by DATABUS.Broker.MQTT's Docker/Dockerfile.broker "
+        "with SRC/mosquitto_local.conf baked in (Dockers law 8). Native MQTT on 127.0.0.1:1883, MQTT over WebSockets on "
         "127.0.0.1:9001; it answers to mqtt, broker, mosquitto, Storage-Broker and "
         "Portal-Broker on the compose network. Protected: DockTor never stops or "
         "removes it, and ensure_broker raises it first and alone.",

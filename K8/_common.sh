@@ -705,9 +705,9 @@ broker_compose_files() {
 }
 
 # ensure_broker — bring Mosquitto up ALONE if it is not running: its own
-# service, --no-deps, no build (it is the pulled eclipse-mosquitto:2.0 with a
-# bind-mounted config; switching it to Dockerfile.broker means dropping
-# --no-build here in the same change). Nothing else in its
+# service, --no-deps. Its config is baked into broker-mosquitto:local
+# (Dockerfile.broker, 2026-10-30), so the image is built only when it is
+# missing (a fresh bench) and otherwise reused as is. Nothing else in its
 # stack can hold it hostage. With the operator overlay once SRC/operator/ is
 # minted (broker_compose_files). Returns non-zero only if it is still not running.
 ensure_broker() {
@@ -723,7 +723,9 @@ ensure_broker() {
     log_step "The broker ($BROKER_CONTAINER) is not running — bringing it up first, alone"
     [ ${#files[@]} -gt 2 ] && log_step "…with the operator ACL overlay (SRC/operator/ is minted)"
     announce BROKER_ENSURE "{\"container\":\"$BROKER_CONTAINER\",\"service\":\"$BROKER_SERVICE\"}"
-    docker compose "${files[@]}" up -d --no-deps --no-build "$BROKER_SERVICE"
+    local build=--no-build
+    docker image inspect broker-mosquitto:local >/dev/null 2>&1 || build=--build
+    docker compose "${files[@]}" up -d --no-deps "$build" "$BROKER_SERVICE"
     local status=$?
     announce BROKER_ENSURE_RESULT "{\"container\":\"$BROKER_CONTAINER\",\"exit_code\":$status}"
     [ "$(docker inspect -f '{{.State.Running}}' "$BROKER_CONTAINER" 2>/dev/null)" = "true" ]
@@ -1262,9 +1264,8 @@ stamp_image_rev() {
 }
 
 # ⚠️ THERE IS NO stage_mqtt_config() AND MUST NOT BE ONE. The broker runs the
-# pulled eclipse-mosquitto:2.0 with DATABUS.Broker.MQTT/SRC/mosquitto_local.conf
-# bind-mounted straight from the checkout (Dockerfile.broker exists but nothing
-# builds it — see that repo's PRINCIPLES.md). Never stage that config elsewhere
+# broker-mosquitto:local, DATABUS.Broker.MQTT/SRC/mosquitto_local.conf baked in by
+# Dockerfile.broker (2026-10-30). Never stage that config elsewhere
 # and bind the copy: /tmp is
 # cleared on reboot, and the daemon creates a missing bind source as a
 # root-owned DIRECTORY that mosquitto cannot start over and the host user
