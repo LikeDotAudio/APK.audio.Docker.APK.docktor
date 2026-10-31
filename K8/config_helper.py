@@ -127,7 +127,10 @@ def cmd_bash_eval(project_name, dockers_dir):
         # copied by new-plugin.sh, never run (plugin-includes.sh reads `_` the
         # same way). Declared, it was walked by up.sh and rebuild-all as a real
         # stack with a placeholder service (LOOSE-docktor-walks-template).
-        if folder_name.startswith("_"):
+        # Any `_` folder on the way counts, not only the one above Docker/:
+        # _template/python/Docker is named "python" (the template's Python twin).
+        if folder_name.startswith("_") or any(
+                part.startswith("_") for part in os.path.relpath(path, dockers_dir).split(os.sep)[:-1]):
             continue
 
         # Only primary compose files represent standalone stacks
