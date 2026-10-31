@@ -44,16 +44,16 @@ decides server-or-terminal, and hands over.
 Every docker verb lives in `DockTor/SRC/docker scripts/` — one executable file
 each. No compose command, no docker ps format string, no port, no container name
 in any Python here.
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py'             # launch: DockTor, the page, the mount
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' launch rebuild-all   # same handover, other verb
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' serve --open         # the manager HERE, foreground
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' status      # every stack + node
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' up          # gated mount
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' endpoints   # every address
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' disk        # before a rebuild
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' volumes     # every volume, with its size
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' storage     # DockTor own storage volume
-  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' clean-cache # the build cache, by hand
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py'             # launch: DockTor, the page, the mount
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' launch rebuild-all   # same handover, other verb
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' serve --open         # the manager HERE, foreground
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' status      # every stack + node
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' up          # gated mount
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' endpoints   # every address
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' disk        # before a rebuild
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' volumes     # every volume, with its size
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' storage     # DockTor own storage volume
+  python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' clean-cache # the build cache, by hand
                                   # (every build already drops it on the way
                                   #  out -- APKAUDIO_BUILD_CACHE_CLEAN=off|all)
   --no-kaboom                     # reaches the scripts as APKAUDIO_NO_KABOOM=1
@@ -74,7 +74,7 @@ import sys
 #    EVERY SPELLING THE FOLDER HAS HAD IS IN THE LIST, AND THE LIST IS WHY THE
 #    LAUNCHER STOPPED WORKING ONCE: it held 'Docktor' and 'APK:docktor' while
 #    the folder on disk was 'APK:Docktor', so both probes missed by a letter of
-#    case and a bare `K8:runner.py` died at the import above — no server, no
+#    case and a bare `K8.runner.py` died at the import above — no server, no
 #    CLI, no message but the ModuleNotFoundError. A missing entry is a silent
 #    miss, so the loop ends by taking the first candidate and letting the import
 #    name the directory it could not find.

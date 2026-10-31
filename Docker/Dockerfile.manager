@@ -58,7 +58,7 @@ WORKDIR /app
 #    that directory on sys.path by walking, not by name.
 COPY ["PODS/POD.manager/MANAGER.Docktor/SRC/manager", "/app/APK:DOCKERS/APK:docktor/SRC/manager"]
 COPY ["PODS/POD.manager/MANAGER.Docktor/K8", "/app/APK:DOCKERS/APK:docktor/SRC/docker scripts"]
-COPY ["PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py", "/app/APK:DOCKERS/K8:runner.py"]
+COPY ["PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py", "/app/APK:DOCKERS/K8.runner.py"]
 
 # THE CONTRACTS, AS THE VERSIONED PACKAGE (2026-10-30 audit, DockTor #1).
 # contracts/python is apkaudio_contracts (CONTRACT_VERSION in its __init__),
@@ -101,4 +101,4 @@ ENV APK_MANAGER_PORT=8765
 
 # `--open` is deliberately absent and there is no flag to suppress it: a
 # container has no browser to open and must not ask for one.
-CMD ["sh", "-c", "python3 -u '/app/APK:DOCKERS/K8:runner.py' serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]
+CMD ["sh", "-c", "python3 -u '/app/APK:DOCKERS/K8.runner.py' serve --bind ${APK_MANAGER_BIND} --port ${APK_MANAGER_PORT}"]

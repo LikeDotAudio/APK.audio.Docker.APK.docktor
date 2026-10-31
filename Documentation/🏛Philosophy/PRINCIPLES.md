@@ -20,7 +20,7 @@ served back by `GET /api/routes`.
 
 ## One build, every screen
 
-`launch` (the bare `K8:runner.py`) starts DockTor if nothing serves and hands the verb to it over the API,
+`launch` (the bare `K8.runner.py`) starts DockTor if nothing serves and hands the verb to it over the API,
 so the build lands in the shared execution log (SSE `/api/stream`, `LogStream` in `SRC/manager/serve.py:57`)
 — `K8/launch.sh`. One action runs at a time; the rest wait in `CommandQueue`
 (`SRC/manager/command_queue.py:31`).

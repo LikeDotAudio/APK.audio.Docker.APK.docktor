@@ -19,13 +19,13 @@ that happens on the bus. It is the only container that holds the Docker socket.
 
 | Path | What |
 |---|---|
-| `bin/K8:runner.py` | The front door. Bare: **launch** — start DockTor if nothing serves, open the page, hand `up` to it over the API, exit. Also `serve`, `status`, `up`, `down`, `endpoints`, … (the `CLI_ACTIONS` tables in `SRC/manager/cli.py`) |
+| `bin/K8.runner.py` | The front door. Bare: **launch** — start DockTor if nothing serves, open the page, hand `up` to it over the API, exit. Also `serve`, `status`, `up`, `down`, `endpoints`, … (the `CLI_ACTIONS` tables in `SRC/manager/cli.py`) |
 | `bin/docktor` | Same package, defaults to `serve` |
 | `SRC/manager/` | The package (`paths` → `bus` → `palette` → `runner` → `brief` → `readers` → `diagnose` → `report` → `api` → `serve` → `cli`; module map in `__init__.py`). `web/` is the client: `index.html`, `manager.css`, `manager.js`, no framework, no build |
 | `K8/*.sh` | One verb per file (`up`, `down`, `up-stack`, `rebuild-all`, `rebuild-stack`, `endpoints`, `verify`, `test-gates`, `free-ports`, `panic`, `nuke`, `phoenix`, `volumes`, …). `_common.sh` holds the shared rules: compose arrays, stack order, `is_protected_container`, `ensure_broker`, `MANAGER_URL` |
 | `K8/config_helper.py` | Config reader for the scripts |
 | `SRC/docker scripts` | Symlink → `../K8` (the in-image name) |
-| `SRC/APK.audio:mount.sh`, `SRC/APK.audio:DeleteOldRebuildAndMount.sh` | Named front doors that dispatch to `K8/` (`up`/`watch`/`status`/`rebuild`/`down`, and `rebuild-all.sh`) |
+| `SRC/APK.audio.mount.sh`, `SRC/APK.audio.DeleteOldRebuildAndMount.sh` | Named front doors that dispatch to `K8/` (`up`/`watch`/`status`/`rebuild`/`down`, and `rebuild-all.sh`) |
 | `Docker/Dockerfile.manager`, `Docker/docker-compose.manager.yml` | The DockTor image and container |
 | `Documentation/CONTRACTS.md` | DockTor's bus topics and HTTP surface |
 | `Documentation/🏛Philosophy/` | Copies of the ecosystem's Dockers and Tests doctrine (canonical copies: `Documentation/🏛Philosophy/` in APK.audio) |
@@ -49,8 +49,8 @@ not the bind-mounted checkout. After editing `K8/*.sh`, rebuild DockTor: `K8/up-
 ## Run
 
 ```sh
-python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py'               # launch: DockTor, the page, the mount
-python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' serve --open  # the manager in this terminal
+python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py'               # launch: DockTor, the page, the mount
+python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' serve --open  # the manager in this terminal
 PODS/POD.manager/MANAGER.Docktor/K8/manager.sh up|down|restart|logs|status|url
 PODS/POD.manager/MANAGER.Docktor/K8/up-stack.sh 'PROTOCOL.DEV.EMBER'      # one stack
 ```
@@ -92,7 +92,7 @@ What DockTor actually does, and where:
 - **The exit code is half the answer.** `run_management_script` returns `(exit_code, text)` so a failed rebuild
   is never drawn as a green tick — `SRC/manager/__init__.py`.
 - **No window, ever.** The Tkinter dashboard was deleted; the API, transport and client are separable and run
-  headless where the containers are — `bin/K8:runner.py`, `SRC/manager/serve.py`.
+  headless where the containers are — `bin/K8.runner.py`, `SRC/manager/serve.py`.
 - **One build, every screen.** `launch` hands the verb to the running DockTor so the build lands in the shared
   execution log (SSE `/api/stream`) instead of one terminal — `SRC/manager/cli.py`, `K8/launch.sh`.
 - **Say it once: terminal, bus, browser.** Scripts print `@EVENT NAME {json}`; the runner relays it to

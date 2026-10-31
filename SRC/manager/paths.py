@@ -49,7 +49,7 @@ DOCKER_SCRIPTS_DIRECTORY = K8_SCRIPTS_DIRECTORY
 # image pip-installs apkaudio_contracts from contracts/python, which carries the
 # broker-candidate list (broker_candidates) and the brand/state tokens as package
 # data (tokens) since contracts 36273b972 — so nothing of NODE.BareMetal's and no
-# loose token file is copied in any more. A host run from a checkout (K8:runner.py
+# loose token file is copied in any more. A host run from a checkout (K8.runner.py
 # without the package installed) gets the SAME package from the checkout's own
 # contracts/python, put on sys.path here and nowhere else.
 try:

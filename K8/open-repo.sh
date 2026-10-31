@@ -68,8 +68,8 @@ if [ -z "$QUERY" ]; then
         printf "\033[36m%-22s\033[0m %-36s %-45s\n" "$key" "PODS/${repopath#"$DOCKERS_DIR"/}" "$repopath"
     done
 
-    echo -e "\n\033[33mUsage:\033[0m python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open <name> [--open]"
-    echo "Example: python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' open mqtt"
+    echo -e "\n\033[33mUsage:\033[0m python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' open <name> [--open]"
+    echo "Example: python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' open mqtt"
     exit 0
 fi
 

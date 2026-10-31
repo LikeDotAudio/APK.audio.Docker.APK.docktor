@@ -152,6 +152,6 @@ Before submitting code changes:
    The gates themselves, and the only place they are spelled. Non-zero exit means the build must not run.
 2. **`up.sh`, `rebuild-all.sh` and `rebuild-core.sh`:**  
    Every script that builds runs `test-gates.sh` first and aborts on a failure. There is no `--skip-tests`; `APKAUDIO_NO_GATES=1` exists only for debugging the gates themselves and is forbidden in automated pipelines.
-3. **`Manager:docktor.py` and `APK.audio:mount.sh`:**  
+3. **`Manager:docktor.py` and `APK.audio.mount.sh`:**  
    Neither enforces anything of its own any more — they run the scripts above, so the dashboard button and the command line cannot disagree about what a gate is.
 

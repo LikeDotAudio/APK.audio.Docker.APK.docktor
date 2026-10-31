@@ -8,8 +8,8 @@ How to use DockTor and how it works inside. Bus topics and the HTTP surface in f
 ## Use
 
 ```sh
-./K8:runner.py                                                    # APK.audio root door: launch
-python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' serve --open
+./K8.runner.py                                                    # APK.audio root door: launch
+python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' serve --open
 PODS/POD.manager/MANAGER.Docktor/K8/manager.sh up|down|restart|logs|status|url
 PODS/POD.manager/MANAGER.Docktor/K8/up-stack.sh 'PROTOCOL.DEV.EMBER'
 ```
@@ -74,9 +74,9 @@ recreating — and runs its own `up-stack.sh` with `APKAUDIO_MOUNT_LOCK_WAIT=0`,
 ## The container
 
 `Docker/Dockerfile.manager`: `docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt +
-`apkaudio_contracts` (pip-installed from `contracts/python`); it COPYs `SRC/manager`, `K8` and `bin/K8:runner.py`
+`apkaudio_contracts` (pip-installed from `contracts/python`); it COPYs `SRC/manager`, `K8` and `bin/K8.runner.py`
 into `/app/APK:DOCKERS/…` and nothing else of any other repo: the brand accent and the broker list come from the
-installed package. `CMD` runs `K8:runner.py serve`.
+installed package. `CMD` runs `K8.runner.py serve`.
 
 **Two listeners.** The API and the dashboard on `127.0.0.1:8765` (loopback, unauthenticated, can stop the
 bench), and a read-only **labels listener** on `APK_MANAGER_LABELS_BIND:APK_MANAGER_LABELS_PORT` (default
@@ -101,10 +101,10 @@ Healthcheck: `/api/health`.
 
 | Path | Role |
 |---|---|
-| `bin/K8:runner.py`, `bin/docktor` | front doors (`launch` by default; `docktor` defaults to `serve`) |
+| `bin/K8.runner.py`, `bin/docktor` | front doors (`launch` by default; `docktor` defaults to `serve`) |
 | `SRC/manager/` | the package above |
 | `K8/` | the verbs |
 | `K8/config_helper.py` | config reader for the scripts |
-| `SRC/APK.audio:mount.sh`, `SRC/APK.audio:DeleteOldRebuildAndMount.sh` | named front doors into `K8/` |
+| `SRC/APK.audio.mount.sh`, `SRC/APK.audio.DeleteOldRebuildAndMount.sh` | named front doors into `K8/` |
 | `SRC/page-titles.json` | remembered page titles for endpoint cards |
 | `SRC/manager/test_readers_idle.py` | readers stay quiet at idle |

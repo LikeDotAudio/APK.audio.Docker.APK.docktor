@@ -46,7 +46,7 @@ fi
 managed_by="$(docker inspect --format \
     '{{index .Config.Labels "apk.audio.managed_by"}}' "$container" 2>/dev/null)"
 if [ "$managed_by" = "BareMetal-Manager" ]; then
-    path="$(stack_dir 'NODE.BareMetal')/SRC/Baremetal:Manager/instrument_launcher.py"
+    path="$(stack_dir 'NODE.BareMetal')/SRC/Baremetal.Manager/instrument_launcher.py"
     if [ -f "$path" ]; then
         printf '%s\n' "$path"
         exit 0

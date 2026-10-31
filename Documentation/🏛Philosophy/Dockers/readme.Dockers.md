@@ -236,7 +236,7 @@ When every directory under the checkout was named `APK:…`, that made a bind im
 spell, and COPY was forced. Since the POD.x rename (2026-10-16) the stack paths —
 `PODS/POD.x/…`, `Documentation/` — have no colon, and a bind of
 `${APKAUDIO_REPO}/Documentation` was measured working on 2026-10-30. The colon rule still
-stands for the few paths that keep one (`PROTOCOL.DEV.EMBER/SRC/Lawo:ember-plus-master`,
+stands for the few paths that keep one (`PROTOCOL.DEV.EMBER/SRC/Lawo.ember-plus-master`,
 the `IMPORT:file:*` folders), but it no longer decides the default. What decides it now is
 the photograph: a deployed node runs an image, not a checkout, so the bench runs what the
 node will run.

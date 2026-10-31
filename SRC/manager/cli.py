@@ -107,8 +107,8 @@ CLI_ACTIONS_WITH_ARGS = {
         'phoenix.sh'),
 }
 
-USAGE = """Usage: ./K8:runner.py <action> [args] [--no-kaboom]       (from the APK.audio root)
-   or: python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8:runner.py' <action> [args] [--no-kaboom]
+USAGE = """Usage: ./K8.runner.py <action> [args] [--no-kaboom]       (from the APK.audio root)
+   or: python3 'PODS/POD.manager/MANAGER.Docktor/bin/K8.runner.py' <action> [args] [--no-kaboom]
 
   launch [action] [--wait N]
                        THIS IS THE DEFAULT: a bare invocation runs it. Starts
@@ -255,7 +255,7 @@ def run_cli_mode(argv=None):
     # WHO ASKED, for free-ports.sh to print beside every stop. setdefault: a
     # CLI run launched by something that already named itself keeps that name.
     os.environ.setdefault('APKAUDIO_ORDERED_BY',
-                          "the terminal: K8:runner.py " + " ".join(argv or ['status']))
+                          "the terminal: K8.runner.py " + " ".join(argv or ['status']))
 
     # THE PAGE IS WORTH HAVING OPEN FOR THESE, and for a rebuild it is the whole
     # point — but only when there is already something to open. A cold bench
@@ -360,7 +360,7 @@ def run_cli_mode(argv=None):
 
 
 # Every word above that reaches the dispatcher, so the entry script can tell a
-# CLI invocation from a bare `python3 …K8:runner.py`. Built from the tables rather
+# CLI invocation from a bare `python3 …K8.runner.py`. Built from the tables rather
 # than typed again: it WAS typed again in main(), and a verb added to the table
 # but not to that list opened a Tkinter window instead of running.
 KNOWN_ACTIONS = (

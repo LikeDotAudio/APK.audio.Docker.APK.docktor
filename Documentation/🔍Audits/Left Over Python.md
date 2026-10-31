@@ -85,7 +85,7 @@ weight. **Lens 5 (provenance)** on F6, which is the one tree that must NOT be cu
 | `PROTOCOL.DEV.AES70/aes70py` | 442 | 19,912 | 107 | **KEEP — VENDORED** |
 | `BareMetal/Simulation:SPICE` | 14 | 10,122 | 1 | KEEP |
 | `WebPortal/APK:OS` | 7 | 7,630 | 0 | KEEP |
-| `BareMetal/Baremetal:Manager` | 12 | 7,296 | 0 | KEEP |
+| `BareMetal/Baremetal.Manager` | 12 | 7,296 | 0 | KEEP |
 | `Softapps/Softapp:Crawler` | 44 | 6,604 | 3 | KEEP |
 | `Softapps/Documentation Management` | 14 | 4,791 | 5 | KEEP |
 | `BareMetal/Protocol-RS232` | 1 | 4,475 | 0 | KEEP |
@@ -202,7 +202,7 @@ checkout root and cannot rot the same way again. PLAN-910.04.
 `APK:BareMetal/Protocol/Protocol-midi/Test/midi_tester.py` (different sha, same job, and the bare-metal one
 is named by `check.sh`). `aes70_tester.py` is 28 lines against `PROTOCOL.DEV.AES70/aes70_probe.py`'s
 259, which is in the AES70-Dev Dockerfile. `mqtt_tester.py` is 49 lines against
-`Storage:MQTT/mqtt_agent.py` and `Baremetal:Manager/mqtt_broker_discovery.py`, both wired.
+`Storage:MQTT/mqtt_agent.py` and `Baremetal.Manager/mqtt_broker_discovery.py`, both wired.
 
 There is also the filing question, which is the reason this one is easy: **executable protocol
 probes are not documents.** CLAUDE.md §3 says every document goes in a lane of the hub; it does not

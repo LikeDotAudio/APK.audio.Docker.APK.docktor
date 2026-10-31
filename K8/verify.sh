@@ -149,7 +149,7 @@ done
 if [ ${#found[@]} -gt 0 ]; then
     pass "Active APK containers: $(IFS=', '; echo "${found[*]}")"
 else
-    warn "No APK ecosystem containers active (run Management/APK.audio:mount.sh, or click Remount)."
+    warn "No APK ecosystem containers active (run Management/APK.audio.mount.sh, or click Remount)."
 fi
 
 # Then: the overlay that was NAMED actually reached the node that came up.

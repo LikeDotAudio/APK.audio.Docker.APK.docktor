@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
-# 🚀 Launch the bench and GET OUT OF THE WAY. The front door of K8:runner.py.
+# 🚀 Launch the bench and GET OUT OF THE WAY. The front door of K8.runner.py.
 #   ./launch.sh                bring DockTor up, then ask IT to mount everything
 #   ./launch.sh rebuild-all    same handover, a different verb on the far side
 #   ./launch.sh --wait 20      how long to hold for the answer before letting go

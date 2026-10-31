@@ -233,7 +233,7 @@ log_step()  { echo -e "\n${BOLD}${BLUE}==> $1${OFF}"; }
 
 # announce NAME [json] — one stdout line the bus can lift:
 #     @EVENT PORT_EVICT_PROCESS {"port":8080,"pid":4412}
-# K8:runner.py republishes @EVENT lines to
+# K8.runner.py republishes @EVENT lines to
 # APK.audio/System/ContainerManager. JSON optional, one line, passed as-is.
 announce() {
     local name="$1"
@@ -857,7 +857,7 @@ containers_except_manager() {
 # ── CONTAINERS THIS ECOSYSTEM STARTED THAT COMPOSE CANNOT SEE.
 # ⚠️ `docker compose down` STOPS ONLY WHAT A COMPOSE FILE DECLARES, and that is
 #    not the whole bench any more. Node-BareMetal's instrument launcher
-#    (POD:APK_THICK/APK:BareMetal/SRC/Baremetal:Manager/instrument_launcher.py)
+#    (POD:APK_THICK/APK:BareMetal/SRC/Baremetal.Manager/instrument_launcher.py)
 #    creates a container PER DISCOVERED INSTRUMENT straight through
 #    /var/run/docker.sock. Those containers carry `apk.audio.*` labels and NO
 #    `com.docker.compose.project` at all, so every compose verb in this folder
