@@ -14,7 +14,8 @@
 #   GROUP.name/ (a stack)      any folders (its own source). A CONTAINER stack —
 #                              one with Docker/ or SRC/ — keeps no loose files
 #                              but README.md, LICENSE*, the dotfiles git and
-#                              docker need, and display.json (the launcher's
+#                              docker need, .apk.deploy.ini (how deploy_all.py
+#                              ships it), and display.json (the launcher's
 #                              walk_project() reads it at the stack root and
 #                              stops there). A check script lives in SRC/
 #                              (SRC/check.sh), never at the stack root.
@@ -57,12 +58,12 @@ OUT_OF_SCOPE = {os.path.join('POD.THIN', 'OS')}
 OWN_CONTENT = {
     # WB-01/CC-03 exception: a static build input, not a container stack. The app
     # (src/, server/, package.json, vite.config.ts) stays at the repo root because
-    # it deploys standalone to spog.like.audio by its own GitHub workflows; its
+    # it deploys standalone to spog.like.audio (its .apk.deploy.ini, run by deploy_all.py); its
     # Docker/ holds only dist.Dockerfile, which WEB.Frontend-Assets builds as the
     # spog-dist context. It runs no service of its own.
     os.path.join('POD.THIN', 'WEB.SPOG'),
 }
-STACK_FILES = re.compile(r'^(README\.md|display\.json|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore)$')
+STACK_FILES = re.compile(r'^(README\.md|display\.json|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore|\.apk\.deploy\.ini)$')
 
 # A group root holds README.md and, where code reads one there, its contract:
 # display.json (the OS shell's group tile), manifest.json (the bench family
