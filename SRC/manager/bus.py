@@ -59,15 +59,15 @@ def contract_topic(family, fallback, **args):
         return families.topic(family, **args)
     except Exception:
         return fallback
-EVENT_TOPIC  = f"{TOPIC_ROOT}/ContainerManager"
-STATUS_TOPIC = f"{EVENT_TOPIC}/status"
+EVENT_TOPIC  = contract_topic("containerManagerEvent", f"{TOPIC_ROOT}/ContainerManager")
+STATUS_TOPIC = contract_topic("containerManagerStatus", f"{EVENT_TOPIC}/status")
 
 # THE RETAINED TREE BENEATH THE ROLL-UP. `status` is the whole bench in one
 # document; these two are the addresses of the things inside it — the publisher,
 # and one branch holding a topic per container and per app. report.py builds the
 # leaves; the names live here because this module is where a topic of this
 # component is spelled.
-MANAGER_TOPIC = f"{EVENT_TOPIC}/Manager"
+MANAGER_TOPIC = contract_topic("containerManagerManager", f"{EVENT_TOPIC}/Manager")
 # THE SHAPE VERSION OF EVERY RETAINED ContainerManager DOCUMENT (status,
 # Manager, containers/…, …/apps/…), carried as `doc_version` in each and pinned
 # by SRC/manager/schemas/*.schema.json (2026-10-30 audit, DockTor #3/#7).

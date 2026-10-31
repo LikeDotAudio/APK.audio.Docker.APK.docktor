@@ -68,6 +68,10 @@ class OneConstructor(unittest.TestCase):
         self.assertEqual(bus.EVENT_TOPIC, families.topic("containerManagerEvent"))
         self.assertEqual(bus.STATUS_TOPIC, families.topic("containerManagerStatus"))
         self.assertEqual(bus.MANAGER_TOPIC, families.topic("containerManagerManager"))
+        # containers/ is the branch above containerManagerContainer's {stack}/{name} leaves.
+        self.assertEqual(families.topic("containerManagerContainer", stack="s", name="n"),
+                         f"{bus.CONTAINERS_TOPIC}/s/n")
+        self.assertEqual(api.CHAT_TOPIC, families.topic("systemChat"))
         self.assertEqual(docker_bus.REQUEST_TOPIC, families.topic("containerManagerDockerRequest"))
         self.assertEqual(f"{docker_bus.REPLY_BASE}/x",
                          families.topic("containerManagerDockerReply", client="x"))
@@ -78,7 +82,7 @@ class OneConstructor(unittest.TestCase):
              mock.patch.object(api, "emit"):
             out = api.chat("hello")
         self.assertTrue(out["published"])
-        self.assertEqual(sent.call_args[0][0], "APK.audio/System/Chat")
+        self.assertEqual(sent.call_args[0][0], api.CHAT_TOPIC)
 
 
 if __name__ == "__main__":

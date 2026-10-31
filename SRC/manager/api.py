@@ -30,7 +30,7 @@ import threading
 
 from .paths import DOCKERS_DIRECTORY, DOCKER_SCRIPTS_DIRECTORY, REPOSITORY_ROOT
 from .bus import (emit, BROKER_HOST, BROKER_PORT, CONTRACT_ROOT, DOCUMENT_VERSION,
-                  publish as bus_publish)
+                  contract_topic, publish as bus_publish)
 from . import palette
 from .runner import (run_management_script, cancel_running_scripts,
                      cancel_epoch, running_scripts)
@@ -1213,7 +1213,7 @@ def surface(name, quiet=True):
 # the client offers the panic confirm, but a text field that can take the
 # ecosystem down without a dialog is one somebody empties by accident.
 # ---------------------------------------------------------------------------
-CHAT_TOPIC = f"{CONTRACT_ROOT}/System/Chat"
+CHAT_TOPIC = contract_topic("systemChat", f"{CONTRACT_ROOT}/System/Chat")
 PANIC_WORDS = ("panic", "sos", "stop")
 
 
