@@ -69,6 +69,10 @@ PUBLISHERS = (
     ("APK:BareMetal", "Node-BareMetal",
      "the `source` field on APK.audio/System/Protocols/*/config, published by "
      "every protocol manager the node supervises"),
+    ("BareMetal_MQTT_Exchange", "Node-BareMetal",
+     "the `agent` field of the AgentHeartbeat at "
+     "APK.audio/System/Agents/BareMetal_MQTT_Exchange (DATABUS.agent.MQTT, a "
+     "roster agent of the node since the SDK/contracts audit BM-04)"),
     ("APK.audio DockTor", "DockTor",
      "the `sender` field report.py stamps on "
      "APK.audio/System/ContainerManager/status"),

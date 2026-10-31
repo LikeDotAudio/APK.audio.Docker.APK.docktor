@@ -84,3 +84,19 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   whole program, Dockerfile header), and the in-image `/app/APK:DOCKERS/APK:docktor` spellings (nothing outside
   the image resolves them).
 
+### From the SDK/contracts audit (2026-10-30, LOOSE-sdk-manager-docktor)
+
+- **WB-04 broker sessions authenticate** — delivered in the round above: `bus.credentials()`/`bus.new_client()`
+  apply `APK_MQTT_USERNAME`/`APK_MQTT_PASSWORD` (via `apkaudio_contracts.broker_auth`) to the event session,
+  `report.py` passes `auth=` to `publish.multiple` for our brokers only, chat rides the event session, the docker
+  bus has its own identity (`APK_DOCKTOR_MQTT_*`), and `docker-compose.manager.yml` passes all four variables.
+  Tests: `test_bus_identity.py`.
+- **WB-04 ContainerManager topics from the contracts** — the families exist now (W01: `containerManagerEvent`,
+  `…Status`, `…Manager`, `…Container`, `…App`, `…DockerRequest`, `…DockerReply`); `docker_bus.py` builds its pair
+  with them and `test_bus_identity.py` holds `bus.py`'s event/status/Manager topics and the docker pair equal to
+  the builders. The engine side already builds with credentials (`launcher/docker/bus.rs`
+  `APK_DOCKER_BUS_MQTT_*`, W02). **Open: `APK.audio/System/Chat`** has no contract family yet — Waiting on
+  contracts (handoff filed); `api.py` spells it from the contracts' ROOT until then.
+- `K8/topics.sh` attributes the agent id `BareMetal_MQTT_Exchange` (DATABUS.agent.MQTT's new AgentHeartbeat at
+  `System/Agents/…`) to Node-BareMetal.
+

@@ -35,4 +35,6 @@ Score key: 3 meets the standard · 2 minor gaps · 1 significant gaps · 0 absen
 4. **Two files still copied in.** `Docker/Dockerfile.manager` COPYs NODE.BareMetal's `mqtt_broker_discovery.py` and `contracts/tokens/brand.json` (both marked TRANSITIONAL). Waiting on foundation W01: the contracts package to carry the broker-candidate module and the brand token (handoff filed); `brokers.py` already prefers the package.
 5. **Hand-kept port table, shrinking.** `K8/endpoints.sh` still carries 20 `emit_endpoint` rows for other repos' containers; Broker-Mosquitto's two go once its labels are live, and the other 18 wait on their owners' labels (handoffs filed). DATABASE.server.NETBOX's probe still parses this file to find its own port.
 
+6. **Chat outside every contract family.** `APK.audio/System/Chat` (`api.py` `CHAT_TOPIC`) is spelled from the contracts' ROOT but no family declares it (SDK/contracts audit WB-04). Waiting on contracts (handoff filed).
+
 Findings on the `sys.path` call sites, the legacy path spellings, the two MQTT clients and the chat bypass, the unauthenticated docker bus, the thin tests and the missing versions were delivered — see [🌍Publishing/DELIVERY.md](../%F0%9F%8C%8DPublishing/DELIVERY.md).
