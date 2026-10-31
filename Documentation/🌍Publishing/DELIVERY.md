@@ -177,4 +177,9 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
   `test_labels_listener.py` (the one read, 14 other paths 404, 7 methods 405 incl. an invented one, caching,
   address settings, an unbindable address is not fatal). Live after the next DockTor rebuild; host firewall
   requirement in ARCHITECTURE.md.
-
+- **up.sh no longer races the watchdog (LOOSE-upsh-watchdog-race)** — on 2026-10-30 a terminal `up.sh` and the
+  DockTor watchdog both replaced Broker-SqlCapture and Portal-WebStatic ("No such container:
+  12918d28bf0d_Portal-WebStatic"; both left under `<hash>_` names). The mount verbs now hold one flock
+  (`hold_mount_lock`, `mount.lock` in DockTor storage) for their whole run and the watchdog skips while it is held
+  (`readers.mount_lock_busy`). Tests: `test_readers_idle.MountLock` (incl. the shell lock read from Python and a
+  second `hold_mount_lock` refused). The watchdog half is live after the next DockTor rebuild (baked copy).

@@ -55,6 +55,10 @@ elif ! "$MANAGEMENT_SCRIPTS_DIR/test-gates.sh"; then
     exit 1
 fi
 
+# ONE MOUNT AT A TIME (hold_mount_lock): the watchdog must not remount this
+# stack while it is down for its rebuild.
+hold_mount_lock "rebuild-stack.sh $STACK" || exit 1
+
 log_step "Preparing the host (skills, this pod's ports)..."
 synch_skills
 if [ "${APKAUDIO_NO_KABOOM:-0}" = "1" ]; then

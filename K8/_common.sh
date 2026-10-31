@@ -819,8 +819,10 @@ open_manager_site() {
             # a text browser in the middle of the build log.
             if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
                 log_info "DockTor is up — opening $MANAGER_URL"
-                python3 -c "import webbrowser; webbrowser.open('$MANAGER_URL')" 2>/dev/null \
-                    || xdg-open "$MANAGER_URL" >/dev/null 2>&1 \
+                # 9<&-: a browser this starts outlives the run, and must not
+                # carry the mount lock (hold_mount_lock) away with it.
+                python3 -c "import webbrowser; webbrowser.open('$MANAGER_URL')" 2>/dev/null 9<&- \
+                    || xdg-open "$MANAGER_URL" >/dev/null 2>&1 9<&- \
                     || log_warn "Could not raise a browser. It is at $MANAGER_URL"
             else
                 log_info "DockTor is up at $MANAGER_URL (no display here, so nothing was opened)"
@@ -1318,6 +1320,60 @@ ensure_log_storage() {
     log_warn "Log volume $LOG_VOLUME_NAME is missing -- mounting LOGGER STORAGE first."
     "${COMPOSE_LOGGER[@]}" up -d \
         || log_error "LOGGER STORAGE did not come up; compose will name the missing volume below."
+    return 0
+}
+
+# ── ONE MOUNT AT A TIME (LOOSE-upsh-watchdog-race). On 2026-10-30 a terminal
+# up.sh went to replace Broker-SqlCapture and Portal-WebStatic while the DockTor
+# watchdog — which saw their stacks dark mid-recreate — was remounting them too:
+# "removal … already in progress", "No such container:
+# 12918d28bf0d_Portal-WebStatic", up.sh rc=1 and both left running under their
+# stranded <hash>_ names. The watchdog already sat out runs IT started
+# (is_any_script_running) but could not see one started at a terminal.
+# THE LOCK IS A FILE IN DOCKTOR'S OWN STORAGE, flock(2)ed: the folder is the
+# same inode from the host ($STORAGE_HOST_DIR, also reached through the repo
+# bind inside the manager) and from /storage, so a terminal up.sh and the
+# watchdog's up-stack.sh contend for one lock. readers.mount_lock_busy() reads
+# the same file and skips the watchdog's beat while it is held.
+# HELD FOR THE WHOLE RUN, recreate_stale_builds included — its recreates are
+# compose replacements in OTHER stacks and race the same way.
+# WAITS, THEN REFUSES: APKAUDIO_MOUNT_LOCK_WAIT seconds (default 1800; 0 = do
+# not wait), then exit 1 rather than run a second compose over the first.
+# Re-entrant through APKAUDIO_MOUNT_LOCK_HELD, so a mount verb calling another
+# does not wait on itself. No flock(1) or no writable folder: warned, not held.
+MOUNT_LOCK_FILE="${APKAUDIO_MOUNT_LOCK_FILE:-$STORAGE_HOST_DIR/mount.lock}"
+
+# hold_mount_lock <who> — take the lock on fd 9 for the rest of this process.
+hold_mount_lock() {
+    local who="${1:-${0##*/}}" waited=0 wait="${APKAUDIO_MOUNT_LOCK_WAIT:-1800}"
+    if [ -n "${APKAUDIO_MOUNT_LOCK_HELD:-}" ]; then
+        return 0
+    fi
+    if ! command -v flock >/dev/null 2>&1; then
+        log_warn "No flock(1) here; $who runs without the mount lock (the watchdog may race it)."
+        return 0
+    fi
+    # Created world-writable, opened READ-ONLY: flock needs no write access,
+    # and a lock file the root-run manager created must not lock the host out.
+    if [ ! -e "$MOUNT_LOCK_FILE" ]; then
+        ( umask 000; : >> "$MOUNT_LOCK_FILE" ) 2>/dev/null
+    fi
+    if ! exec 9<"$MOUNT_LOCK_FILE" 2>/dev/null; then
+        log_warn "Cannot open $MOUNT_LOCK_FILE; $who runs without the mount lock."
+        return 0
+    fi
+    while ! flock -n 9; do
+        if [ "$waited" -ge "$wait" ]; then
+            log_error "$who: another mount still holds $MOUNT_LOCK_FILE after ${waited}s; refusing to run a second compose over it."
+            announce MOUNT_LOCK_BUSY "{\"who\":\"$who\",\"waited\":$waited}"
+            exec 9<&-
+            return 1
+        fi
+        [ "$waited" -eq 0 ] && log_warn "$who: another up/up-stack (or the DockTor watchdog's) is mounting; waiting for it (up to ${wait}s)..."
+        sleep 2
+        waited=$((waited + 2))
+    done
+    export APKAUDIO_MOUNT_LOCK_HELD="$$"
     return 0
 }
 

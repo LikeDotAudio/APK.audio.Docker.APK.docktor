@@ -20,6 +20,11 @@ elif ! "$MANAGEMENT_SCRIPTS_DIR/test-gates.sh"; then
     exit 1
 fi
 
+# ONE MOUNT AT A TIME: held to exit, so the DockTor watchdog (or a second
+# up/up-stack) never replaces a container this run is replacing — the race
+# that left Portal-WebStatic as <hash>_Portal-WebStatic (hold_mount_lock).
+hold_mount_lock "up.sh" || exit 1
+
 log_step "Preparing the host (skills, ports)..."
 # The broker config is bind-mounted from the broker repo's own SRC/ (a file
 # that is always in the checkout), not staged under /tmp, so no host path is

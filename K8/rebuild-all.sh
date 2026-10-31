@@ -17,6 +17,10 @@
 # A Rust build from scratch takes minutes, and --no-cache means every time.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
+# ONE MOUNT AT A TIME (hold_mount_lock), from BEFORE the unmount: the stacks
+# step 1 takes down read as dark, and the watchdog would remount them under us.
+hold_mount_lock "rebuild-all.sh" || exit 1
+
 log_step "1/6. Unmounting Old Container Stacks & Cleaning Orphans..."
 # NO --remove-orphans: five of the nine compose files share the project
 # apk-audio, so the flag would have the node down delete the core stack out from

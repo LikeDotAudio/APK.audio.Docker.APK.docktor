@@ -63,6 +63,14 @@ recreates — is recreated by its own compose files (`--no-build --no-deps`). Ne
 It keeps the run state it found: only a running container or an exited one-shot is started on the new
 build; one never started (`created`) or a stopped long-runner is recreated `--no-start` and stays down.
 
+One mount at a time: `up.sh`, `up-stack.sh` and `rebuild-all/-stack/-core.sh` take `hold_mount_lock`
+(`_common.sh`), an flock on `mount.lock` in DockTor's storage (`Documentation/STORAGE/DockTor/` on the host,
+`/storage` inside — one folder), for the whole run including `recreate_stale_builds`. A second mount waits
+(`APKAUDIO_MOUNT_LOCK_WAIT`, default 1800 s) and then refuses; nested verbs pass through on
+`APKAUDIO_MOUNT_LOCK_HELD`. The watchdog (`readers.start_watchdog`) skips its beat while
+`readers.mount_lock_busy()` sees the lock held — so it no longer remounts a stack a terminal `up.sh` is
+recreating — and runs its own `up-stack.sh` with `APKAUDIO_MOUNT_LOCK_WAIT=0`, so it bows out rather than queue.
+
 ## The container
 
 `Docker/Dockerfile.manager`: `docker:27-cli` + python3 + compose + mosquitto-clients + paho-mqtt +

@@ -11,6 +11,7 @@ blank field and not a dashboard.
 Every function here is a script call. None of them knows what docker is.
 """
 
+import fcntl
 import os
 import re
 import time
@@ -608,6 +609,43 @@ def _container_fingerprint():
     return _fingerprint_of(done.stdout)
 
 
+MOUNT_LOCK_FILE = "mount.lock"
+
+
+def mount_lock_busy(path=None):
+    """True while an up/up-stack/rebuild holds the mount lock (LOOSE-upsh-watchdog-race).
+
+    THE SAME FILE _common.sh's hold_mount_lock flock()s, in DockTor's storage:
+    the host's Documentation/STORAGE/DockTor and the container's /storage are
+    one folder, so a terminal up.sh is visible here. is_any_script_running()
+    only sees runs this process started; a terminal up.sh recreating
+    Portal-WebStatic read as a dark stack, and the watchdog's own remount of it
+    collided with the recreate ("No such container: <hash>_Portal-WebStatic").
+    A probe, not a hold: take it non-blocking and let go at once. No folder or
+    no file is "not busy" — there is nothing to wait for.
+    """
+    if path is None:
+        folder = storage_directory(quiet=True)
+        if not folder:
+            return False
+        path = os.path.join(folder, MOUNT_LOCK_FILE)
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
 def watchdog_active():
     """True once start_watchdog has run in this process — the page reads it to
     stand its own countdown down, so one engine remounts a dark stack, not two."""
@@ -641,7 +679,7 @@ def start_watchdog(interval=30):
         time.sleep(15)
         while True:
             try:
-                if not is_any_script_running():
+                if not is_any_script_running() and not mount_lock_busy():
                     fingerprint = _container_fingerprint()
                     fresh = time.time() - state["full_at"] < WATCHDOG_FULL_SECONDS
                     if fingerprint is not None and fingerprint == state["clean"] and fresh:
@@ -655,11 +693,15 @@ def start_watchdog(interval=30):
                             continue
                         if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
                             stack_name = s.get("stack")
-                            if stack_name and not is_any_script_running():
+                            if stack_name and not is_any_script_running() and not mount_lock_busy():
                                 remounted = True
                                 emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
+                                # WAIT=0: a mount that took the lock since the
+                                # probe above wins; this beat bows out, the
+                                # next one re-reads the stacks it left.
                                 run_management_script('up-stack.sh', args=[stack_name], cancellable=True,
-                                                      ordered_by=f"the DockTor watchdog ({stack_name} was down)")
+                                                      ordered_by=f"the DockTor watchdog ({stack_name} was down)",
+                                                      extra_env={"APKAUDIO_MOUNT_LOCK_WAIT": "0"})
                                 time.sleep(10)
                     state["clean"] = None if remounted else fingerprint
             except Exception as err:

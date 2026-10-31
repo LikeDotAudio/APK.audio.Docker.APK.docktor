@@ -218,7 +218,7 @@ def is_any_script_running():
 
 
 def run_management_script(name, args=(), on_line_callback=None, quiet=False,
-                          cancellable=False, ordered_by=None):
+                          cancellable=False, ordered_by=None, extra_env=None):
     """Run one script from the collection; return (exit_code, combined output).
 
     THE EXIT CODE IS PART OF THE RETURN VALUE. The streamer this replaces threw
@@ -233,6 +233,8 @@ def run_management_script(name, args=(), on_line_callback=None, quiet=False,
     suppressed: a script that is not there is news at any beat.
     `cancellable` PUTS THIS RUN WHERE A STOP CAN REACH IT. Only the action path
     passes it.
+    `extra_env` is added to the script's environment (the watchdog passes
+    APKAUDIO_MOUNT_LOCK_WAIT=0 so its remount bows out to a running mount).
     `ordered_by` IS WHO ASKED, and it travels as APKAUDIO_ORDERED_BY for the
     same reason --no-kaboom does: free-ports.sh is two scripts down, and a
     container it stops has to be able to say whose command that was.
@@ -250,8 +252,10 @@ def run_management_script(name, args=(), on_line_callback=None, quiet=False,
         emit("SCRIPT_START", {"script": name, "argv": argv,
                               "ordered_by": ordered_by})
     environment = None
-    if ordered_by:
-        environment = {**os.environ, "APKAUDIO_ORDERED_BY": ordered_by}
+    if ordered_by or extra_env:
+        environment = {**os.environ, **(extra_env or {})}
+        if ordered_by:
+            environment["APKAUDIO_ORDERED_BY"] = ordered_by
     process = subprocess.Popen(
         argv,
         cwd=REPOSITORY_ROOT,

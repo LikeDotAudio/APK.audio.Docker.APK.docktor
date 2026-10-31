@@ -18,6 +18,9 @@ if ! "$MANAGEMENT_SCRIPTS_DIR/test-gates.sh"; then
     exit 1
 fi
 
+# ONE MOUNT AT A TIME (hold_mount_lock).
+hold_mount_lock "rebuild-core.sh" || exit 1
+
 log_step "Preparing the host (skills, broker config, ports)..."
 # A failed prepare is a refused up, not a warning: it fails on a broker config
 # that could not be staged, and compose would bind the daemon empty stand-in

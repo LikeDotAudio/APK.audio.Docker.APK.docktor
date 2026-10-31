@@ -69,6 +69,10 @@ elif ! "$MANAGEMENT_SCRIPTS_DIR/test-gates.sh"; then
     exit 1
 fi
 
+# ONE MOUNT AT A TIME (hold_mount_lock): a terminal up.sh and the watchdog's
+# remount of this stack must not both be replacing its containers.
+hold_mount_lock "up-stack.sh $STACK" || exit 1
+
 log_step "Preparing the host (skills, this stack's ports)..."
 synch_skills
 if [ "${APKAUDIO_NO_KABOOM:-0}" = "1" ]; then
