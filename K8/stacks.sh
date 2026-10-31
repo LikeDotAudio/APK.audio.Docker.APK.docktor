@@ -177,7 +177,7 @@ stacks = []
 sys.path.insert(0, os.environ["K8DIR"])
 from config_helper import compose_files
 # ⚠️ NOT THE PLUGINS. A plugin under POD.THICK/PLUGINS/ is raised on demand
-#    and executed again by the discovery engine (through APK-Docker-Gate) when
+#    and executed again by the discovery engine (asking DockTor over the bus) when
 #    the thing it serves goes quiet, so "none of its containers exists" is its
 #    resting state, not news. Listed here it would read `dark` and `driven`,
 #    and the DockTor watchdog (readers.start_watchdog) would remount every

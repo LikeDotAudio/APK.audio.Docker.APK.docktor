@@ -375,20 +375,9 @@ PURPOSE = {
         "apk-discovery-engine: passive network sniffer that watches the LAN for PTP clock "
         "packets, SAP stream announcements, and mDNS service broadcasts. It publishes device "
         "presence documents and discovery events to MQTT, and auto-launches matching plugin "
-        "containers via the Docker socket on demand.",
+        "containers on demand by asking DockTor over the bus (it holds no Docker socket).",
         "Without the discovery engine, hardware and network streams on the LAN are invisible "
         "until configured by hand, and protocol plugins cannot auto-launch when devices appear."),
-
-    "APK-Docker-Gate": (
-        "The engine's one door to the Docker socket",
-        "The apk-docker-gate binary from the plugins image, and the only holder of "
-        "/var/run/docker.sock in the discovery stack. No network at all: it answers on a "
-        "unix socket in the apk-docker-gate volume, which only the engine also mounts, "
-        "with no capabilities and a read-only root. It keeps the inspects it needs to "
-        "recreate an executed plugin on a volume nothing else mounts.",
-        "It is what lets the discovery engine launch and execute plugin containers "
-        "without the engine itself holding root on the host: the socket stays behind "
-        "one small process with no network to be reached over."),
 
     "Node-FramesRelay": (
         "Unix-socket doors from the gateway to the host loopback",

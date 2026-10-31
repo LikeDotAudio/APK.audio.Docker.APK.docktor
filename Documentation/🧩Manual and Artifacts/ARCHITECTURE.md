@@ -37,6 +37,9 @@ Page: `http://localhost:8765/`. `GET /api/routes` lists the API.
      actions.
    - `serve.py` — `ManagerHandler` / `ManagerServer` (stdlib `ThreadingHTTPServer`), `LogStream` (SSE).
    - `cli.py` — terminal verbs, `USAGE`.
+   - `docker_bus.py` — answers the discovery engine's Docker calls on `APK.audio/System/ContainerManager/docker/request`
+     (the old APK-Docker-Gate allow-list; kept inspects in `<storage>/docker-kept/`). Started by `serve()`. Topics in
+     `Documentation/CONTRACTS.md`.
 3. **Client — `SRC/manager/web/`.** `index.html`, `manager.css`, `manager.js`; no framework, no build.
    Served from `WEB_ROOT` (`serve.py`).
 

@@ -73,7 +73,7 @@ One action runs at a time; the rest queue (`/api/queue`).
 
 Measured 2026-10-30:
 
-- `cd SRC && python3 -m pytest -q manager/test_readers_idle.py` — 10 passed.
+- `cd SRC && python3 -m pytest -q manager/test_readers_idle.py manager/test_docker_bus.py` — 14 passed.
 - `python3 -c "import manager.api, manager.serve, manager.cli"` from `SRC/` — imports headless, no display.
 - `bash -n` passes on every `K8/*.sh` and `SRC/*.sh`; every script named in `cli.py` / `api.py` exists.
 - Against a running bench: `K8/test-gates.sh` (pre-build gates) and `K8/verify.sh` (post-mount checks).

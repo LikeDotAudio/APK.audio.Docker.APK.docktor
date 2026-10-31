@@ -36,6 +36,7 @@ THE MODULE MAP, deepest first; each imports only from the ones above it:
     diagnose   what an inspect payload MEANS; the endpoint and config tables
     report     the retained status payload, and run-with-a-report-either-side
     api        the route table: what may be asked, what may be done
+    docker_bus the discovery engine's Docker, asked over the bus (bus, readers)
     serve      sockets, routing, the shared execution log, the static client
     cli        argument -> script name; `serve` is one of them
     web/       index.html, manager.css, manager.js. No framework, no CDN

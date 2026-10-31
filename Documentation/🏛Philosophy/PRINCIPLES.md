@@ -42,7 +42,9 @@ when it moves, and tombstoned with a zero-length retained message when its subje
 
 DockTor is the only container that mounts `/var/run/docker.sock`. Its API stops containers and has no
 authentication, so it binds `127.0.0.1` (`APK_MANAGER_BIND` in `Docker/docker-compose.manager.yml`,
-`serve(bind="127.0.0.1")` at `SRC/manager/serve.py:692`).
+`serve(bind="127.0.0.1")` at `SRC/manager/serve.py:692`). The discovery engine, which raises and reaps plugin
+containers, mounts no socket of its own: it asks DockTor over the bus (`SRC/manager/docker_bus.py`), and DockTor
+answers only the five container calls for `^(Plugin-|APK-|apk-)` names plus a recreate from an inspect it kept.
 
 ## The bus and the manager are protected
 
