@@ -4,8 +4,8 @@
 # ♻️  Reclaim what docker is holding and nothing is using.
 #   ./prune.sh          dangling images + stopped containers + build cache
 #   ./prune.sh --all    ALSO every image no running container references
-# ⚠️ NAMED VOLUMES ARE NEVER TOUCHED. This ecosystem state lives in five of them
-#    (mariadb-data, broker-data, baremetal-state, mqtt-exchange, gui-frames) and
+# ⚠️ NAMED VOLUMES ARE NEVER TOUCHED. This ecosystem state lives in four of them
+#    (mariadb-data, broker-data, baremetal-state, mqtt-exchange) and
 #    docker volume prune counts a volume as unused whenever nothing is attached
 #    RIGHT NOW — so running it while the stack is down deletes the database and
 #    reports it as reclaimed space. No flag here will do it; use
@@ -38,7 +38,7 @@ else
 fi
 
 log_warn "Named volumes were NOT pruned — mariadb-data, broker-data, baremetal-state,"
-echo "  mqtt-exchange and gui-frames are this ecosystem's state and read as 'unused'"
+echo "  and mqtt-exchange are this ecosystem's state and read as 'unused'"
 echo "  whenever the stack is down. Remove one by name if you really mean to."
 
 announce DOCKER_PRUNED "{\"images_all\":$ALL}"

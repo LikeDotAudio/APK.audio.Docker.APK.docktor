@@ -296,7 +296,7 @@ ACTIONS = {
             "THE NAMED VOLUMES GO TOO. That is the DATA:\n"
             "  · mariadb-data — the database\n"
             "  · broker-data · mqtt-exchange — retained bus state\n"
-            "  · baremetal-state · gui-frames — the node's memory\n\n"
+            "  · baremetal-state — the node's memory\n\n"
             "Every other button here refuses to touch these. This one deletes "
             "them by name. Nothing takes a backup, and NOTHING IN THIS "
             "REPOSITORY WILL BRING THE DATA BACK — a rebuild afterwards mounts "

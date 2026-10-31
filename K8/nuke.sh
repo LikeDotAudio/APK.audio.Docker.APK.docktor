@@ -10,7 +10,7 @@
 #
 # ⚠️ THIS DELETES NAMED VOLUMES, WHICH IS THE WHOLE POINT AND THE WHOLE DANGER.
 #    prune.sh refuses them in its own words — mariadb-data, broker-data,
-#    baremetal-state, mqtt-exchange and gui-frames are this ecosystem's STATE,
+#    baremetal-state and mqtt-exchange are this ecosystem's STATE,
 #    and `docker volume prune` counts them as unused whenever the stack is down.
 #    Every other script in this folder is built around never touching them.
 #    This one exists because sometimes you do mean it. There is no undo, no
