@@ -121,6 +121,25 @@ services:
       APK_DOCKTOR_MQTT_PASSWORD: "${APK_DOCKTOR_MQTT_PASSWORD:-}"
       APK_MQTT_USERNAME: "${APK_MQTT_USERNAME:-}"
       APK_MQTT_PASSWORD: "${APK_MQTT_PASSWORD:-}"
+      # THE IDENTITIES OF THE STACKS DOCKTOR RAISES, FORWARDED (go-live
+      # 2026-10-30). Every up-stack, rebuild and WATCHDOG remount runs compose
+      # IN HERE, so each stack's `${APK_…_MQTT_*}` interpolates from THIS
+      # environment, not from the shell that once started it: before these
+      # lines a watchdog remount of DISCOVERY.Engine came back with blank
+      # APK_DOCKER_BUS_MQTT_* and Plugin-MACHINE with blank APK_MACHINE_MQTT_*,
+      # and under the operator ACL that is an engine without Docker. Values come
+      # from the exported envelope (~/.apk.secrets.env) when DockTor is
+      # started, never from a file in git. test_forwarded_env.py fails when a
+      # compose file under PODS/ names an *_MQTT_*_USERNAME/PASSWORD this list
+      # does not carry.
+      APK_DOCKER_BUS_MQTT_USERNAME: "${APK_DOCKER_BUS_MQTT_USERNAME:-}"
+      APK_DOCKER_BUS_MQTT_PASSWORD: "${APK_DOCKER_BUS_MQTT_PASSWORD:-}"
+      APK_LAUNCHER_MQTT_USERNAME: "${APK_LAUNCHER_MQTT_USERNAME:-}"
+      APK_LAUNCHER_MQTT_PASSWORD: "${APK_LAUNCHER_MQTT_PASSWORD:-}"
+      APK_MACHINE_MQTT_USERNAME: "${APK_MACHINE_MQTT_USERNAME:-}"
+      APK_MACHINE_MQTT_PASSWORD: "${APK_MACHINE_MQTT_PASSWORD:-}"
+      APK_MQTT_OPERATOR_USERNAME: "${APK_MQTT_OPERATOR_USERNAME:-}"
+      APK_MQTT_OPERATOR_PASSWORD: "${APK_MQTT_OPERATOR_PASSWORD:-}"
       # THE INSTRUMENT LAUNCHER'S CREATES (NODE.BareMetal BM-11) are checked
       # against these: the image(s) an instrument may run (the node's own
       # APK_INSTRUMENT_IMAGE, same default) and, when set, the host trees an

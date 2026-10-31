@@ -191,11 +191,9 @@ emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
 emit_endpoint Storage-Portal        80/tcp   "${PORT:-8080}" open \
     "Portal status page" "http://{host}:{port}/status.html"
 
-emit_endpoint Broker-Mosquitto        1883/tcp 1883 copy \
-    "MQTT broker (DATABUS.Broker.MQTT)" "mqtt://{host}:{port}"
-
-emit_endpoint Broker-Mosquitto        9001/tcp 9001 copy \
-    "MQTT over WebSockets (DATABUS.Broker.MQTT)" "ws://{host}:{port}"
+# Broker-Mosquitto: NO HAND ROWS. It describes its two endpoints itself
+# (audio.apk.endpoint.1/2 in DATABUS.Broker.MQTT's compose, live since the
+# 2026-10-30 operator-ACL go-live recreated it); the label block prints them.
 
 # THE DATABASE CLIENTS USE: the database through ProxySQL on port 3306.
 emit_endpoint SQL-Proxy 3306/tcp "${SQL_CLUSTER_PORT:-3306}" copy \

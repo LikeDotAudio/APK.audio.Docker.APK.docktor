@@ -133,3 +133,24 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
 - **NetBox port read, not restated** — `K8/endpoints.sh` takes Netbox-App's declared port from
   DATABASE.server.NETBOX's `"127.0.0.1:<port>:8080"` line.
 
+### Go-live of the operator ACL (2026-10-30, owner-approved, run by the coordinator)
+
+- **Live** — Broker-Mosquitto runs the operator overlay; DockTor's docker-bus session is authenticated
+  (`DOCKER_BUS_SERVING "authenticated": true`); an engine-identity `docker/request` round trip answers 200; an
+  anonymous `docker/#` subscriber receives nothing. The "takes effect after the owner restarts" notes above are
+  now history.
+- **Remounts keep their credentials** — a watchdog remount of DISCOVERY.Engine (compose run inside DockTor) had
+  brought the engine back with blank `APK_DOCKER_BUS_MQTT_*` and Plugin-MACHINE with blank `APK_MACHINE_MQTT_*`.
+  `docker-compose.manager.yml` now forwards every stack identity (`APK_DOCKER_BUS_MQTT_*`, `APK_LAUNCHER_MQTT_*`,
+  `APK_MACHINE_MQTT_*`, `APK_MQTT_OPERATOR_*`, beside `APK_DOCKTOR_MQTT_*` and `APK_MQTT_*`), so every up-stack,
+  rebuild or watchdog remount inside DockTor interpolates them. Values come from the exported
+  `~/.apk.secrets.env` when DockTor is started, never from git. `test_forwarded_env.py` fails when any compose
+  file under PODS/ names an `APK_…MQTT…_USERNAME/_PASSWORD` the manager does not forward (it fails on the old
+  compose). DockTor recreated from a host shell with the envelope exported: all six identities present.
+- **Instruments are never compose services** — instruments run `apk-plugins:local`, which compose built, so a
+  container inherited its `com.docker.compose.*` labels. `instrument()` now reads the image's labels and sets
+  each `com.docker.compose.*` one to `""` in the create (`blank_inherited_compose_labels`); the requester still
+  may not send any. Tests in `test_instrument_calls.py`.
+- **Broker endpoint rows removed** — Broker-Mosquitto carries its `audio.apk.endpoint.*` labels live, so its two
+  hand rows in `K8/endpoints.sh` are gone; the label block prints the same two rows.
+

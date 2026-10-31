@@ -144,6 +144,41 @@ class Validation(unittest.TestCase):
             self.assertEqual(docker_bus.instrument_images(), {"apk-plugins:local", "apk-plugins:test"})
 
 
+class InheritedComposeLabels(unittest.TestCase):
+    IMAGE_LABELS = {"com.docker.compose.project": "apk-audio", "com.docker.compose.service": "ptp",
+                    "com.docker.compose.project.config_files": "/x/docker-compose.yml",
+                    "org.opencontainers.image.revision": "d8bdd0a"}
+
+    def test_the_images_compose_labels_are_blanked_and_nothing_else(self):
+        out = docker_bus.blank_inherited_compose_labels(good_body(), self.IMAGE_LABELS)
+        for key in ("com.docker.compose.project", "com.docker.compose.service",
+                    "com.docker.compose.project.config_files"):
+            self.assertEqual(out["Labels"][key], "")
+        self.assertNotIn("org.opencontainers.image.revision", out["Labels"])
+        self.assertEqual(out["Labels"]["apk.audio.role"], "instrument")
+        self.assertNotIn("com.docker.compose.project", good_body()["Labels"], "the input is not mutated")
+
+    def test_the_create_sent_to_the_daemon_carries_the_blanks(self):
+        bus = DockerBus(upstream="/nonexistent", kept_dir=tempfile.mkdtemp(prefix="docktor-lbl-"))
+        sent = []
+
+        def fake(method, target, body=None, upstream=None):
+            sent.append((method, target, body))
+            if method == "GET" and target.startswith("/images/"):
+                return 200, json.dumps({"Config": {"Labels": self.IMAGE_LABELS}})
+            if target.startswith("/containers/create"):
+                return 201, '{"Id":"abc"}'
+            return 200, "{}"
+
+        with mock.patch.dict(os.environ, ENV), mock.patch.object(docker_bus, "daemon", fake):
+            status, _ = bus.instrument("apk-dmm-x", good_body())
+        self.assertEqual(status, 201)
+        create = next(json.loads(b) for m, t, b in sent if t.startswith("/containers/create"))
+        self.assertEqual(create["Labels"]["com.docker.compose.project"], "")
+        self.assertEqual(create["Labels"]["com.docker.compose.service"], "")
+        self.assertEqual(sent[0][1], "/images/apk-plugins%3Alocal/json")
+
+
 class AgainstADaemon(unittest.TestCase):
     def test_create_list_image_and_refusals(self):
         tmp = tempfile.mkdtemp(prefix="docktor-inst-")

@@ -123,6 +123,21 @@ def _target_ok(target):
             and "\x00" not in target and os.path.normpath(target) not in ("/", "/var/run/docker.sock"))
 
 
+def blank_inherited_compose_labels(body, image_labels):
+    """The create document with every `com.docker.compose.*` label the IMAGE
+    carries set to "". A container inherits its image's labels, and
+    apk-plugins:local is built by compose, so without this an instrument came
+    up labelled as a compose service of the plugin stack (project, service,
+    config files) — and compose, DockTor's scripts and the launcher would treat
+    it as one. A create-time label of the same key overrides the image's; ""
+    matches no `label=com.docker.compose.project=<p>` filter. Returns a copy."""
+    labels = dict(body.get("Labels") or {})
+    for key in image_labels or {}:
+        if key.startswith("com.docker.compose."):
+            labels[key] = ""
+    return {**body, "Labels": labels}
+
+
 def instrument_problems(name, body):
     """Every reason `body` may not become instrument container `name` ([] = ok)."""
     out = []
@@ -371,6 +386,7 @@ class DockerBus:
         if problems:
             print(f"🚫 [DOCKER-BUS] refused instrument {name}: {'; '.join(problems)}")
             return 403, json.dumps({"message": f"refused by DockTor: {'; '.join(problems)}"})
+        body = blank_inherited_compose_labels(body, self.image_labels(body["Image"]))
         created = daemon("POST", f"/containers/create?name={name}", json.dumps(body), self.upstream)
         if not created:
             return 502, json.dumps({"message": "the daemon did not answer"})
@@ -378,6 +394,15 @@ class DockerBus:
             self.keep(name)
             print(f"🎛️  [DOCKER-BUS] created instrument {name}")
         return created
+
+    def image_labels(self, image):
+        """The image's own Config.Labels ({} when the daemon cannot say)."""
+        answer = daemon("GET", f"/images/{urllib.parse.quote(image, safe='')}/json", upstream=self.upstream)
+        try:
+            return dict(((json.loads(answer[1]) or {}).get("Config") or {}).get("Labels") or {}) \
+                if answer and answer[0] == 200 else {}
+        except (ValueError, AttributeError, TypeError):
+            return {}
 
     def list_instruments(self, target):
         """The instrument list, re-encoded here: only the instrument filter goes out."""
