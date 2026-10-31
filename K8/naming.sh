@@ -9,15 +9,21 @@
 #   PODS/POD.<pod>/            GROUP.name stacks, one-word GROUP folders, Docker/,
 #                              Documentation/ (a wiki — see .apk.scripts/wiki.py)
 #   <GROUP>/ (a group folder)  GROUP.name stacks or one-word sub-groups; files:
-#                              README.md, and display.json / manifest.json
-#                              where code reads one at that root
+#                              README.md, and display.json / manifest.json /
+#                              families.json where code reads one at that root
 #   GROUP.name/ (a stack)      any folders (its own source). A CONTAINER stack —
 #                              one with Docker/ or SRC/ — keeps no loose files
 #                              but README.md, LICENSE*, the dotfiles git and
 #                              docker need, and display.json (the launcher's
 #                              walk_project() reads it at the stack root and
-#                              stops there). An app stack (a Softapp: display.json
-#                              + index.html at its root) is its own content.
+#                              stops there). A check script lives in SRC/
+#                              (SRC/check.sh), never at the stack root.
+#                              An app stack (a Softapp: display.json + index.html,
+#                              or + the `entry` its display.json names, at its
+#                              root) is its own content.
+#
+# NAMED EXCEPTIONS (OWN_CONTENT below) are stacks with a Docker/ that are not
+# container stacks, each with its reason; add one only with the reason.
 #
 # A stack is anything spelled GROUP.name: an UPPERCASE group word, a dot, and a
 # name with no spaces or colons (`PLUGIN.DANTE`, `DATABASE.server.SQL`,
@@ -35,7 +41,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PODS_DIR="${1:-$(cd "$HERE/../../.." && pwd -P)}"
 
 python3 - "$PODS_DIR" <<'PY'
-import os, re, sys
+import json, os, re, sys
 
 PODS = sys.argv[1]
 POD = re.compile(r'^POD\.[A-Za-z][A-Za-z0-9_-]*$')
@@ -45,12 +51,23 @@ SUPPORT = re.compile(r'^_[A-Za-z0-9_]+$')
 ROLE = {'Docker', 'SRC', 'Documentation'}
 SKIP = {'.git', 'node_modules', '__pycache__', 'target'}
 OUT_OF_SCOPE = {os.path.join('POD.THIN', 'OS')}
+# A stack that has Docker/ but is NOT a container stack, so its root is its own
+# content — each with the reason (and the SDK checklist exception it mirrors).
+OWN_CONTENT = {
+    # WB-01/CC-03 exception: a static build input, not a container stack. The app
+    # (src/, server/, package.json, vite.config.ts) stays at the repo root because
+    # it deploys standalone to spog.like.audio by its own GitHub workflows; its
+    # Docker/ holds only dist.Dockerfile, which WEB.Frontend-Assets builds as the
+    # spog-dist context. It runs no service of its own.
+    os.path.join('POD.THIN', 'WEB.SPOG'),
+}
 STACK_FILES = re.compile(r'^(README\.md|display\.json|LICENSE(\.md|\.txt)?|\.git|\.gitignore|\.gitmodules|\.gitattributes|\.dockerignore)$')
 
 # A group root holds README.md and, where code reads one there, its contract:
-# display.json (the OS shell's group tile) or manifest.json (the bench family
-# declarations the orchestrator merges across template roots).
-GROUP_FILES = re.compile(r'^(README\.md|display\.json|manifest\.json)$')
+# display.json (the OS shell's group tile), manifest.json (the bench family
+# declarations the orchestrator merges across template roots) or families.json
+# (INSTRUMENTS' family-to-folder rule, read by WEB.OsApi SRC/os_roots.py).
+GROUP_FILES = re.compile(r'^(README\.md|display\.json|manifest\.json|families\.json)$')
 GROUP_REPO_FILES = re.compile(GROUP_FILES.pattern[:-2] + r'|\.git|\.gitignore|\.gitmodules|\.gitattributes)$')
 
 bad = []
@@ -98,10 +115,27 @@ def group(path):
             bad.append(f'bad name     {os.path.relpath(child, PODS)}')
 
 
+def declared_entry(path):
+    """The root-level file a stack's display.json names as its `entry`, or None
+    (WEB.OsApi osapi/apps.py declared_entry_file() opens the app there)."""
+    try:
+        with open(os.path.join(path, 'display.json'), encoding='utf-8') as fh:
+            entry = json.load(fh).get('entry')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if isinstance(entry, str) and '/' not in entry and os.path.isfile(os.path.join(path, entry)):
+        return entry
+    return None
+
+
 def stack(path):
+    if os.path.relpath(path, PODS) in OWN_CONTENT:
+        return
     dirs, files = entries(path)
-    # an app stack is its own content, SRC/ or not (TRUNK-CASTER keeps its nested repos in SRC/)
-    if 'display.json' in files and 'index.html' in files:
+    # an app stack is its own content, SRC/ or not (TRUNK-CASTER keeps its nested
+    # repos in SRC/): a page app (index.html) or a desktop app whose display.json
+    # entry sits at the root (CAPTURE.crawler: main.py, also Worker-CRAWLER)
+    if 'display.json' in files and ('index.html' in files or declared_entry(path)):
         return
     if 'Docker' in dirs or 'SRC' in dirs:
         loose(path, files, STACK_FILES)

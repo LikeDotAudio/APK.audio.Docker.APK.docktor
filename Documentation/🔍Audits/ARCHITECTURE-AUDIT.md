@@ -24,7 +24,7 @@ DockTor, the bench's container manager and the only holder of the Docker socket.
 | Coupling & Cohesion | 3 | The contracts arrive as the versioned `apkaudio_contracts` package (topics, credentials, broker list, brand token) and nothing of another repo's is copied; every infrastructure container describes its own endpoints. The whole-checkout mount plus the socket is intrinsic to the job |
 | Boundary Integrity | 3 | The Docker-over-bus proxy is allow-listed, reply-confined, and now authorized at the broker (only `apkaudio-docker-engine` may ask). The HTTP API is loopback-only and unauthenticated by design (host networking; PRINCIPLES) |
 | Duplication Control | 3 | One paho constructor (`bus.new_client`) and one credential rule; chat rides the event session; topics come from the contracts' families and a test holds them equal; endpoints yield to labels |
-| Testing & Contracts | 3 | 36 unit tests over docker bus, readers, report documents vs JSON Schemas, bus identity and API routing; `./check.sh` runs them with bash -n and compose config |
+| Testing & Contracts | 3 | 36 unit tests over docker bus, readers, report documents vs JSON Schemas, bus identity and API routing; `SRC/check.sh` runs them with bash -n and compose config |
 | Change management | 3 | `API_VERSION` + `/api/v1/…`, `doc_version` in every retained document, `contract_version` in `/api/health`; legacy path spellings removed. Baked K8 scripts and in-image `APK:DOCKERS` spellings are kept by design (PRINCIPLES) |
 Score key: 3 meets the standard · 2 minor gaps · 1 significant gaps · 0 absent / violated.
 

@@ -75,10 +75,10 @@ One action runs at a time; the rest queue (`/api/queue`).
 
 ## Testing
 
-`./check.sh` (measured 2026-10-30: 0 failed) — py_compile, the 36 unit tests (`test_docker_bus`,
+`SRC/check.sh` (measured 2026-10-30: 0 failed) — py_compile, the 36 unit tests (`test_docker_bus`,
 `test_readers_idle`, `test_report_documents` against `SRC/manager/schemas/`, `test_bus_identity`,
 `test_api_routing`) with the checkout's `contracts/python` on `PYTHONPATH`, `bash -n` on every `K8/*.sh`, and
-`docker compose config -q`. `./check.sh --gates` adds `K8/test-gates.sh`. It starts nothing.
+`docker compose config -q`. `SRC/check.sh --gates` adds `K8/test-gates.sh`. It starts nothing.
 Against a running bench: `K8/verify.sh` (post-mount checks).
 
 ## Philosophy

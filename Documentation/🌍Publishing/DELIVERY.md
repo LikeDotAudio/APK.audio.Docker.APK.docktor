@@ -23,8 +23,8 @@ Page and API at `http://localhost:8765/` — loopback only, there is no public U
 ## Test
 
 ```sh
-./check.sh              # py_compile, every unit test (36), bash -n K8/*.sh, compose config; starts nothing
-./check.sh --gates      # … plus K8/test-gates.sh
+SRC/check.sh              # py_compile, every unit test (36), bash -n K8/*.sh, compose config; starts nothing
+SRC/check.sh --gates      # … plus K8/test-gates.sh
 K8/naming.sh            # includes plugin-includes.sh
 K8/test-gates.sh        # pre-build gates (against a bench)
 K8/verify.sh            # post-mount checks (against a running bench)
@@ -34,7 +34,7 @@ Smoke (`.apk.scripts/smoke.py`): HEAD is on origin — [SMOKE.md](../%F0%9F%A7%A
 
 ## Not automated
 
-- No CI workflow (the root CI verifies nothing by design); `./check.sh` is run by hand before a push.
+- No CI workflow (the root CI verifies nothing by design); `SRC/check.sh` is run by hand before a push.
 - Nothing rebuilds the DockTor image when this repo changes; a stale image keeps running old scripts.
 - `verify.sh` and `test-gates.sh` need a live Docker host and are run by hand or from the dashboard.
 
@@ -50,7 +50,7 @@ Smoke (`.apk.scripts/smoke.py`): HEAD is on origin — [SMOKE.md](../%F0%9F%A7%A
 
 DockTor is the bench's container manager (`docker-compose.manager.yml`, container `DockTor`). Everything below
 reaches the dashboard only after the owner rebuilds it (`K8/up-stack.sh MANAGER.Docktor` from a host shell —
-the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash -n, compose config: 0 failed) and
+the dashboard runs its baked copy). Verified: `SRC/check.sh` (36 unit tests, bash -n, compose config: 0 failed) and
 `docker build -f Docker/Dockerfile.manager .` with the unit tests run inside the image (OK, `api_version` 1,
 `contract_version` 0.2.0).
 
@@ -67,7 +67,7 @@ the dashboard runs its baked copy). Verified: `./check.sh` (36 unit tests, bash 
 - **Schemas for the retained documents + a test + one check command** — `SRC/manager/schemas/` holds JSON Schemas
   for `status`, `Manager`, `containers/…` and `…/apps/…`; `report.py` gained `status_document()` and
   `app_document()` builders and `test_report_documents.py` validates every builder's output (dependency-free
-  validator). `./check.sh` runs it with all unit tests, bash -n and compose config (`--gates` adds
+  validator). `SRC/check.sh` runs it with all unit tests, bash -n and compose config (`--gates` adds
   `K8/test-gates.sh`). No new CI gating: the root CI verifies nothing by design.
 - **One paho constructor, chat through the bus** — `bus.new_client()` builds every session (event,
   docker bus) with one credential rule; `api.chat()` publishes on `bus.py`'s event session instead of a

@@ -2,8 +2,8 @@
 # Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 # MIT Licence. Full text in LICENSE at the root.
 # ✅ DockTor's checks, as one command (2026-10-30 audit, DockTor #3).
-#     ./check.sh            unit tests + static checks
-#     ./check.sh --gates    … and K8/test-gates.sh (the pre-build gates; starts nothing)
+#     SRC/check.sh          unit tests + static checks
+#     SRC/check.sh --gates    … and K8/test-gates.sh (the pre-build gates; starts nothing)
 # Run by hand before a push — the root CI deliberately verifies nothing. Starts,
 # stops and builds nothing: every lane reads files or runs Python in-process.
 #   1  python -m py_compile over SRC/manager
@@ -13,7 +13,8 @@
 #   3  bash -n over every K8 verb
 #   4  docker compose config -q for the manager compose file
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The stack root: this file lives in SRC/ (naming.sh: no loose files at a stack root).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 fail=0
 ok()  { echo "✅ $*"; }
