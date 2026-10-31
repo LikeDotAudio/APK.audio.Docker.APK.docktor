@@ -18,9 +18,10 @@
 #                              walk_project() reads it at the stack root and
 #                              stops there). A check script lives in SRC/
 #                              (SRC/check.sh), never at the stack root.
-#                              An app stack (a Softapp: display.json + index.html,
-#                              or + the `entry` its display.json names, at its
-#                              root) is its own content.
+#                              An app stack (a Softapp: display.json + index.html
+#                              at its root) is its own content. A desktop app's
+#                              `entry` sits in SRC/ like any other source
+#                              (CAPTURE.crawler: SRC/main.py, since it moved).
 #
 # NAMED EXCEPTIONS (OWN_CONTENT below) are stacks with a Docker/ that are not
 # container stacks, each with its reason; add one only with the reason.
@@ -41,7 +42,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PODS_DIR="${1:-$(cd "$HERE/../../.." && pwd -P)}"
 
 python3 - "$PODS_DIR" <<'PY'
-import json, os, re, sys
+import os, re, sys
 
 PODS = sys.argv[1]
 POD = re.compile(r'^POD\.[A-Za-z][A-Za-z0-9_-]*$')
@@ -115,27 +116,14 @@ def group(path):
             bad.append(f'bad name     {os.path.relpath(child, PODS)}')
 
 
-def declared_entry(path):
-    """The root-level file a stack's display.json names as its `entry`, or None
-    (WEB.OsApi osapi/apps.py declared_entry_file() opens the app there)."""
-    try:
-        with open(os.path.join(path, 'display.json'), encoding='utf-8') as fh:
-            entry = json.load(fh).get('entry')
-    except (OSError, ValueError, AttributeError):
-        return None
-    if isinstance(entry, str) and '/' not in entry and os.path.isfile(os.path.join(path, entry)):
-        return entry
-    return None
-
-
 def stack(path):
     if os.path.relpath(path, PODS) in OWN_CONTENT:
         return
     dirs, files = entries(path)
     # an app stack is its own content, SRC/ or not (TRUNK-CASTER keeps its nested
-    # repos in SRC/): a page app (index.html) or a desktop app whose display.json
-    # entry sits at the root (CAPTURE.crawler: main.py, also Worker-CRAWLER)
-    if 'display.json' in files and ('index.html' in files or declared_entry(path)):
+    # repos in SRC/): a page app (index.html at its root). The root-level `entry`
+    # allowance went with CAPTURE.crawler's move into SRC/, its only user.
+    if 'display.json' in files and 'index.html' in files:
         return
     if 'Docker' in dirs or 'SRC' in dirs:
         loose(path, files, STACK_FILES)
