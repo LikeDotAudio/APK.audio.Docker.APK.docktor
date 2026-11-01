@@ -112,6 +112,13 @@ announce COMPOSE_RUN "{\"action\":\"up --force-recreate\",\"services\":\"all\"}"
 for_each_stack forward up -d --force-recreate
 status=$?
 announce COMPOSE_RESULT "{\"action\":\"up --force-recreate\",\"exit_code\":$status}"
+# EXIT 3 IS A PARTIAL MOUNT (ROAD-3480): for_each_stack left a wedged service
+# down and mounted the rest. The images are fresh; only a reboot frees it.
+if [ $status -eq "$MOUNT_PARTIAL_EXIT" ]; then
+    clean_build_cache "the clean rebuild"
+    echo -e "\n${BOLD}${YELLOW}⚠️  Rebuilt and mounted PARTIALLY — a container Docker cannot stop was left alone (see WEDGED_CONTAINER above). A reboot clears it.${OFF}"
+    exit "$MOUNT_PARTIAL_EXIT"
+fi
 if [ $status -ne 0 ]; then
     log_error "Mount FAILED (exit $status) after a successful build. The images are fresh; the stack is not up."
     exit $status

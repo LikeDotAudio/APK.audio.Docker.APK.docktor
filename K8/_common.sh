@@ -921,10 +921,26 @@ export APKAUDIO_GID="${APKAUDIO_GID:-$(id -g)}"
 # `up` runs core→node, `down` the reverse (pass `reverse`); see the ordering
 # note above. Returns the LAST NON-ZERO exit code, not the last one — a down
 # that failed on the node and passed on the core is a failed down.
+# AN `up -d` MOUNTS EACH STACK THROUGH mount_compose_up (ROAD-3480): a wedged
+# service is left down and the rest comes up. A stack mounted partially makes
+# the walk return MOUNT_PARTIAL_EXIT (3) — unless another stack failed outright.
 for_each_stack() {
     local direction="$1"; shift
-    local worst=0 status
-    local -a order
+    local worst=0 status partial=0
+    local -a order upflags=()
+    # `up -d <--flags>` (up.sh, rebuild-all.sh) goes through mount_compose_up,
+    # which adds -d itself. Anything else — no -d, a service name, a valued
+    # option (compose.sh both up ...) — is run by compose exactly as given.
+    local mount=0
+    if [ "${1:-}" = up ]; then
+        local _a
+        mount=1
+        case " ${*:2} " in *" -d "*) ;; *) mount=0;; esac
+        for _a in "${@:2}"; do
+            case "$_a" in -d) ;; --profile|--scale|--timeout|-t|--wait-timeout|--pull) mount=0;;
+                          --*) upflags+=("$_a");; *) mount=0;; esac
+        done
+    fi
 
     # ⚠️ DOCKTOR IS FIRST UP AND LAST DOWN, and neither is a preference:
     #    · FIRST, because it is the only stack that can SHOW you the other
@@ -1037,7 +1053,14 @@ for_each_stack() {
                 up)
                     ensure_broker
                     status=$?
-                    if [ ${#others[@]} -gt 0 ]; then
+                    if [ ${#others[@]} -gt 0 ] && [ "$mount" = 1 ]; then
+                        # Never the broker: only its stack-mates, --no-deps.
+                        STACK_COMPOSE=("${compose[@]}")
+                        mount_compose_up "${upflags[@]}" --no-deps "$stack" "${others[@]}"
+                        local rest=$?
+                        [ $rest -ne 0 ] && [ $rest -ne "$MOUNT_PARTIAL_EXIT" ] && log_warn "$BROKER_STACK_NAME: the broker is up; ${others[*]} failed (exit $rest)."
+                        [ $status -eq 0 ] && status=$rest
+                    elif [ ${#others[@]} -gt 0 ]; then
                         "${compose[@]}" "$@" --no-deps "${others[@]}"
                         local rest=$?
                         [ $rest -ne 0 ] && log_warn "$BROKER_STACK_NAME: the broker is up; ${others[*]} failed (exit $rest)."
@@ -1049,11 +1072,22 @@ for_each_stack() {
                     status=$?
                     ;;
             esac
+        elif [ "$mount" = 1 ]; then
+            # EVERY MOUNT SURVIVES A WEDGED SERVICE (ROAD-3480).
+            STACK_COMPOSE=("${compose[@]}")
+            mount_compose_up "${upflags[@]}" "$stack"
+            status=$?
         else
             "${compose[@]}" "$@"
             status=$?
         fi
-        [ $status -ne 0 ] && worst=$status
+        # PARTIAL IS NOT FAILURE: remembered, and returned only when nothing
+        # failed outright (a real failure's code wins).
+        if [ $status -eq "$MOUNT_PARTIAL_EXIT" ] && [ "$1" = "up" ]; then
+            partial=1
+        elif [ $status -ne 0 ]; then
+            worst=$status
+        fi
 
         # THE SITE OPENS THE MOMENT THE THING THAT SERVES IT IS UP, which is
         # here and nowhere else: this is the one place that knows a docktor
@@ -1064,6 +1098,7 @@ for_each_stack() {
             open_manager_site
         fi
     done
+    [ "$worst" -eq 0 ] && [ "$partial" = 1 ] && return "$MOUNT_PARTIAL_EXIT"
     return $worst
 }
 
@@ -1505,26 +1540,40 @@ start_created() {
     for s in "$@"; do want[$s]=1; done
     while IFS=$'\t' read -r name svc; do
         [ -n "$name" ] && [ -n "${want[$svc]+x}" ] || continue
+        is_protected_container "$name" && continue
         log_step "Starting $name ($svc), left in Created..." >&2
         docker start "$name" >/dev/null 2>&1 || echo "$name"
     done < <("${STACK_COMPOSE[@]}" ps -a --status created --format '{{.Name}}\t{{.Service}}' 2>/dev/null)
 }
 
-# mount_compose_up <stack> [service...] — `compose up -d --build` for the stack
-# (or just these services, --no-deps), resilient to wedged containers:
-#   before: services already known wedged are left out of the up;
+# mount_compose_up [up-flag...] <stack> [service...] — `compose up -d <flags>`
+# over STACK_COMPOSE for the whole stack (or just these services), resilient to
+# wedged containers. Flags are what the caller's own `up -d` carried
+# (--build, --force-recreate, --no-deps); none given means --build.
+#   before: services already known wedged are left out of the up (--no-deps,
+#     so a dependency cannot drag them back in);
 #   after a failure: wedged.py reads compose's output and the containers; the
 #     wedged services are reported (@EVENT WEDGED_CONTAINER, with the kernel
 #     wait channel when readable), the rest are brought up again --no-build
 #     --no-deps, and anything still Created is started.
+# NEVER THE BROKER: it is never a service handed in here (the broker stack's
+# callers pass broker_stack_others after ensure_broker), and start_created
+# refuses protected containers besides.
 # Returns 0 clean, MOUNT_PARTIAL_EXIT when only wedged services are left down,
 # compose's own code when nothing wedged explains the failure, else non-zero.
 mount_compose_up() {
+    local -a upflags=()
+    while [ $# -gt 0 ] && [ "${1#--}" != "$1" ]; do upflags+=("$1"); shift; done
+    [ ${#upflags[@]} -gt 0 ] || upflags=(--build)
     local stack="$1"; shift
-    local -a services=("$@") skip=() keep=() left=() bad=() flags=()
-    local s log status retry=0 n_wedged=0
-    [ ${#services[@]} -gt 0 ] && flags=(--no-deps) \
-        || mapfile -t services < <("${STACK_COMPOSE[@]}" config --services 2>/dev/null)
+    local -a services=("$@") skip=() keep=() left=() bad=() nodeps=()
+    local s log status retry=0 n_wedged=0 explicit=0
+    case " ${upflags[*]} " in *" --no-deps "*) ;; *) nodeps=(--no-deps);; esac
+    if [ ${#services[@]} -gt 0 ]; then
+        explicit=1
+    else
+        mapfile -t services < <("${STACK_COMPOSE[@]}" config --services 2>/dev/null)
+    fi
 
     # The project may be shared by several stacks (apk-audio): only this
     # stack's services count, as `left` (wedged, left down) and `keep`.
@@ -1541,17 +1590,17 @@ mount_compose_up() {
         log_warn "Leaving ${left[*]} out of $stack: a container of it cannot be stopped (reboot clears it)."
         announce MOUNT_SKIPPING_WEDGED "{\"stack\":\"$stack\",\"services\":\"${left[*]}\"}"
         if [ ${#keep[@]} -gt 0 ]; then
-            "${STACK_COMPOSE[@]}" up -d --build --no-deps "${keep[@]}" 2>&1 | tee "$log"
+            "${STACK_COMPOSE[@]}" up -d "${upflags[@]}" "${nodeps[@]}" "${keep[@]}" 2>&1 | tee "$log"
             status=${PIPESTATUS[0]}
         else
             status=0
         fi
         [ $status -eq 0 ] && status=$MOUNT_PARTIAL_EXIT
-    elif [ ${#flags[@]} -gt 0 ]; then
-        "${STACK_COMPOSE[@]}" up -d --build --no-deps "${services[@]}" 2>&1 | tee "$log"
+    elif [ "$explicit" = 1 ]; then
+        "${STACK_COMPOSE[@]}" up -d "${upflags[@]}" "${services[@]}" 2>&1 | tee "$log"
         status=${PIPESTATUS[0]}
     else
-        "${STACK_COMPOSE[@]}" up -d --build 2>&1 | tee "$log"
+        "${STACK_COMPOSE[@]}" up -d "${upflags[@]}" 2>&1 | tee "$log"
         status=${PIPESTATUS[0]}
     fi
     if [ $status -ne 0 ] && [ $status -ne $MOUNT_PARTIAL_EXIT ]; then

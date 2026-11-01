@@ -39,7 +39,8 @@ node_hardware_report
 if [ $# -gt 0 ]; then
     log_step "Starting service(s): $*"
     announce COMPOSE_RUN "{\"action\":\"up\",\"services\":\"$*\"}"
-    "${COMPOSE_CORE[@]}" up -d --build "$@"
+    STACK_COMPOSE=("${COMPOSE_CORE[@]}")
+    mount_compose_up --build core "$@"
     status=$?
 else
     log_step "Starting both container stacks..."
@@ -49,6 +50,13 @@ else
 fi
 
 announce COMPOSE_RESULT "{\"action\":\"up\",\"exit_code\":$status}"
+# EXIT 3 IS A PARTIAL MOUNT (ROAD-3480): a wedged service was left down (see
+# WEDGED_CONTAINER above), everything else is up. The build was good.
+if [ $status -eq "$MOUNT_PARTIAL_EXIT" ]; then
+    clean_build_cache "the mount"
+    echo -e "\n${BOLD}${YELLOW}⚠️  Mounted PARTIALLY — a container Docker cannot stop was left alone (see WEDGED_CONTAINER above). A reboot clears it.${OFF}"
+    exit "$MOUNT_PARTIAL_EXIT"
+fi
 if [ $status -ne 0 ]; then
     log_error "Mount FAILED — compose exited $status. Read the output above."
     exit $status

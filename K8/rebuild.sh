@@ -165,9 +165,17 @@ for container in "$@"; do
         continue
     fi
 
-    "${compose[@]}" up -d "$service"
+    # Through mount_compose_up (ROAD-3480): a wedged container is reported and
+    # left alone (exit 3) rather than a recreate that never gets an exit event.
+    STACK_COMPOSE=("${compose[@]}")
+    mount_compose_up --no-build "$project" "$service"
     status=$?
     announce COMPOSE_RESULT "{\"action\":\"build+up\",\"container\":\"$container\",\"exit_code\":$status}"
+    if [ $status -eq "$MOUNT_PARTIAL_EXIT" ]; then
+        log_error "$container: rebuilt, but its service has a container Docker cannot stop (WEDGED_CONTAINER above); left alone. A reboot clears it."
+        worst=$status
+        continue
+    fi
     if [ $status -ne 0 ]; then
         log_error "$container: rebuilt, but the replacement would not come up (exit $status)."
         worst=$status

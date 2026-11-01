@@ -90,12 +90,18 @@ if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
     ensure_broker || log_warn "The broker ($BROKER_CONTAINER) did not come up."
     mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
     status=0
-    [ ${#others[@]} -gt 0 ] && { "${STACK_COMPOSE[@]}" up -d --force-recreate --no-deps "${others[@]}"; status=$?; }
+    [ ${#others[@]} -gt 0 ] && { mount_compose_up --force-recreate --no-deps "$STACK" "${others[@]}"; status=$?; }
 else
-    "${STACK_COMPOSE[@]}" up -d --force-recreate
+    # A wedged service is left down, the rest comes up (ROAD-3480).
+    mount_compose_up --force-recreate "$STACK"
     status=$?
 fi
 announce COMPOSE_RESULT "{\"action\":\"up --force-recreate\",\"stack\":\"$STACK\",\"exit_code\":$status}"
+if [ $status -eq "$MOUNT_PARTIAL_EXIT" ]; then
+    clean_build_cache "the $STACK rebuild"
+    echo -e "\n${BOLD}${YELLOW}⚠️  $STACK rebuilt and mounted PARTIALLY — a container Docker cannot stop was left alone (see WEDGED_CONTAINER above). A reboot clears it.${OFF}"
+    exit "$MOUNT_PARTIAL_EXIT"
+fi
 if [ $status -ne 0 ]; then
     log_error "$STACK rebuilt, but the replacement would not come up (exit $status)."
     exit $status

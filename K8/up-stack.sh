@@ -108,7 +108,7 @@ if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
     mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
     status=0
     if [ ${#others[@]} -gt 0 ]; then
-        mount_compose_up "$STACK" "${others[@]}"
+        mount_compose_up --build --no-deps "$STACK" "${others[@]}"
         status=$?
         [ $status -ne 0 ] && log_warn "The broker is up; ${others[*]} failed (exit $status)."
     fi

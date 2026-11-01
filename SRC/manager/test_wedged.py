@@ -266,8 +266,29 @@ exit 0
 """
 
 FAKE_COMPOSE = r"""#!/usr/bin/env bash
-echo "compose $*" >> "$FAKE_DIR/calls"
+# fakecompose <stack> <compose args...> — three stacks:
+#   DISCOVERY.Engine  ptp snmp midi; midi's container cannot be stopped, so any
+#                     up that recreates it (no --no-deps list) fails the 2026-11-01 way
+#   BROKER            mosquitto (the broker) + sqlcapture; every up succeeds
+#   FAILING           one service; its up fails with nothing wedged (exit 5)
+stack="$1"; shift
+echo "compose $stack $*" >> "$FAKE_DIR/calls"
 args=" $* "
+case "$stack" in
+  BROKER)
+    case "$args" in
+      *" config --services "*) printf 'mosquitto\nsqlcapture\n';;
+      *" ps -a --format json "*)
+        echo '{"ID":"ffffffffffff","Name":"Broker-SqlCapture","Service":"sqlcapture","State":"running","Project":"apk-audio"}';;
+    esac
+    exit 0;;
+  FAILING)
+    case "$args" in
+      *" config --services "*) echo web;;
+      *" up "*) echo "failed to solve: process did not complete"; exit 5;;
+    esac
+    exit 0;;
+esac
 case "$args" in
   *" config --services "*) printf 'ptp\nsnmp\nmidi\n';;
   *" ps -a --status created "*)
@@ -278,20 +299,22 @@ case "$args" in
     echo '{"ID":"aaaaaaaaaaaa","Name":"Plugin-MIDI","Service":"midi","State":"running","Project":"apk-audio"}'
     echo '{"ID":"dddddddddddd","Name":"Plugin-PTP","Service":"ptp","State":"created","Project":"apk-audio"}'
     echo '{"ID":"eeeeeeeeeeee","Name":"Plugin-SNMP","Service":"snmp","State":"created","Project":"apk-audio"}';;
-  *" up -d --build --no-deps "*) exit 0;;
-  *" up -d --build "*)
+  *" up "*" midi "*|*" up "*" ptp "*|*" up "*" snmp "*)
+    case "$args" in *" midi "*) ;; *) exit 0;; esac   # a list without midi: fine
+    ;&                                                # a list with it: fails
+  *" up "*)                                           # the whole stack fails too
     echo " Container Plugin-MIDI  Error while Stopping"
     echo "Error response from daemon: cannot stop container: aaaaaaaaaaaa1111111111111111111111111111111111111111111111111111: tried to kill container, but did not receive an exit event"
     exit 1;;
-  *" up -d --no-build --no-deps "*) exit 0;;
 esac
 exit 0
 """
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash")
-class MountComposeUp(unittest.TestCase):
-    """mount_compose_up from _common.sh, against the fakes above."""
+class _Fakes(unittest.TestCase):
+    """A fake `docker` and fakecompose on PATH, a temp record, and a bash that
+    has sourced _common.sh."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -308,26 +331,34 @@ class MountComposeUp(unittest.TestCase):
                     "APKAUDIO_WEDGED_RECORD": os.path.join(self.dir, "wedged.json")}
         self.env.pop("APK_COMMON_CONFIG_EVAL", None)
 
-    def mount(self):
+    def bash(self, body):
+        """_common.sh sourced, then `body`; stdout+stderr as one string."""
         common = os.path.join(K8, "_common.sh")
-        script = (f'source "{common}" >/dev/null 2>&1; STACK_COMPOSE=(fakecompose); '
-                  'mount_compose_up DISCOVERY.Engine; echo "EXIT=$?"')
-        return subprocess.run(["bash", "-c", script], env=self.env, capture_output=True,
-                              text=True, timeout=60)
+        done = subprocess.run(["bash", "-c", f'source "{common}" >/dev/null 2>&1; {body}'],
+                              env=self.env, capture_output=True, text=True, timeout=120)
+        return done.stdout + done.stderr
+
+    def mount(self, *args):
+        argv = " ".join(args) or "DISCOVERY.Engine"
+        return self.bash('STACK_COMPOSE=(fakecompose DISCOVERY.Engine); '
+                         f'mount_compose_up {argv}; echo "EXIT=$?"')
 
     def calls(self):
         with open(os.path.join(self.dir, "calls")) as fh:
             return fh.read().splitlines()
 
+
+class MountComposeUp(_Fakes):
+    """mount_compose_up from _common.sh, against the fakes above."""
+
     def test_the_rest_comes_up_without_the_wedged_service(self):
-        done = self.mount()
-        out = done.stdout + done.stderr
+        out = self.mount()
         self.assertIn(f"EXIT={wedged.PARTIAL_EXIT}", out, out)
         self.assertIn("@EVENT WEDGED_CONTAINER", out)
         self.assertIn("usb_kill_urb", out)
         self.assertIn("@EVENT MOUNT_PARTIAL", out)
         calls = self.calls()
-        self.assertIn("compose up -d --no-build --no-deps ptp snmp", calls)
+        self.assertIn("compose DISCOVERY.Engine up -d --no-build --no-deps ptp snmp", calls)
         self.assertTrue(os.path.exists(os.path.join(self.dir, "started.Plugin-PTP")))
         self.assertTrue(os.path.exists(os.path.join(self.dir, "started.Plugin-SNMP")))
         self.assertFalse(os.path.exists(os.path.join(self.dir, "started.50f2aa51d73e_Plugin-MIDI")))
@@ -335,13 +366,91 @@ class MountComposeUp(unittest.TestCase):
     def test_the_next_mount_leaves_it_out_from_the_start(self):
         self.mount()
         os.remove(os.path.join(self.dir, "calls"))
-        done = self.mount()
-        out = done.stdout + done.stderr
+        out = self.mount()
         self.assertIn(f"EXIT={wedged.PARTIAL_EXIT}", out, out)
         self.assertIn("@EVENT MOUNT_SKIPPING_WEDGED", out)
         calls = self.calls()
-        self.assertIn("compose up -d --build --no-deps ptp snmp", calls)
-        self.assertNotIn("compose up -d --build", calls)
+        self.assertIn("compose DISCOVERY.Engine up -d --build --no-deps ptp snmp", calls)
+        self.assertNotIn("compose DISCOVERY.Engine up -d --build", calls)
+
+    def test_the_callers_flags_are_kept(self):
+        # rebuild-stack.sh: --force-recreate, and the failure path still recovers.
+        out = self.mount("--force-recreate", "DISCOVERY.Engine")
+        self.assertIn(f"EXIT={wedged.PARTIAL_EXIT}", out, out)
+        calls = self.calls()
+        self.assertIn("compose DISCOVERY.Engine up -d --force-recreate", calls)
+        self.assertNotIn("compose DISCOVERY.Engine up -d --build", calls)
+
+    def test_rebuilding_only_the_wedged_service_touches_nothing(self):
+        # rebuild.sh / rebuild-core.sh naming the wedged service, once it is known.
+        self.mount()
+        os.remove(os.path.join(self.dir, "calls"))
+        out = self.mount("--no-build", "DISCOVERY.Engine", "midi")
+        self.assertIn(f"EXIT={wedged.PARTIAL_EXIT}", out, out)
+        self.assertEqual([c for c in self.calls() if " up " in c], [])
+
+    def test_explicit_services_do_not_gain_no_deps(self):
+        # up.sh <service...>: compose's own dependency handling is kept.
+        out = self.mount("--build", "DISCOVERY.Engine", "ptp")
+        self.assertIn("EXIT=0", out, out)
+        self.assertIn("compose DISCOVERY.Engine up -d --build ptp", self.calls())
+
+
+# for_each_stack with the stack table replaced: BROKER, DISCOVERY.Engine, FAILING.
+WALK = (
+    'compose_for_stack() { STACK_COMPOSE=(fakecompose "$1"); STACK_COMPOSE_FILE="/fake/$1.yml"; }; '
+    'broker_compose_file() { printf /fake/BROKER.yml; }; '
+    'stamp_image_rev() { :; }; open_manager_site() { :; }; '
+    'ensure_broker() { echo "ENSURE_BROKER" >> "$FAKE_DIR/calls"; return 0; }; '
+    'MANAGER_COMPOSE_FILE=/fake/none; APKAUDIO_SKIP_STACKS=; '
+)
+
+
+class ForEachStack(_Fakes):
+    """up.sh / rebuild-all.sh walk every stack through for_each_stack."""
+
+    def walk(self, stacks, args):
+        return self.bash(WALK + f'DOCKTOR_STACKS_FORWARD=({stacks}); DOCKTOR_STACKS_REVERSE=({stacks}); '
+                         f'for_each_stack forward {args}; echo "EXIT=$?"')
+
+    def test_the_walk_mounts_the_rest_and_says_partial(self):
+        out = self.walk("BROKER DISCOVERY.Engine", "up -d --force-recreate")
+        self.assertIn(f"EXIT={wedged.PARTIAL_EXIT}", out, out)
+        calls = self.calls()
+        self.assertIn("compose DISCOVERY.Engine up -d --no-build --no-deps ptp snmp", calls)
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "started.Plugin-PTP")))
+
+    def test_the_broker_comes_up_first_and_alone_and_is_never_touched(self):
+        self.walk("BROKER DISCOVERY.Engine", "up -d --build")
+        calls = self.calls()
+        ups = [c for c in calls if c == "ENSURE_BROKER" or " up " in c]
+        self.assertEqual(ups[0], "ENSURE_BROKER")
+        self.assertIn("compose BROKER up -d --build --no-deps sqlcapture", calls)
+        touching = [c for c in calls if "mosquitto" in c.split(" config ")[0]
+                    and c.startswith("compose BROKER") and " up " in c]
+        self.assertEqual(touching, [])
+        self.assertFalse(any("Broker-Mosquitto" in c for c in calls if c.startswith("docker start")))
+
+    def test_a_down_walk_still_leaves_the_broker_running(self):
+        self.bash(WALK + 'DOCKTOR_STACKS_REVERSE=(BROKER); for_each_stack reverse down')
+        calls = self.calls()
+        self.assertIn("compose BROKER rm -s -f sqlcapture", calls)
+        self.assertFalse(any(" down" in c for c in calls if c.startswith("compose BROKER")))
+
+    def test_a_real_failure_outranks_partial(self):
+        out = self.walk("DISCOVERY.Engine FAILING", "up -d --build")
+        self.assertIn("EXIT=5", out, out)
+        # ...and the wedged stack before it was still mounted around its wedge.
+        self.assertIn("compose DISCOVERY.Engine up -d --no-build --no-deps ptp snmp", self.calls())
+
+    def test_a_clean_walk_is_zero(self):
+        out = self.walk("BROKER", "up -d --build")
+        self.assertIn("EXIT=0", out, out)
+
+    def test_other_up_shapes_go_to_compose_as_given(self):
+        # compose.sh both up --scale ...: not a mount verb, passed through.
+        self.walk("FAILING", "up -d --scale web=2")
+        self.assertIn("compose FAILING up -d --scale web=2", self.calls())
 
 
 if __name__ == "__main__":

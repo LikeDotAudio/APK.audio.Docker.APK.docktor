@@ -30,9 +30,13 @@ prepare_for_up || exit 1
 log_step "Rebuilding '$SERVICE' in project apk-audio..."
 announce COMPOSE_RUN "{\"action\":\"build\",\"services\":\"$SERVICE\"}"
 "${COMPOSE_CORE[@]}" build "$SERVICE" || { status=$?; log_error "Build failed (exit $status)."; exit $status; }
-"${COMPOSE_CORE[@]}" up -d "$SERVICE"
+# Through mount_compose_up (ROAD-3480): a wedged '$SERVICE' is reported and
+# left alone (exit 3) instead of a recreate that never returns an exit event.
+STACK_COMPOSE=("${COMPOSE_CORE[@]}")
+mount_compose_up --no-build core "$SERVICE"
 status=$?
 announce COMPOSE_RESULT "{\"action\":\"build+up\",\"services\":\"$SERVICE\",\"exit_code\":$status}"
+[ $status -eq "$MOUNT_PARTIAL_EXIT" ] && { log_error "'$SERVICE' has a container Docker cannot stop; it was left alone. A reboot clears it."; exit $status; }
 [ $status -ne 0 ] && { log_error "Restart of '$SERVICE' failed (exit $status)."; exit $status; }
 
 clean_build_cache "the '$SERVICE' rebuild"
