@@ -191,3 +191,6 @@ the dashboard runs its baked copy). Verified: `SRC/check.sh` (36 unit tests, bas
   (`hold_mount_lock`, `mount.lock` in DockTor storage) for their whole run and the watchdog skips while it is held
   (`readers.mount_lock_busy`). Tests: `test_readers_idle.MountLock` (incl. the shell lock read from Python and a
   second `hold_mount_lock` refused). The watchdog half is live after the next DockTor rebuild (baked copy).
+
+## Releases
+- **Released `2.0.0`, tag `v2.0.0`** (2026-11-01, ROAD-3452, the owner's V2) — no SDK pin; every manifest says 2.0.0; GitHub release `v2.0.0`.
