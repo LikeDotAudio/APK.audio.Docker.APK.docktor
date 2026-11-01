@@ -225,7 +225,7 @@ class Assess(unittest.TestCase):
                                  docker=self.docker([D, D]), out=out)
         self.assertEqual(code, 0)
         lines = out.getvalue().splitlines()
-        event = [l for l in lines if l.startswith("@EVENT WEDGED_CONTAINER ")]
+        event = [line for line in lines if line.startswith("@EVENT WEDGED_CONTAINER ")]
         self.assertEqual(len(event), 1)
         self.assertEqual(json.loads(event[0].split(" ", 2)[2])["wchan"], "usb_kill_urb")
         self.assertIn("EXCLUDE midi", lines)
