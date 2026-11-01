@@ -1442,6 +1442,14 @@ recreate_stale_builds() {
             exited) [ "$policy" = "no" ] || [ -z "$policy" ] || start=(--no-start) ;;
             *) start=(--no-start) ;;
         esac
+        # NEVER A SERVICE WITH A WEDGED CONTAINER (ROAD-3480): --force-recreate
+        # stops every container of the service, the stop never returns an exit
+        # event, and compose leaves the service in Created behind it.
+        if container_wedged "$name" "$project" "$svc"; then
+            log_warn "$name is on an older build of $cfg_image, but its service $svc has a container Docker cannot stop; left as it is until a reboot."
+            announce STALE_BUILD_SKIPPED_WEDGED "{\"container\":\"$name\",\"service\":\"$svc\",\"image\":\"$cfg_image\"}"
+            continue
+        fi
         log_step "$name is on an older build of $cfg_image (${img_id#sha256:}); recreating it on the current one${start:+ (left $state, not started)}..."
         announce STALE_BUILD_RECREATE "{\"container\":\"$name\",\"image\":\"$cfg_image\"}"
         if [ ${#start[@]} -eq 0 ]; then cmd+=(up -d); else cmd+=(up "${start[@]}"); fi
@@ -1450,6 +1458,124 @@ recreate_stale_builds() {
     done < <(docker ps -aq 2>/dev/null | xargs -r docker inspect -f \
         '{{.Name}}|{{.Config.Image}}|{{.Image}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{.State.Status}}|{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null)
     return 0
+}
+
+# ── 🧟 A CONTAINER DOCKER CANNOT STOP (ROAD-3480) ───────────────────────────
+# A process in uninterruptible sleep (D state — a USB reset left Plugin-MIDI in
+# usb_kill_urb on 2026-11-01) survives `docker stop` and `rm -f` until a reboot.
+# A compose up that must recreate its service fails, and used to leave every
+# OTHER service of the stack in Created. wedged.py decides (and is unit-tested);
+# these functions run compose around its answer.
+WEDGED_RECORD_FILE="${APKAUDIO_WEDGED_RECORD:-$STORAGE_HOST_DIR/wedged.json}"
+WEDGED_HELPER="$MANAGEMENT_SCRIPTS_DIR/wedged.py"
+# up-stack.sh's exit when wedged services were left alone and the rest is up.
+MOUNT_PARTIAL_EXIT=3
+
+# container_wedged <name> [project service] — true when the container, or any
+# container of that compose service, cannot be stopped (recorded failed stop
+# for this same start, or a thread stuck in D state). No python3: false.
+container_wedged() {
+    command -v python3 >/dev/null 2>&1 && [ -f "$WEDGED_HELPER" ] || return 1
+    local -a scope=()
+    [ -n "${2:-}" ] && [ -n "${3:-}" ] && scope=(--project "$2" --service "$3")
+    python3 "$WEDGED_HELPER" check --record "$WEDGED_RECORD_FILE" "${scope[@]}" "$1" >/dev/null 2>&1
+}
+
+# wedged_services <compose-log or ''> — this stack's services that hold a wedged
+# container, one per line; the WEDGED_CONTAINER events and the plain-words line
+# for each go to stdout of the CALLER (stderr here, so $(...) keeps only names).
+wedged_services() {
+    command -v python3 >/dev/null 2>&1 && [ -f "$WEDGED_HELPER" ] || return 0
+    local log="${1:-}" ps out
+    ps="$(mktemp)"
+    "${STACK_COMPOSE[@]}" ps -a --format json >"$ps" 2>/dev/null
+    out="$(python3 "$WEDGED_HELPER" assess --ps-json "$ps" ${log:+--compose-log "$log"} \
+           --record "$WEDGED_RECORD_FILE" 2>/dev/null)"
+    rm -f "$ps"
+    grep -v '^EXCLUDE ' <<<"$out" | grep . >&2
+    sed -n 's/^EXCLUDE //p' <<<"$out"
+}
+
+# start_created <service...> — `docker start` every container of these services
+# still in Created (what a failed recreate leaves). Prints the ones that would
+# not start, one per line.
+start_created() {
+    local -A want=()
+    local s name svc
+    for s in "$@"; do want[$s]=1; done
+    while IFS=$'\t' read -r name svc; do
+        [ -n "$name" ] && [ -n "${want[$svc]+x}" ] || continue
+        log_step "Starting $name ($svc), left in Created..." >&2
+        docker start "$name" >/dev/null 2>&1 || echo "$name"
+    done < <("${STACK_COMPOSE[@]}" ps -a --status created --format '{{.Name}}\t{{.Service}}' 2>/dev/null)
+}
+
+# mount_compose_up <stack> [service...] — `compose up -d --build` for the stack
+# (or just these services, --no-deps), resilient to wedged containers:
+#   before: services already known wedged are left out of the up;
+#   after a failure: wedged.py reads compose's output and the containers; the
+#     wedged services are reported (@EVENT WEDGED_CONTAINER, with the kernel
+#     wait channel when readable), the rest are brought up again --no-build
+#     --no-deps, and anything still Created is started.
+# Returns 0 clean, MOUNT_PARTIAL_EXIT when only wedged services are left down,
+# compose's own code when nothing wedged explains the failure, else non-zero.
+mount_compose_up() {
+    local stack="$1"; shift
+    local -a services=("$@") skip=() keep=() left=() bad=() flags=()
+    local s log status retry=0 n_wedged=0
+    [ ${#services[@]} -gt 0 ] && flags=(--no-deps) \
+        || mapfile -t services < <("${STACK_COMPOSE[@]}" config --services 2>/dev/null)
+
+    # The project may be shared by several stacks (apk-audio): only this
+    # stack's services count, as `left` (wedged, left down) and `keep`.
+    _mount_keep() {
+        keep=(); left=()
+        for s in "${services[@]}"; do
+            case " ${skip[*]} " in *" $s "*) left+=("$s");; *) keep+=("$s");; esac
+        done
+    }
+    mapfile -t skip < <(wedged_services "")
+    _mount_keep
+    log="$(mktemp)"
+    if [ ${#keep[@]} -lt ${#services[@]} ]; then
+        log_warn "Leaving ${left[*]} out of $stack: a container of it cannot be stopped (reboot clears it)."
+        announce MOUNT_SKIPPING_WEDGED "{\"stack\":\"$stack\",\"services\":\"${left[*]}\"}"
+        if [ ${#keep[@]} -gt 0 ]; then
+            "${STACK_COMPOSE[@]}" up -d --build --no-deps "${keep[@]}" 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+        else
+            status=0
+        fi
+        [ $status -eq 0 ] && status=$MOUNT_PARTIAL_EXIT
+    elif [ ${#flags[@]} -gt 0 ]; then
+        "${STACK_COMPOSE[@]}" up -d --build --no-deps "${services[@]}" 2>&1 | tee "$log"
+        status=${PIPESTATUS[0]}
+    else
+        "${STACK_COMPOSE[@]}" up -d --build 2>&1 | tee "$log"
+        status=${PIPESTATUS[0]}
+    fi
+    if [ $status -ne 0 ] && [ $status -ne $MOUNT_PARTIAL_EXIT ]; then
+        log_step "Compose exited $status; looking for a container Docker cannot stop..."
+        mapfile -t skip < <(wedged_services "$log")
+        _mount_keep
+        n_wedged=${#left[@]}
+        if [ "$n_wedged" -gt 0 ]; then
+            log_warn "Bringing up $stack without ${left[*]}..."
+            if [ ${#keep[@]} -gt 0 ]; then
+                "${STACK_COMPOSE[@]}" up -d --no-build --no-deps "${keep[@]}"
+                retry=$?
+            fi
+            mapfile -t bad < <(start_created "${keep[@]}")
+            [ ${#bad[@]} -gt 0 ] && log_error "Would not start: ${bad[*]}"
+        fi
+        status="$(python3 "$WEDGED_HELPER" exit-code "$status" "$n_wedged" "$retry" "${#bad[@]}" 2>/dev/null || echo "$status")"
+    fi
+    rm -f "$log"
+    unset -f _mount_keep
+    if [ "$status" -eq "$MOUNT_PARTIAL_EXIT" ]; then
+        announce MOUNT_PARTIAL "{\"stack\":\"$stack\",\"left_down\":\"${left[*]}\",\"reason\":\"wedged\"}"
+    fi
+    return "$status"
 }
 
 # clean_build_cache [what] — the sweep every build path ends with. `what` is

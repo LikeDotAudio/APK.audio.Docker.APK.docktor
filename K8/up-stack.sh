@@ -18,6 +18,10 @@
 # stops any container publishing a port it is asked to free, so a bench-wide run
 # here would stop healthy containers in seven other stacks.
 # APKAUDIO_NO_KABOOM=1 leaves a held port alone and lets compose report it.
+# EXIT 3 IS A PARTIAL MOUNT (ROAD-3480): a container Docker cannot stop (a
+# process in D state — only a reboot clears it) was reported as
+# WEDGED_CONTAINER and left alone; every other service is up. See
+# mount_compose_up in _common.sh and wedged.py.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 STACK="${1:-}"
@@ -104,16 +108,27 @@ if [ "$STACK_COMPOSE_FILE" = "$(broker_compose_file)" ]; then
     mapfile -t others < <(broker_stack_others "${STACK_COMPOSE[@]}")
     status=0
     if [ ${#others[@]} -gt 0 ]; then
-        "${STACK_COMPOSE[@]}" up -d --build --no-deps "${others[@]}"
+        mount_compose_up "$STACK" "${others[@]}"
         status=$?
         [ $status -ne 0 ] && log_warn "The broker is up; ${others[*]} failed (exit $status)."
     fi
 else
-    "${STACK_COMPOSE[@]}" up -d --build
+    # ONE UNSTOPPABLE CONTAINER DOES NOT TAKE THE STACK DOWN (ROAD-3480):
+    # mount_compose_up leaves a wedged service out, brings the rest up and
+    # starts what a failed recreate left in Created.
+    mount_compose_up "$STACK"
     status=$?
 fi
 
 announce COMPOSE_RESULT "{\"action\":\"up-stack\",\"stack\":\"$STACK\",\"exit_code\":$status}"
+# PARTIAL IS ITS OWN EXIT (MOUNT_PARTIAL_EXIT, 3): everything is up but the
+# wedged services named above, which only a reboot can bring back. The build
+# was good, so the sweep still runs.
+if [ $status -eq "$MOUNT_PARTIAL_EXIT" ]; then
+    clean_build_cache "the $STACK mount"
+    echo -e "\n${BOLD}${YELLOW}⚠️  $STACK is mounted PARTIALLY — a container Docker cannot stop was left alone (see WEDGED_CONTAINER above). A reboot clears it.${OFF}"
+    exit "$MOUNT_PARTIAL_EXIT"
+fi
 if [ $status -ne 0 ]; then
     log_error "Mount of $STACK FAILED — compose exited $status. Read the output above."
     exit $status

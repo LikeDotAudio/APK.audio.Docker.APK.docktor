@@ -646,6 +646,83 @@ def mount_lock_busy(path=None):
         os.close(fd)
 
 
+# ⏳ A REMOUNT THAT FAILS THE SAME WAY IS NOT RETRIED EVERY BEAT (ROAD-3480).
+# A wedged Plugin-MIDI made every mount of DISCOVERY.Engine fail identically,
+# and the watchdog re-ran it every 30 s — recreating ~37 containers each time.
+# The SAME failure (exit code + its error lines, ids and numbers blanked) again
+# doubles the wait, up to WATCHDOG_BACKOFF_CAP; a DIFFERENT failure or a success
+# starts over, so "a stack that stays dark is retried" still holds — just not
+# faster than its last identical failure earns. A failure older than
+# WATCHDOG_BACKOFF_FORGET counts as new.
+WATCHDOG_BACKOFF_CAP = 600
+WATCHDOG_BACKOFF_FORGET = 3600
+# up-stack.sh's MOUNT_PARTIAL_EXIT: up, minus a wedged service a reboot clears.
+MOUNT_PARTIAL_EXIT = 3
+
+_ERROR_LINE = re.compile(r"(error|fail|✗|cannot|conflict|refus)", re.I)
+_VOLATILE = re.compile(r"\b[0-9a-f]{12,64}\b|\d+(\.\d+)?")
+
+
+def failure_signature(exit_code, output):
+    """What makes two failed mounts "the same": the exit code and the error
+    lines, with container ids, timings and counts blanked out."""
+    lines = []
+    for line in (output or "").splitlines():
+        if line.startswith("@EVENT ") or not _ERROR_LINE.search(line):
+            continue
+        lines.append(_VOLATILE.sub("#", line.strip()))
+    return f"{exit_code}|" + "\n".join(sorted(set(lines))[-20:])
+
+
+class RemountBackoff:
+    """Per-stack memory of the watchdog's last failed remount. The clock is
+    injected so the doubling is tested without waiting."""
+
+    def __init__(self, base=30, cap=WATCHDOG_BACKOFF_CAP,
+                 forget=WATCHDOG_BACKOFF_FORGET, clock=time.time):
+        self.base, self.cap, self.forget, self.clock = base, cap, forget, clock
+        self.stacks = {}
+
+    def due(self, stack):
+        """(True, None) when a remount may run now, else (False, seconds left)."""
+        entry = self.stacks.get(stack)
+        if not entry:
+            return True, None
+        left = entry["next_at"] - self.clock()
+        return (left <= 0), (None if left <= 0 else left)
+
+    def record(self, stack, exit_code, output=""):
+        """Note a remount's result. None on success; else the backoff entry
+        {"failures", "delay", "next_at", "signature", "same"}."""
+        if exit_code == 0:
+            self.stacks.pop(stack, None)
+            return None
+        now = self.clock()
+        signature = failure_signature(exit_code, output)
+        prev = self.stacks.get(stack)
+        same = bool(prev and prev["signature"] == signature
+                    and now - prev["at"] < self.forget)
+        failures = prev["failures"] + 1 if same else 1
+        delay = min(self.cap, self.base * (2 ** (failures - 1)))
+        entry = {"failures": failures, "delay": delay, "next_at": now + delay,
+                 "signature": signature, "at": now, "same": same}
+        self.stacks[stack] = entry
+        return entry
+
+
+def _backoff_reason(exit_code, output):
+    """The one line an operator reads in WATCHDOG_BACKOFF."""
+    if exit_code == MOUNT_PARTIAL_EXIT:
+        return "mounted partially: a container Docker cannot stop is left out (reboot clears it)"
+    for line in reversed((output or "").splitlines()):
+        if line.startswith("@EVENT WEDGED_CONTAINER"):
+            return "a container Docker cannot stop: " + line[len("@EVENT WEDGED_CONTAINER "):][:300]
+    for line in reversed((output or "").splitlines()):
+        if _ERROR_LINE.search(line) and not line.startswith("@EVENT "):
+            return line.strip()[:300]
+    return f"up-stack.sh exited {exit_code}"
+
+
 def watchdog_active():
     """True once start_watchdog has run in this process — the page reads it to
     stand its own countdown down, so one engine remounts a dark stack, not two."""
@@ -674,6 +751,7 @@ def start_watchdog(interval=30):
     # remount never records a fingerprint, so a stack that stays dark is
     # retried on every beat exactly as before.
     state = {"clean": None, "full_at": 0.0}
+    backoff = RemountBackoff(base=interval)
 
     def loop():
         time.sleep(15)
@@ -693,15 +771,32 @@ def start_watchdog(interval=30):
                             continue
                         if s.get("driven") and (s.get("dark") or (s.get("declared", 0) > 0 and s.get("running", 0) == 0)):
                             stack_name = s.get("stack")
-                            if stack_name and not is_any_script_running() and not mount_lock_busy():
+                            if not stack_name:
+                                continue
+                            # STILL DOWN BUT BACKING OFF: not "clean" either,
+                            # so the next beat re-reads the stacks and the
+                            # remount runs as soon as the wait is over.
+                            ok, _left = backoff.due(stack_name)
+                            if not ok:
+                                remounted = True
+                                continue
+                            if not is_any_script_running() and not mount_lock_busy():
                                 remounted = True
                                 emit("WATCHDOG_REMOUNTING_STACK", {"stack": stack_name, "reason": "stack_down"})
                                 # WAIT=0: a mount that took the lock since the
                                 # probe above wins; this beat bows out, the
                                 # next one re-reads the stacks it left.
-                                run_management_script('up-stack.sh', args=[stack_name], cancellable=True,
-                                                      ordered_by=f"the DockTor watchdog ({stack_name} was down)",
-                                                      extra_env={"APKAUDIO_MOUNT_LOCK_WAIT": "0"})
+                                code, output = run_management_script(
+                                    'up-stack.sh', args=[stack_name], cancellable=True,
+                                    ordered_by=f"the DockTor watchdog ({stack_name} was down)",
+                                    extra_env={"APKAUDIO_MOUNT_LOCK_WAIT": "0"})
+                                entry = backoff.record(stack_name, code, output)
+                                if entry and entry["same"]:
+                                    emit("WATCHDOG_BACKOFF", {
+                                        "stack": stack_name, "exit_code": code,
+                                        "failures": entry["failures"],
+                                        "retry_in_seconds": int(entry["delay"]),
+                                        "reason": _backoff_reason(code, output)})
                                 time.sleep(10)
                     state["clean"] = None if remounted else fingerprint
             except Exception as err:

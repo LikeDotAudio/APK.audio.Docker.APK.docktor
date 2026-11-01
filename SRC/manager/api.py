@@ -442,7 +442,10 @@ STACK_ACTIONS = {
         "label": "🚀 Remount This Stack", "script": "up-stack.sh", "confirm": None,
         "done": "✅ {name} remounted.",
         "failed": "❌ Could not remount {name} — up-stack.sh exited {code}.\n"
-                  "   Only that stack was touched; read the output above.",
+                  "   Only that stack was touched; read the output above.\n"
+                  "   Exit 3 is a PARTIAL mount: a container Docker cannot stop "
+                  "(WEDGED_CONTAINER above) was left alone and the rest is up; "
+                  "a reboot clears it.",
     },
     # NOT up-stack WITH A FLAG: that one builds what changed and is the cheap
     # daily verb; this one is --no-cache and minutes, and the confirm is what
