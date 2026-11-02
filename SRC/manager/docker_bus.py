@@ -76,7 +76,7 @@ INSTRUMENT_LABEL = ("apk.audio.role", "instrument")
 INSTRUMENT_FILTER = {"label": ["apk.audio.role=instrument"]}
 _RESTART = {"no", "unless-stopped", "always", "on-failure"}
 _CREATE_KEYS = {"Image", "Env", "Labels", "Cmd", "HostConfig"}
-_HOST_KEYS = {"NetworkMode", "RestartPolicy", "Mounts", "Binds"}
+_HOST_KEYS = {"NetworkMode", "RestartPolicy", "Mounts", "Binds", "MemoryReservation", "Memory"}
 _MOUNT_KEYS = {"Type", "Source", "Target", "ReadOnly"}
 # Labels an instrument may not carry: compose's own (it would pass for a stack
 # container, the broker's included) and the protected marker DockTor's
