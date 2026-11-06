@@ -177,6 +177,11 @@ the dashboard runs its baked copy). Verified: `SRC/check.sh` (36 unit tests, bas
   dashboard after the next DockTor rebuild (baked copy). Browsers off the bench reach it only once
   WEB.Traffic-Router adds a read-only path — handoff filed (the gateway deliberately does not route DockTor, and
   a bridged Caddy cannot dial the host loopback DockTor binds); NMOS.Server's consumption is a handoff to P07.
+- **One stack's containers on the labels listener (root ROAD-3512, owner decision 2026-11-05)** —
+  `GET`/`HEAD /api/stack-containers?stack=<stack>` answers that stack's containers trimmed to name, group, leaf,
+  status, tone, dead, running (no image, ports, env or mounts) from a fast scan cached 5 s; `stack` must be one
+  plain name and no other key is accepted (400). Lets the NetBox window draw containers that publish no port.
+  Tests: `test_labels_listener.py` 9/9.
 - **The labels listener (W05's handoff)** — a second, read-only HTTP listener on the docker0 gateway
   (`APK_MANAGER_LABELS_BIND`, default `172.17.0.1`; `APK_MANAGER_LABELS_PORT`, default `8766`; passed through
   `docker-compose.manager.yml`) serves ONLY `GET`/`HEAD /api/endpoints/labels` and its `/api/v1` alias; every

@@ -21,6 +21,7 @@ GET READS, POST ACTS, enforced here rather than trusted to the client.
 import sys
 import os
 import json
+import re
 import time
 import errno
 import queue
@@ -718,10 +719,22 @@ def _bind_or_wait(bind, port, url, open_browser, takeover=True):
 # run docker inspect in a loop. APK_MANAGER_LABELS_BIND=off (or empty) turns it
 # off. A HOST FIREWALL must let the docker bridges reach 172.17.0.1:8766
 # (ARCHITECTURE.md).
+#
+# A SECOND READ, ONE STACK AT A TIME (owner decision 2026-11-05, root ROAD-3512):
+#     GET|HEAD /api/stack-containers?stack=<stack>
+# answers the containers of exactly one declared stack — name, group, leaf,
+# status, tone, dead, running and nothing else (no image, ports, env or mounts),
+# so a window can draw a stack whose containers publish no port. The stack is
+# required and must be a plain name; any other query key is a 400. The scan it
+# reads is cached for the same LABELS_CACHE_SECONDS, shared across stacks.
 # ---------------------------------------------------------------------------
 LABELS_ROUTE = "/api/endpoints/labels"
+STACK_ROUTE = "/api/stack-containers"
+STACK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+STACK_FIELDS = ("name", "group", "leaf", "status", "tone", "dead")
 LABELS_CACHE_SECONDS = 5.0
 _labels_cache = {"at": 0.0, "body": None}
+_snapshot_cache = {"at": 0.0, "groups": None}
 _labels_lock = threading.Lock()
 
 
@@ -735,8 +748,28 @@ def labels_body():
         return _labels_cache["body"]
 
 
+def stack_containers(stack):
+    """The trimmed container rows of one stack, from a cached fast scan."""
+    with _labels_lock:
+        now = time.monotonic()
+        if _snapshot_cache["groups"] is None or now - _snapshot_cache["at"] >= LABELS_CACHE_SECONDS:
+            _snapshot_cache["groups"] = api.snapshot(quiet=True, with_apps=False).get("groups") or []
+            _snapshot_cache["at"] = now
+        groups = _snapshot_cache["groups"]
+    rows = []
+    for group in groups:
+        if group.get("stack") != stack:
+            continue
+        for c in group.get("containers") or []:
+            row = {k: c.get(k) for k in STACK_FIELDS}
+            row["stack"] = stack
+            row["running"] = str(c.get("status") or "").startswith("Up")
+            rows.append(row)
+    return rows
+
+
 class LabelsHandler(BaseHTTPRequestHandler):
-    """GET/HEAD LABELS_ROUTE and nothing else."""
+    """GET/HEAD LABELS_ROUTE and STACK_ROUTE, and nothing else."""
     server_version = "DockTor-labels"
     sys_version = ""
 
@@ -755,7 +788,15 @@ class LabelsHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _read(self, head):
-        route = _unversioned(urllib.parse.urlparse(self.path).path.rstrip("/") or "/")
+        parsed = urllib.parse.urlparse(self.path)
+        route = _unversioned(parsed.path.rstrip("/") or "/")
+        if route == STACK_ROUTE:
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            stack = (query.get("stack") or [""])[0]
+            if set(query) != {"stack"} or len(query["stack"]) != 1 or not STACK_NAME.match(stack):
+                return self._answer(400, b'{"error": "stack=<one stack name> is required, nothing else"}', head=head)
+            body = json.dumps(stack_containers(stack)).encode("utf-8")
+            return self._answer(200, body, head=head)
         if route != LABELS_ROUTE:
             return self._answer(404, b'{"error": "not found"}', head=head)
         return self._answer(200, labels_body(), head=head)

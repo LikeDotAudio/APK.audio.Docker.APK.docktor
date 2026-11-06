@@ -76,7 +76,10 @@ a bare JSON array, one element per `audio.apk.endpoint.<n>` label of any contain
 `{"container", "stack", "kind": "open"|"copy", "url", "label", "purpose", "running"}` — `stack` is the compose
 stack folder (parent of the working_dir's `Docker/`). `GET /api/endpoints` (the dashboard's richer list with
 probe state and page titles) is unchanged. Also served — and NOTHING else — by the labels listener on `172.17.0.1:8766` (`APK_MANAGER_LABELS_*`) for
-bridge containers; Portal-OsApi relays it at its own `GET /api/endpoints`. The main API stays loopback-only
+bridge containers; Portal-OsApi relays it at its own `GET /api/endpoints`. The listener's only other read is
+`GET /api/stack-containers?stack=<stack>` (owner decision 2026-11-05, root ROAD-3512): one declared stack's
+containers as `{name, stack, group, leaf, status, tone, dead, running}` — `stack` required, any other key 400;
+Portal-OsApi relays it at `GET /api/stack-containers`. The main API stays loopback-only
 (PLAN-3361.01).
 
 
