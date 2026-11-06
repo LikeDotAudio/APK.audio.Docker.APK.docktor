@@ -872,6 +872,10 @@ def serve(bind="127.0.0.1", port=8765, open_browser=False, takeover=True):
     start_volume_sampler()
     start_cost_sampler()
     start_watchdog()
+    # THE BROWSER'S BUS: dial :8080/mqtt as Chrome does, every minute, and say
+    # so when a page could not (bus_watchdog.py; the page's half is apk-bus.js).
+    from .bus_watchdog import start_bus_watchdog
+    start_bus_watchdog()
     # THE ENGINE'S DOCKER. DockTor is the only socket holder (golden rule law
     # 9), so the discovery engine raises and reaps plugins by asking here.
     from .docker_bus import start_docker_bus
